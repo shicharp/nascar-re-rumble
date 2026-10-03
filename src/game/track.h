@@ -2,7 +2,8 @@
  * Original: Track_Parse 80062088 (estructura DAT_800af8d8), tablas de texturas por mip FUN_80067218,
  * Track_DrawView 800644c0 (visibilidad 800637bc / 80063928 / 80063a34, distancias de LOD 800641b8),
  * Track_DrawSegments 8006327c, Track_TransformSegVerts 80063470, Track_DrawSegFaces 80062de0 y la
- * subdivision de las caras cercanas 80062970 (vertices 800626b8, primitiva 80062888).
+ * subdivision de las caras cercanas 80062970 (vertices 800626b8, primitiva 80062888) y el horizonte THOR
+ * (texturas 800673f8, caras planas 80062004, dibujo 80064078 / 80064134 / 80063af4 / 80063c08).
  * Coordenadas de la pista = las del mundo >> 4. */
 #ifndef NR_TRACK_H
 #define NR_TRACK_H
@@ -37,6 +38,19 @@ typedef struct
     const uint8_t*  rest;   /* seg[0x10] */
 } TrackSeg;
 
+/* Capa de horizonte THOR (en el original una lista enlazada por +0x00, la ultima primero) */
+typedef struct
+{
+    const uint8_t*  hdr;        /* +0x0C/+0x10/+0x14 centro (mundo >> 7), +0x18 radio, +0x1E bit de la mascara */
+    const uint8_t*  verts;      /* +0x04 tras el parser: 8 bytes {u16 x, u16 y, s16 z, pad} (mundo >> 7) */
+    const uint8_t*  faces;      /* +0x08: 20 bytes {v0-v3, c0-c3, uv0|clut, uv1|tpage, uv3|uv2} */
+    int             numVerts;   /* +0x1C */
+    int             numFaces;   /* +0x1D */
+    int             bit;        /* +0x1E */
+} TrackHorizon;
+
+#define TRACK_MAX_HORIZONS 16
+
 typedef struct
 {
     uint32_t*       colors;     /* [0] TCOL convertido a palabras RGB */
@@ -50,6 +64,8 @@ typedef struct
     int             bbMax[3];   /* [12..14] */
     int             numCurve;   /* puntos de TCRV (10 bytes) */
     TrackSeg*       segs;       /* [0xF..] */
+    TrackHorizon    horizons[TRACK_MAX_HORIZONS];   /* [6] */
+    int             numHorizons;
 } Track;
 
 extern Track* g_Track;          /* DAT_800af8d8 */
@@ -64,5 +80,6 @@ int  Track_FindSegment(const int* pos);
 
 void Track_DrawView(int view, int curSeg, int mirrorCam);   /* 800644c0: visibilidad de los segmentos */
 void Track_DrawSegments(int view, int mirror);              /* 8006327c */
+void Track_DrawHorizon(int view, int mirror);               /* 80064078 (antes de los segmentos) */
 
 #endif

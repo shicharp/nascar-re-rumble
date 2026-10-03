@@ -105,8 +105,51 @@ void Track_Free(void)
     g_Track = NULL;
 }
 
-/* 80062088. Pendiente: THOR (horizonte, FUN_800673f8 + FUN_80062004), TTXA (texturas animadas
- * FUN_80061dfc) y la tabla de TCRV DAT_800af8e8. */
+/* 800673f8: tpage/CLUT reales de las caras del horizonte (+0x0A: byte alto = texturizada, bajo = modo
+ * semitransparente + 1; +0x0E: slot) y los colores c2/c3 al orden de la primitiva */
+static void Track_PatchHorizonFaces(int n, uint8_t* f)
+{
+    for (; n > 0; n--, f += 20)
+    {
+        uint16_t info = NR_Read16(f + 10);
+        uint16_t clut = 0, tpage = 0;
+        if (info >> 8)
+        {
+            int slot = NR_Read16(f + 14);
+            const uint8_t* r = Cpag_FindRegion(slot, f[8], f[9]);
+            clut = r ? NR_Read16(r + 4) : 0;
+            int du, dv, tp = TexSlot_GetTPage(slot, 0, &du, &dv);
+            tpage = (uint16_t)(tp < 0 ? 0 : tp);
+            if (info & 0xff)
+            {
+                tpage |= (uint16_t)(((info & 0xff) - 1) * 0x20);
+                clut |= 0x8000;
+            }
+        }
+        f[10] = (uint8_t)clut;
+        f[11] = (uint8_t)(clut >> 8);
+        f[14] = (uint8_t)tpage;
+        f[15] = (uint8_t)(tpage >> 8);
+        uint8_t t = f[6];
+        f[6] = f[7];
+        f[7] = t;
+    }
+}
+
+/* 80062004: las caras con los 4 colores iguales se dibujan planas (bit 0x800 de +0x0E) */
+static int Track_MarkFlatFaces(int n, uint8_t* f)
+{
+    int count = 0;
+    for (; n > 0; n--, f += 20)
+        if (f[4] == f[5] && f[4] == f[6] && f[4] == f[7])
+        {
+            f[15] |= 0x08;
+            count++;
+        }
+    return count;
+}
+
+/* 80062088. Pendiente: TTXA (texturas animadas FUN_80061dfc) y la tabla de TCRV DAT_800af8e8. */
 void Track_Parse(uint8_t* data, int size)
 {
     Track_Free();
@@ -192,7 +235,19 @@ void Track_Parse(uint8_t* data, int size)
             break;
         }
         case TAG_THOR:
-            t->horizon = c;     /* TODO: FUN_800673f8 / FUN_80062004 */
+            t->horizon = c;
+            if (t->numHorizons < TRACK_MAX_HORIZONS)
+            {
+                TrackHorizon* h = &t->horizons[t->numHorizons++];
+                h->hdr = c;
+                h->numVerts = c[0x1c];
+                h->numFaces = c[0x1d];
+                h->bit = c[0x1e];
+                h->verts = c + 0x20;
+                h->faces = h->verts + h->numVerts * 8;
+                Track_PatchHorizonFaces(h->numFaces, (uint8_t*)h->faces);
+                Track_MarkFlatFaces(h->numFaces, (uint8_t*)h->faces);
+            }
             break;
         case TAG_TIGR:
             t->tigr = c;
@@ -202,7 +257,8 @@ void Track_Parse(uint8_t* data, int size)
         }
         c += len;
     }
-    NR_Log("Track_Parse: %d segmentos, %d texturas, %d puntos de TCRV\n", t->numSegs, t->numTex, t->numCurve);
+    NR_Log("Track_Parse: %d segmentos, %d texturas, %d puntos de TCRV, %d horizontes\n", t->numSegs, t->numTex,
+           t->numCurve, t->numHorizons);
 }
 
 void Track_GetCurvePoint(int i, int* out)
@@ -769,5 +825,209 @@ void Track_DrawSegments(int view, int mirror)
             continue;
         Track_TransformSegVerts(&t->segs[i], fl & 0x40);
         Track_DrawSegFaces(&t->segs[i], fl & 0x40, fl & 3, mirror);
+    }
+}
+
+/* ---------------------------------------------------------------- horizonte */
+
+typedef struct
+{
+    uint32_t sxy;
+    int16_t  sz;
+    uint8_t  flags;     /* DAT_1f80000c: 0x20 no valido, 0x10 fuera por arriba/abajo */
+#if USE_PGXP
+    VERTTYPE px, py;
+#endif
+} HVert;
+
+static HVert s_hverts[256];
+
+/* 80064134: centro de la capa respecto a la camara (escala mundo >> 7) en el frustum */
+static int Track_HorizonVisible(const TrackHorizon* h)
+{
+    int16_t c[3];
+    for (int a = 0; a < 3; a++)
+        c[a] = (int16_t)((int16_t)NR_Read32(h->hdr + 0xc + a * 4) - (int16_t)(g_Camera.pos[a] >> 7));
+    Gte_SetV0(c[0], c[1], c[2]);
+    doCOP2(GTE_OP_RTV0);
+    int16_t r[3] = { (int16_t)MFC2_S(9), (int16_t)-MFC2_S(10), (int16_t)MFC2_S(11) };
+    return Track_SphereInFrustum(r, (int)NR_Read32(h->hdr + 0x18) << 4);
+}
+
+/* 80063af4 */
+static void Track_TransformHorizon(const TrackHorizon* h)
+{
+    int cx = g_Camera.pos[0] >> 7, cy = g_Camera.pos[1] >> 7, cz = g_Camera.pos[2] >> 7;
+    for (int i = 0; i < h->numVerts; i++)
+    {
+        const uint8_t* p = h->verts + i * 8;
+        HVert* v = &s_hverts[i];
+        Gte_SetV0(NR_Read16(p) - cx, NR_Read16(p + 2) - cy, (int16_t)NR_Read16(p + 4) - cz);
+        doCOP2(GTE_OP_RTPS);
+        uint8_t f = 0x20;
+        if (!(CFC2(31) & 0xffffe000))
+        {
+            v->sxy = MFC2(14);
+            v->sz = (int16_t)MFC2(19);
+#if USE_PGXP
+            v->px = g_FP_SXYZ2.x;
+            v->py = g_FP_SXYZ2.y;
+#endif
+            /* (en el original la comprobacion de x nunca marca nada) */
+            f = (v->sxy >> 16) < 2u * GFX_SCREEN_H / 2 ? 0 : 0x10;
+        }
+        v->flags = f;
+    }
+}
+
+/* Primitivas del horizonte: G (sin textura), FT (plana) o GT; colores ya en el orden de la primitiva */
+#define HOR_UV3(p) setUV3(p, w2 & 0xff, (w2 >> 8) & 0xff, w3 & 0xff, (w3 >> 8) & 0xff, (w4 >> 16) & 0xff, w4 >> 24)
+#define HOR_UV4(p) setUV4(p, w2 & 0xff, (w2 >> 8) & 0xff, w3 & 0xff, (w3 >> 8) & 0xff, (w4 >> 16) & 0xff, w4 >> 24, \
+                          w4 & 0xff, (w4 >> 8) & 0xff)
+#define HOR_XY3(p) (setXY3(p, SX(a->sxy), SY(a->sxy), SX(b->sxy), SY(b->sxy), SX(d->sxy), SY(d->sxy)), \
+                    PRECISE(p, 0, a), PRECISE(p, 1, b), PRECISE(p, 2, d))
+#define HOR_XY4(p) (setXY4(p, SX(a->sxy), SY(a->sxy), SX(b->sxy), SY(b->sxy), SX(d->sxy), SY(d->sxy), \
+                           SX(c->sxy), SY(c->sxy)), \
+                    PRECISE(p, 0, a), PRECISE(p, 1, b), PRECISE(p, 2, d), PRECISE(p, 3, c))
+
+/* 80063c08 */
+static void Track_DrawFaceList(const TrackHorizon* h, int mirror)
+{
+    const uint32_t* col = g_Track->colors;
+    const uint8_t* f = h->faces;
+    for (int fi = 0; fi < h->numFaces; fi++, f += 20)
+    {
+        const HVert* a = &s_hverts[f[0]];
+        const HVert* b = &s_hverts[f[1]];
+        const HVert* c = &s_hverts[f[2]];
+        const HVert* d = &s_hverts[f[3]];
+        if ((a->flags | b->flags | c->flags | d->flags) & 0x20)
+            continue;
+        if (a->flags & b->flags & c->flags & d->flags & 0x1e)
+            continue;
+        int nc = NClip(a->sxy, b->sxy, d->sxy);
+        if (mirror)
+            nc = -nc;
+        if (nc < 1)
+            continue;   /* (el original solo repite la prueba con los triangulos, donde siempre da 0) */
+        int tri = f[2] == f[3];
+        uint32_t w2 = NR_Read32(f + 8), w3 = NR_Read32(f + 12), w4 = NR_Read32(f + 16);
+        int depth = ((a->sz + b->sz + c->sz + d->sz) >> 2) + 0x8000;
+        uint32_t c0 = col[f[4]], c1 = col[f[5]], c2 = col[f[6]], c3 = col[f[7]];
+        int semi = (int)(w2 >> 31);
+        u_short clut = (u_short)((w2 >> 16) & 0x7fff);
+        void* prim;
+        if (!(w2 >> 16))
+        {
+            if (tri)
+            {
+                POLY_G3* p = (POLY_G3*)(prim = Gfx_AllocPrim(sizeof(POLY_G3)));
+                if (!p)
+                    return;
+                setPolyG3(p);
+                HOR_XY3(p);
+                RGBW(p, 0, c0);
+                RGBW(p, 1, c1);
+                RGBW(p, 2, c2);
+            }
+            else
+            {
+                POLY_G4* p = (POLY_G4*)(prim = Gfx_AllocPrim(sizeof(POLY_G4)));
+                if (!p)
+                    return;
+                setPolyG4(p);
+                HOR_XY4(p);
+                RGBW(p, 0, c0);
+                RGBW(p, 1, c1);
+                RGBW(p, 2, c2);
+                RGBW(p, 3, c3);
+            }
+        }
+        else if (w3 & 0x8000000)
+        {
+            u_short tpage = (u_short)((w3 >> 16) & 0xf7ff);
+            if (tri)
+            {
+                POLY_FT3* p = (POLY_FT3*)(prim = Gfx_AllocPrim(sizeof(POLY_FT3)));
+                if (!p)
+                    return;
+                setPolyFT3(p);
+                HOR_XY3(p);
+                HOR_UV3(p);
+                p->clut = clut;
+                p->tpage = tpage;
+                RGBW(p, 0, c0);
+                setSemiTrans(p, semi);
+            }
+            else
+            {
+                POLY_FT4* p = (POLY_FT4*)(prim = Gfx_AllocPrim(sizeof(POLY_FT4)));
+                if (!p)
+                    return;
+                setPolyFT4(p);
+                HOR_XY4(p);
+                HOR_UV4(p);
+                p->clut = clut;
+                p->tpage = tpage;
+                RGBW(p, 0, c0);
+                setSemiTrans(p, semi);
+            }
+        }
+        else
+        {
+            u_short tpage = (u_short)(w3 >> 16);
+            if (tri)
+            {
+                POLY_GT3* p = (POLY_GT3*)(prim = Gfx_AllocPrim(sizeof(POLY_GT3)));
+                if (!p)
+                    return;
+                setPolyGT3(p);
+                HOR_XY3(p);
+                HOR_UV3(p);
+                p->clut = clut;
+                p->tpage = tpage;
+                RGBW(p, 0, c0);
+                RGBW(p, 1, c1);
+                RGBW(p, 2, c2);
+                setSemiTrans(p, semi);
+            }
+            else
+            {
+                POLY_GT4* p = (POLY_GT4*)(prim = Gfx_AllocPrim(sizeof(POLY_GT4)));
+                if (!p)
+                    return;
+                setPolyGT4(p);
+                HOR_XY4(p);
+                HOR_UV4(p);
+                p->clut = clut;
+                p->tpage = tpage;
+                RGBW(p, 0, c0);
+                RGBW(p, 1, c1);
+                RGBW(p, 2, c2);
+                RGBW(p, 3, c3);
+                setSemiTrans(p, semi);
+            }
+        }
+        Gfx_AddPrimDepthPgxp(depth, prim, PGXP_NONE);
+    }
+}
+
+/* 80064078: capas cuyo bit esta en la mascara del segmento de la camara; las de radio > 0x3FF siempre */
+void Track_DrawHorizon(int view, int mirror)
+{
+    const Track* t = g_Track;
+    if (!t || !t->colors)
+        return;
+    Render_LoadCameraRotation();
+    int mask = s_viewHorizon[view];
+    for (int i = t->numHorizons - 1; i >= 0; i--)
+    {
+        const TrackHorizon* h = &t->horizons[i];
+        if (!((mask >> h->bit) & 1))
+            continue;
+        if ((int)NR_Read32(h->hdr + 0x18) <= 0x3ff && !Track_HorizonVisible(h))
+            continue;
+        Track_TransformHorizon(h);
+        Track_DrawFaceList(h, mirror);
     }
 }

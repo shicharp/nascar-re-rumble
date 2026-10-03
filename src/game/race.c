@@ -190,7 +190,7 @@ void Race_MainLoop(void)
     while (g_GameState == GAMESTATE_RUNNING)
     {
         Frame_Wait();
-        Gfx_BeginFrame(0x50, 0x70, 0xa8);
+        Gfx_BeginFrame(0, 0, 0);       /* el original no borra: el horizonte cubre el fondo */
         int speed = ((g_PadButtons[0] | g_PadButtons[1]) & PADB_CROSS) ? 48 : 16;
         camPos += dir * g_FrameDelta * speed;
         int eye[3], target[3];
@@ -201,6 +201,7 @@ void Race_MainLoop(void)
         Camera_LookAt(eye, target);
 
         Track_DrawView(0, Track_FindSegment(g_Camera.pos), 0);
+        Track_DrawHorizon(0, 0);
         Track_DrawSegments(0, 0);
         Render_ClearList();
         for (int i = 0; i < n; i++)
