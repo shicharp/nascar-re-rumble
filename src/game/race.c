@@ -18,6 +18,7 @@
 #include "game.h"
 #include "race.h"
 #include "track.h"
+#include "sprite.h"
 
 uint8_t g_CarLoadOrder[8];
 int     g_CarsLoaded;
@@ -200,7 +201,9 @@ void Race_MainLoop(void)
         target[1] += 0x800;
         Camera_LookAt(eye, target);
 
-        Track_DrawView(0, Track_FindSegment(g_Camera.pos), 0);
+        Track_Animate(g_FrameDelta);   /* 80061e94 (desde 800269c0) */
+        Sprite_Clear();                /* Race_DrawView 8006422c */
+        Track_DrawView(0, Track_FindSegmentByCurve(camPos >> 8), 0);
         Track_DrawHorizon(0, 0);
         Track_DrawSegments(0, 0);
         Render_ClearList();
@@ -214,6 +217,7 @@ void Race_MainLoop(void)
             Render_Add(&cars[i]);
         }
         Render_DrawList(0);
+        Sprite_DrawAll();              /* 80045268 */
 
         char line[64];
         Font_Select(0);

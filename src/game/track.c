@@ -8,6 +8,7 @@
 #include "gte.h"
 #include "render.h"
 #include "texslot.h"
+#include "sprite.h"
 #include "track.h"
 
 Track* g_Track;
@@ -149,7 +150,92 @@ static int Track_MarkFlatFaces(int n, uint8_t* f)
     return count;
 }
 
-/* 80062088. Pendiente: TTXA (texturas animadas FUN_80061dfc) y la tabla de TCRV DAT_800af8e8. */
+/* TTXA (0x1C bytes): +1 banderas (1 ida y vuelta, 2 anima v en vez de u), +2 paso en texeles por fotograma,
+ * +3 fotograma actual, +4 ultimo fotograma, +5 sentido (+1/-1), +6 desplazamiento en bytes de la entrada en las
+ * tablas de TTEX, +8 periodo (1/300 s), +0xA acumulador, +0xC + 4 * n: u (o v) base de las 4 esquinas en el
+ * nivel de mip n. */
+
+/* 80061dfc: bases de los niveles 1-3 (la del 0 viene en el fichero) */
+static void Track_InitAnims(Track* t)
+{
+    for (int i = 0; i < t->numAnims; i++)
+    {
+        uint8_t* e = t->anims + i * 0x1c;
+        int off = NR_Read16(e + 6);
+        if (e[1] & 2)
+        {
+            off++;
+            e[6] = (uint8_t)off;
+            e[7] = (uint8_t)(off >> 8);
+        }
+        for (int lv = 1; lv < 4; lv++)
+        {
+            const uint8_t* p = t->tex[lv] + off;
+            uint8_t* b = e + 0xc + lv * 4;
+            b[0] = p[0];
+            b[1] = p[4];
+            b[2] = p[8];
+            b[3] = p[10];
+        }
+    }
+}
+
+/* 80061e94 */
+void Track_Animate(int dt)
+{
+    Track* t = g_Track;
+    if (!t || !t->anims)
+        return;
+    for (int i = 0; i < t->numAnims; i++)
+    {
+        uint8_t* e = t->anims + i * 0x1c;
+        uint16_t period = NR_Read16(e + 8);
+        uint16_t acc = (uint16_t)(NR_Read16(e + 10) + dt);
+        int frame = e[3];
+        int stepped = 0;
+        while (period < acc && period != 0)
+        {
+            stepped = 1;
+            frame = e[3] + (int8_t)e[5];
+            acc = (uint16_t)(acc - period);
+            if (!(e[1] & 1))
+            {
+                if (frame < 0)
+                    frame = e[4];
+                else if (frame > e[4])
+                    frame = 0;
+            }
+            else if (frame < 0)
+            {
+                frame = 1;
+                e[5] = (uint8_t)-(int8_t)e[5];
+            }
+            else if (frame > e[4])
+            {
+                frame = e[4] - 1;
+                e[5] = (uint8_t)-(int8_t)e[5];
+            }
+            e[3] = (uint8_t)frame;
+        }
+        e[10] = (uint8_t)acc;
+        e[11] = (uint8_t)(acc >> 8);
+        if (!stepped)
+            continue;
+        int off = NR_Read16(e + 6);
+        int c = frame * e[2];
+        for (int lv = 0; lv < 4; lv++, c >>= 1)
+        {
+            uint8_t* p = t->tex[lv] + off;
+            const uint8_t* b = e + 0xc + lv * 4;
+            p[0] = (uint8_t)(b[0] + c);
+            p[4] = (uint8_t)(b[1] + c);
+            p[8] = (uint8_t)(b[2] + c);
+            p[10] = (uint8_t)(b[3] + c);
+        }
+    }
+}
+
+/* 80062088. Pendiente: la tabla de TCRV DAT_800af8e8. */
 void Track_Parse(uint8_t* data, int size)
 {
     Track_Free();
@@ -253,10 +339,16 @@ void Track_Parse(uint8_t* data, int size)
             t->tigr = c;
             break;
         case TAG_TTXA:
-            break;              /* TODO: FUN_80061dfc */
+            t->anims = c + 8;
+            t->numAnims = (int)(len - 8) / 0x1c;
+            break;
         }
         c += len;
     }
+    if (t->anims && t->tex[3])
+        Track_InitAnims(t);
+    else
+        t->numAnims = 0;
     NR_Log("Track_Parse: %d segmentos, %d texturas, %d puntos de TCRV, %d horizontes\n", t->numSegs, t->numTex,
            t->numCurve, t->numHorizons);
 }
@@ -296,6 +388,32 @@ int Track_FindSegment(const int* pos)
         {
             bestD = d;
             best = i;
+        }
+    }
+    return best;
+}
+
+int Track_FindSegmentByCurve(int i)
+{
+    const Track* t = g_Track;
+    if (!t || t->numCurve <= 0)
+        return 0;
+    int n = t->numCurve, best = 0, bestD = 0x7fffffff;
+    i %= n;
+    if (i < 0)
+        i += n;
+    for (int s = 0; s < t->numSegs; s++)
+    {
+        const TrackSegHdr* h = t->segs[s].hdr;
+        int len = ((int)h->curveEnd - h->curveStart + n) % n;
+        int mid = (h->curveStart + len / 2) % n;
+        int d = abs(i - mid);
+        if (d > n / 2)
+            d = n - d;
+        if (d < bestD)
+        {
+            bestD = d;
+            best = s;
         }
     }
     return best;
@@ -806,7 +924,8 @@ static void Track_DrawSegFaces(const TrackSeg* s, int nearMode, int lod, int mir
     }
 }
 
-/* 8006327c. Pendiente: los objetos D de cada segmento (carteles, DAT_800b5500 / DAT_800af854). */
+/* 8006327c: caras de los segmentos visibles y sus objetos D (halos de luz: {forma, color TCOL, tamano,
+ * vertice}) a la lista de sprites */
 void Track_DrawSegments(int view, int mirror)
 {
     const Track* t = g_Track;
@@ -825,6 +944,20 @@ void Track_DrawSegments(int view, int mirror)
             continue;
         Track_TransformSegVerts(&t->segs[i], fl & 0x40);
         Track_DrawSegFaces(&t->segs[i], fl & 0x40, fl & 3, mirror);
+        const TrackSegHdr* h = t->segs[i].hdr;
+        const uint8_t* d = t->segs[i].d;
+        for (int k = 0; k < h->numD; k++, d += 4)
+        {
+            const TVert* v = &s_verts[d[3]];
+            if ((v->flags & 0x20) || ((v->flags & 0x300) && v->sz <= 0x7f))
+                continue;
+#if USE_PGXP
+            Sprite_Add(d[0], t->colors[d[1]], 0, v->sxy, v->sz, d[2] << 6, v->px, v->py);
+#else
+            Sprite_Add(d[0], t->colors[d[1]], 0, v->sxy, v->sz, d[2] << 6, (float)(int16_t)v->sxy,
+                       (float)(int16_t)(v->sxy >> 16));
+#endif
+        }
     }
 }
 

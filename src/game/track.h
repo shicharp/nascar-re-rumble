@@ -3,7 +3,8 @@
  * Track_DrawView 800644c0 (visibilidad 800637bc / 80063928 / 80063a34, distancias de LOD 800641b8),
  * Track_DrawSegments 8006327c, Track_TransformSegVerts 80063470, Track_DrawSegFaces 80062de0 y la
  * subdivision de las caras cercanas 80062970 (vertices 800626b8, primitiva 80062888) y el horizonte THOR
- * (texturas 800673f8, caras planas 80062004, dibujo 80064078 / 80064134 / 80063af4 / 80063c08).
+ * (texturas 800673f8, caras planas 80062004, dibujo 80064078 / 80064134 / 80063af4 / 80063c08), las texturas
+ * animadas TTXA (80061dfc / 80061e94) y los halos de luz de los segmentos (objetos D, ver sprite.h).
  * Coordenadas de la pista = las del mundo >> 4. */
 #ifndef NR_TRACK_H
 #define NR_TRACK_H
@@ -66,6 +67,8 @@ typedef struct
     TrackSeg*       segs;       /* [0xF..] */
     TrackHorizon    horizons[TRACK_MAX_HORIZONS];   /* [6] */
     int             numHorizons;
+    uint8_t*        anims;      /* DAT_800af904: TTXA, 0x1C bytes por textura animada */
+    int             numAnims;
 } Track;
 
 extern Track* g_Track;          /* DAT_800af8d8 */
@@ -77,9 +80,12 @@ void Track_Free(void);
 void Track_GetCurvePoint(int i, int* out);
 /* Solo en el port (el original lo lleva la camara, +0x6C): segmento que contiene la posicion del mundo */
 int  Track_FindSegment(const int* pos);
+/* Solo en el port: segmento cuyo tramo de TCRV (+0x1E..+0x1C) esta mas cerca del punto i */
+int  Track_FindSegmentByCurve(int i);
 
 void Track_DrawView(int view, int curSeg, int mirrorCam);   /* 800644c0: visibilidad de los segmentos */
 void Track_DrawSegments(int view, int mirror);              /* 8006327c */
 void Track_DrawHorizon(int view, int mirror);               /* 80064078 (antes de los segmentos) */
+void Track_Animate(int dt);                                 /* 80061e94: texturas animadas (TTXA) */
 
 #endif
