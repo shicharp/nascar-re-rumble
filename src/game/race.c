@@ -1,3 +1,4 @@
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include "libgte.h"
@@ -16,17 +17,17 @@
 #include "frontend.h"
 #include "game.h"
 #include "race.h"
+#include "track.h"
 
 uint8_t g_CarLoadOrder[8];
 int     g_CarsLoaded;
-static NrAsset* s_track;            /* Ctrk (Track_Parse 80062680, pendiente) */
 
 /* 80024284 (parte imprescindible). Pendiente: los ~30 subsistemas de la carrera (sonido, IA, red de
  * trazadas Cnet, actores Cact, camaras, HUD, power-ups...). */
 void Race_Load(const char* path)
 {
     g_CarsLoaded = 0;              /* FUN_80023e70 */
-    s_track = NULL;
+    Track_Free();
     strcpy(g_LevelPath, path);
     Gfx_InitBuffers(0x9c4);
     Render_Init();
@@ -128,19 +129,48 @@ static void Cars_RegisterModels(void)
 int Ctrk_OnLoaded(NrAsset* a)
 {
     Asset_Register(a);
-    s_track = a;                   /* TODO: Track_Parse */
+    Track_Parse(a->data, a->size); /* 80062088 */
     Cars_RegisterModels();
     return 1;
 }
 
-/* 800299a8. Pendiente: todo el bucle de carrera. De momento muestra los coches de la parrilla con sus
- * ruedas girando delante de la camara; START o triangulo vuelven al front-end. */
+/* Punto de la linea central con fraccion (pos en 1/256 de punto) */
+static void CurvePos(int pos, int* out)
+{
+    int a[3], b[3], f = pos & 0xff;
+    Track_GetCurvePoint(pos >> 8, a);
+    Track_GetCurvePoint((pos >> 8) + 1, b);
+    for (int k = 0; k < 3; k++)
+        out[k] = a[k] + (int)(((int64_t)(b[k] - a[k]) * f) >> 8);
+}
+
+/* Coloca un coche sobre la linea central (punto i, desplazado 'side' a la derecha), mirando hacia dir */
+static void PlaceOnCurve(GfxObj* o, int i, int dir, int side)
+{
+    int p[3], a[3], b[3];
+    Track_GetCurvePoint(i, p);
+    Track_GetCurvePoint(i - dir, a);
+    Track_GetCurvePoint(i + dir, b);
+    double dx = b[0] - a[0], dz = b[2] - a[2], len = sqrt(dx * dx + dz * dz);
+    if (len < 1)
+        len = 1;
+    int yaw = (int)lround(atan2(dx, dz) * 2048.0 / 3.14159265358979323846);
+    Math_RotMatrix(yaw, 0, 0, o->rot);
+    o->pos[0] = p[0] + (int)(dz / len * side);
+    o->pos[1] = p[1];
+    o->pos[2] = p[2] - (int)(dx / len * side);
+}
+
+/* 800299a8. Pendiente: todo el bucle de carrera (fisica, IA, camaras, HUD...). De momento la camara
+ * recorre la linea central de la pista con los coches de la parrilla colocados en la salida; X acelera,
+ * START o triangulo vuelven al front-end. */
 void Race_MainLoop(void)
 {
     Font_SetDeferUpload(0);
     Font_FlushUploads();
     int n = g_RaceGrid.count;
     GfxObj cars[8], wheels[8][4];
+    const int dir = 1;
     for (int i = 0; i < n; i++)
     {
         NrAsset* a = Asset_Find(ASSET_Cobj, 10000 + i * 10 + 1);
@@ -148,51 +178,51 @@ void Race_MainLoop(void)
         NrAsset* w = Asset_Find(ASSET_Cobj, 20001 + g_RaceGrid.car[i].car * 3);
         for (int k = 0; k < 4; k++)
             Obj_Init(&wheels[i][k], w ? (ModelHdr*)w->obj : NULL);
+        PlaceOnCurve(&cars[i], -dir * (i / 2) * 4, dir, (i & 1) ? 0xc00 : 0x200);
+        for (int k = 0; k < 4; k++)
+            if (cars[i].model && wheels[i][k].model)
+            {
+                memcpy(wheels[i][k].rot, cars[i].rot, sizeof(cars[i].rot));
+                Obj_GetPoint(&cars[i], k, wheels[i][k].pos);
+            }
     }
-    int angle = 0;
+    int camPos = -dir * 14 * 256;
     while (g_GameState == GAMESTATE_RUNNING)
     {
         Frame_Wait();
-        Gfx_BeginFrame(0x20, 0x30, 0x50);
-        angle += g_FrameDelta * 4;
-        int eye[3] = { 0, 0x500, -0x2400 }, target[3] = { 0, 0, 0 };
+        Gfx_BeginFrame(0x50, 0x70, 0xa8);
+        int speed = ((g_PadButtons[0] | g_PadButtons[1]) & PADB_CROSS) ? 48 : 16;
+        camPos += dir * g_FrameDelta * speed;
+        int eye[3], target[3];
+        CurvePos(camPos, eye);
+        CurvePos(camPos + dir * 10 * 256, target);
+        eye[1] += 0x1800;
+        target[1] += 0x800;
         Camera_LookAt(eye, target);
+
+        Track_DrawView(0, Track_FindSegment(g_Camera.pos), 0);
+        Track_DrawSegments(0, 0);
         Render_ClearList();
         for (int i = 0; i < n; i++)
         {
-            GfxObj* o = &cars[i];
-            if (!o->model)
+            if (!cars[i].model)
                 continue;
-            Math_RotMatrix(angle + i * 0x155, 0, 0, o->rot);
-            o->pos[0] = (i % 3 - 1) * 0x1000;
-            o->pos[1] = 0;
-            o->pos[2] = (i / 3) * 0x1400;
             for (int k = 0; k < 4; k++)
-            {
-                GfxObj* w = &wheels[i][k];
-                if (!w->model)
-                    continue;
-                Math_RotMatrix(angle + i * 0x155 + ((k & 1) ? 0x800 : 0), 0, 0, w->rot);
-                Obj_GetPoint(o, k, w->pos);
-                Render_Add(w);
-            }
-            Render_Add(o);
+                if (wheels[i][k].model)
+                    Render_Add(&wheels[i][k]);
+            Render_Add(&cars[i]);
         }
         Render_DrawList(0);
-        /* la fuente de depuracion de PsyCross queda bajo las paginas de la pista: se usan las del juego */
+
         char line[64];
         Font_Select(0);
         snprintf(line, sizeof(line), "%s (%s), %d vueltas", g_TrackName, g_SelectedTrack, g_Settings.laps);
         Font_DrawString(line, 12, 10, 9);
-        Font_DrawString("Bucle de carrera sin portar - START para volver", 12, 22, 9);
-        for (int i = 0; i < n; i++)
-        {
-            snprintf(line, sizeof(line), "%d  %s", i + 1, g_Drivers[g_RaceGrid.car[i].driver].name);
-            Font_DrawString(line, 12, 160 + i * 11, 9);
-        }
+        Font_DrawString("Bucle de carrera sin portar - X acelera, START vuelve", 12, 22, 9);
         Asset_DispatchAll();
         Gfx_Flip(GFX_FLIP_FULL);
         if ((g_PadButtons[0] | g_PadButtons[1]) & (PADB_START | PADB_TRIANGLE))
             g_GameState = 0xc;
     }
+    Track_Free();
 }

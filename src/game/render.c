@@ -14,8 +14,8 @@ Light    g_DefaultLight;
 static uint16_t s_sinTable[0x401];  /* 800a9c98: round(32768 * sin(i * pi / 2048)) */
 static SVECTOR s_lightDir;          /* DAT_800afa24: direccion del sol (4.12) */
 
-/* Pendientes del frustum del preset activo (DAT_800afa30..3f, ver Camera_ApplyProjection) */
-static struct { uint8_t sx0, sx1, sy0, sy1; uint16_t rx, ry; } s_frustum = { 4, 1, 4, 3, 20, 25 };
+/* Proyeccion del preset activo (DAT_800afa30..3f y scratchpad 1f800000, ver Camera_ApplyProjection) */
+static RenderProj s_frustum = { 4, 1, 4, 3, 20, 25, 360, { 3, 3 } };
 
 static GfxObj* s_list[64];          /* DAT_800af56c + 0x988 */
 static int     s_listCount;         /* + 0x984 */
@@ -170,6 +170,18 @@ static void Gte_LoadColumns(const int* m)
                m[2] >> 4, m[5] >> 4, m[8] >> 4);
 }
 
+const RenderProj* Render_GetProjection(void)
+{
+    return &s_frustum;
+}
+
+/* 8001032c: rotacion de la camara sin traslacion (para la pista) */
+void Render_LoadCameraRotation(void)
+{
+    Gte_LoadColumns(g_Camera.view);
+    Gte_SetTrans(0, 0, 0);
+}
+
 /* 8001596c: la traspuesta (pasa vectores del mundo al espacio del objeto) */
 static void Gte_LoadRows(const int* m)
 {
@@ -216,6 +228,9 @@ void Render_SetPreset(int preset)
     s_frustum.sy1 = s_presets[preset].sy[1];
     s_frustum.rx = s_presets[preset].rx;
     s_frustum.ry = s_presets[preset].ry;
+    s_frustum.h = s_presets[preset].h;
+    s_frustum.lod[0] = s_presets[preset].lod[0];
+    s_frustum.lod[1] = s_presets[preset].lod[1];
     SetGeomOffset(160, 120);
     SetGeomScreen(s_presets[preset].h);
 }

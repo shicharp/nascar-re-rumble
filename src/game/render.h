@@ -58,11 +58,23 @@ typedef struct
     int pos[3];
 } Camera3D;
 
+/* Proyeccion del preset activo: pendientes del frustum (DAT_800afa30-33 = scratchpad 1f800000-03),
+ * holguras de radio (DAT_800afa3c/3e), H (DAT_800afa36) y desplazamientos de LOD (DAT_800afa38 = 1f800008) */
+typedef struct
+{
+    uint8_t  sx0, sx1, sy0, sy1;
+    uint16_t rx, ry;
+    uint16_t h;
+    uint8_t  lod[2];
+} RenderProj;
+
 extern Camera3D g_Camera;
 extern Light    g_DefaultLight;
 
 void Render_Init(void);                                         /* FUN_800137d8 */
 void Render_SetPreset(int preset);                              /* parte de Camera_ApplyProjection */
+const RenderProj* Render_GetProjection(void);
+void Render_LoadCameraRotation(void);                           /* 8001032c */
 void Math_SinCos(int angle, int* s, int* c);                    /* 800176c0: 4096 = vuelta, 16.16 */
 void Math_RotMatrix(int ay, int ax, int az, int* m);            /* 80017ad8 */
 void Camera_LookAt(const int* eye, const int* target);          /* 80016bfc + 80017a68 */
