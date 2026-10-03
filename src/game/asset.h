@@ -8,6 +8,7 @@
 #define ASSET_Cobj NR_TAG('C', 'o', 'b', 'j')
 #define ASSET_Ctrk NR_TAG('C', 't', 'r', 'k')
 #define ASSET_Cact NR_TAG('C', 'a', 'c', 't')
+#define ASSET_Cnet NR_TAG('C', 'n', 'e', 't')
 #define ASSET_Cctr NR_TAG('C', 'c', 't', 'r')
 #define ASSET_Crle NR_TAG('C', 'r', 'l', 'e')
 #define ASSET_TxtR NR_TAG('T', 'x', 't', 'R')

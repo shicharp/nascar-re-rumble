@@ -8,7 +8,7 @@
 uint32_t g_PadButtons[2];
 
 #define MAX_SCRIPT 64
-static struct { int frame; uint32_t mask; } s_script[MAX_SCRIPT];
+static struct { int frame, len; uint32_t mask; } s_script[MAX_SCRIPT];   /* --press "N:boton[*frames]" */
 static int s_scriptCount;
 
 void Pad_SetScript(const char* script)
@@ -31,6 +31,7 @@ void Pad_SetScript(const char* script)
             {
                 s_script[s_scriptCount].frame = frame;
                 s_script[s_scriptCount].mask = names[i].mask;
+                s_script[s_scriptCount].len = c[strlen(names[i].name)] == '*' ? atoi(c + strlen(names[i].name) + 1) : 3;
                 s_scriptCount++;
             }
         p = strchr(c, ',');
@@ -44,7 +45,7 @@ static uint32_t ScriptButtons(void)
     uint32_t m = 0;
     int f = Gfx_GetFlipCount();
     for (int i = 0; i < s_scriptCount; i++)
-        if (f >= s_script[i].frame && f < s_script[i].frame + 3)
+        if (f >= s_script[i].frame && f < s_script[i].frame + s_script[i].len)
             m |= s_script[i].mask;
     return m;
 }

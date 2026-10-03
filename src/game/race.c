@@ -19,6 +19,8 @@
 #include "race.h"
 #include "track.h"
 #include "sprite.h"
+#include "cnet.h"
+#include "racecar.h"
 
 uint8_t g_CarLoadOrder[8];
 int     g_CarsLoaded;
@@ -29,6 +31,8 @@ void Race_Load(const char* path)
 {
     g_CarsLoaded = 0;              /* FUN_80023e70 */
     Track_Free();
+    Cnet_Reset();                  /* FUN_8002cf7c */
+    g_HaveStart = 0;
     strcpy(g_LevelPath, path);
     Gfx_InitBuffers(0x9c4);
     Render_Init();
@@ -135,95 +139,61 @@ int Ctrk_OnLoaded(NrAsset* a)
     return 1;
 }
 
-/* Punto de la linea central con fraccion (pos en 1/256 de punto) */
-static void CurvePos(int pos, int* out)
+/* 80043520 (parte): cuenta atras "3", "2", "1", "GO!!!" (cada 300 tics, fuente 3) y vueltas (fuente 0).
+ * Pendiente: posicion, tiempos, iconos de poderes y mensajes. */
+static void Race_DrawHud(void)
 {
-    int a[3], b[3], f = pos & 0xff;
-    Track_GetCurvePoint(pos >> 8, a);
-    Track_GetCurvePoint((pos >> 8) + 1, b);
-    for (int k = 0; k < 3; k++)
-        out[k] = a[k] + (int)(((int64_t)(b[k] - a[k]) * f) >> 8);
+    if (g_RaceTime < 0x4b0)
+    {
+        static const char* const txt[4] = { "3", "2", "1", "GO!!!" };
+        static const int col[4] = { 5, 9, 6, 6 };
+        int k = g_RaceTime < 300 ? 0 : g_RaceTime < 600 ? 1 : g_RaceTime < 900 ? 2 : 3;
+        Font_Select(3);
+        int w, h;
+        Font_Measure(txt[k], &w, &h);
+        Font_DrawString(txt[k], 0xa0 - w / 2, 0x2a, col[k]);
+    }
+    Font_Select(0);
+    char line[32];
+    snprintf(line, sizeof(line), "lap %d/%d  ", 1, g_Settings.laps);
+    Font_DrawString(line, 10, 0x16, 8);
+    Font_Select(1);
 }
 
-/* Coloca un coche sobre la linea central (punto i, desplazado 'side' a la derecha), mirando hacia dir */
-static void PlaceOnCurve(GfxObj* o, int i, int dir, int side)
-{
-    int p[3], a[3], b[3];
-    Track_GetCurvePoint(i, p);
-    Track_GetCurvePoint(i - dir, a);
-    Track_GetCurvePoint(i + dir, b);
-    double dx = b[0] - a[0], dz = b[2] - a[2], len = sqrt(dx * dx + dz * dz);
-    if (len < 1)
-        len = 1;
-    int yaw = (int)lround(atan2(dx, dz) * 2048.0 / 3.14159265358979323846);
-    Math_RotMatrix(yaw, 0, 0, o->rot);
-    o->pos[0] = p[0] + (int)(dz / len * side);
-    o->pos[1] = p[1];
-    o->pos[2] = p[2] - (int)(dx / len * side);
-}
-
-/* 800299a8. Pendiente: todo el bucle de carrera (fisica, IA, camaras, HUD...). De momento la camara
- * recorre la linea central de la pista con los coches de la parrilla colocados en la salida; X acelera,
- * START o triangulo vuelven al front-end. */
+/* 800299a8 + 80026f28 (un jugador). Del bucle original estan: tiempo de carrera, texturas animadas,
+ * camara de persecucion (8005f034), visibilidad y dibujo de la pista (Track_DrawView 800644c0 +
+ * Race_DrawView 8006422c) y parte del HUD. Pendiente: fisica (80030cac / 80056c6c), IA, poderes, actores,
+ * sonido, pausa (START vuelve al front-end de momento) y pantalla partida. */
 void Race_MainLoop(void)
 {
     Font_SetDeferUpload(0);
     Font_FlushUploads();
-    int n = g_RaceGrid.count;
-    GfxObj cars[8], wheels[8][4];
-    const int dir = 1;
-    for (int i = 0; i < n; i++)
-    {
-        NrAsset* a = Asset_Find(ASSET_Cobj, 10000 + i * 10 + 1);
-        Obj_Init(&cars[i], a ? (ModelHdr*)a->obj : NULL);
-        NrAsset* w = Asset_Find(ASSET_Cobj, 20001 + g_RaceGrid.car[i].car * 3);
-        for (int k = 0; k < 4; k++)
-            Obj_Init(&wheels[i][k], w ? (ModelHdr*)w->obj : NULL);
-        PlaceOnCurve(&cars[i], -dir * (i / 2) * 4, dir, (i & 1) ? 0xc00 : 0x200);
-        for (int k = 0; k < 4; k++)
-            if (cars[i].model && wheels[i][k].model)
-            {
-                memcpy(wheels[i][k].rot, cars[i].rot, sizeof(cars[i].rot));
-                Obj_GetPoint(&cars[i], k, wheels[i][k].pos);
-            }
-    }
-    int camPos = -dir * 14 * 256;
+    g_RaceTime = 0;
+    Race_CreateCars();             /* 8003132c (desde Level_Run) */
+    RaceCam_Init();
     while (g_GameState == GAMESTATE_RUNNING)
     {
         Frame_Wait();
         Gfx_BeginFrame(0, 0, 0);       /* el original no borra: el horizonte cubre el fondo */
-        int speed = ((g_PadButtons[0] | g_PadButtons[1]) & PADB_CROSS) ? 48 : 16;
-        camPos += dir * g_FrameDelta * speed;
-        int eye[3], target[3];
-        CurvePos(camPos, eye);
-        CurvePos(camPos + dir * 10 * 256, target);
-        eye[1] += 0x1800;
-        target[1] += 0x800;
-        Camera_LookAt(eye, target);
+        int dt = g_FrameDelta;
+        g_RaceTime += dt;              /* Race_UpdateTime 800269c0 */
+        Track_Animate(dt);             /* 80061e94 */
+        Race_UpdateCars(dt);
+        RaceCam_Update(0, dt);         /* 8005f034 */
 
-        Track_Animate(g_FrameDelta);   /* 80061e94 (desde 800269c0) */
         Sprite_Clear();                /* Race_DrawView 8006422c */
-        Track_DrawView(0, Track_FindSegmentByCurve(camPos >> 8), 0);
+        int seg = RaceCam_GetSegment(0);
+        if (seg == 0xff)
+            seg = Track_FindSegment(g_Camera.pos);
+        Track_DrawView(0, seg, 0);
         Track_DrawHorizon(0, 0);
         Track_DrawSegments(0, 0);
         Render_ClearList();
-        for (int i = 0; i < n; i++)
-        {
-            if (!cars[i].model)
-                continue;
-            for (int k = 0; k < 4; k++)
-                if (wheels[i][k].model)
-                    Render_Add(&wheels[i][k]);
-            Render_Add(&cars[i]);
-        }
+        Race_AddCarsToDrawList();
         Render_DrawList(0);
         Sprite_DrawAll();              /* 80045268 */
+        Race_DrawHud();
 
-        char line[64];
-        Font_Select(0);
-        snprintf(line, sizeof(line), "%s (%s), %d vueltas", g_TrackName, g_SelectedTrack, g_Settings.laps);
-        Font_DrawString(line, 12, 10, 9);
-        Font_DrawString("Bucle de carrera sin portar - X acelera, START vuelve", 12, 22, 9);
         Asset_DispatchAll();
         Gfx_Flip(GFX_FLIP_FULL);
         if ((g_PadButtons[0] | g_PadButtons[1]) & (PADB_START | PADB_TRIANGLE))

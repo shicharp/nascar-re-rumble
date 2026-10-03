@@ -73,6 +73,19 @@ typedef struct
 
 extern Track* g_Track;          /* DAT_800af8d8 */
 
+/* Posicion sobre la pista (4 bytes que el juego guarda en cada objeto, p. ej. entidad +0x10, camara +0x6C) */
+typedef struct
+{
+    uint8_t seg;                /* 0xFF = desconocido */
+    uint8_t face;
+    int16_t curve;              /* punto de TCRV */
+} TrackPos;
+
+#define TRACK_NO_SURFACE (-0x40000000)
+
+int  Track_FindSurface(TrackPos* tp, const int* pos, int withCurve);   /* 80064acc (sin la normal) */
+int  Track_GroundHeight(TrackPos* tp, const int* pos, int mode);       /* 80065488 */
+
 void Track_Parse(uint8_t* data, int size);          /* 80062088 */
 void Track_Free(void);
 

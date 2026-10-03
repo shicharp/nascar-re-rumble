@@ -6,6 +6,8 @@
 #include "model.h"
 #include "texslot.h"
 #include "race.h"
+#include "cnet.h"
+#include "racecar.h"
 
 #define MAX_TYPES 48
 
@@ -81,6 +83,10 @@ static int Asset_Dispatch(NrAsset* a)
         return 0;
     case ASSET_Ctrk:
         return Ctrk_OnLoaded(a);   /* 80062680 */
+    case ASSET_Cnet:
+        return g_IsFrontend ? 0 : Cnet_OnLoaded(a);   /* 8004c368 */
+    case ASSET_Cact:
+        return g_IsFrontend ? 0 : Cact_OnLoaded(a);   /* 8004942c */
     case ASSET_Cctr:
         /* cambia el estado del nivel: id 0 -> 2, id 1 -> 4 (en juego) */
         if (a->id == 0)
