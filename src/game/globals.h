@@ -19,10 +19,12 @@ typedef struct
     int unk00;
     int unk04;
     int unk08;          /* main: 1 */
-    int unk0c;
-    int nextMode;       /* +0x10: modo siguiente (0 front-end, 3 arranque, 4 cargando...) */
-    int unk14[17];
-    int unk58;
+    int numPlayers;     /* +0x0C */
+    int nextMode;       /* +0x10: modo siguiente (0 carrera, 3 arranque, 4 cargando...) */
+    int unk14[14];
+    int unlockMask;     /* +0x4C: especiales desbloqueados (bits de DAT_800abeec) */
+    int unk50[2];
+    int powerUps;       /* +0x58 */
     int unk5c;
     int isRestart;      /* +0x60: Level_Run lo pone a 1 al reiniciar */
     int unk64[13];
@@ -39,6 +41,10 @@ extern int       g_FrontendFrames;  /* DAT_800af17c */
 extern char      g_LevelPath[128];  /* DAT_800b0d70 */
 extern char      g_SelectedTrack[16]; /* DAT_800ab7a0: pista elegida en el front-end */
 extern int       g_BootState;       /* DAT_800b7068: 0 primer arranque, 1 ya inicializado, 2 tras memcard */
+extern short     g_Venue;           /* DAT_800af386: sede de la carrera (directorio CW\\Loc<codigo>) */
+extern char      g_TrackName[32];   /* DAT_800b711d */
+extern char      g_SplitScreen;     /* DAT_800af708 */
+extern uint8_t   g_PlayerTeam[2];   /* DAT_800af972/973 */
 
 /* Tiempo. El callback de VSync del original (~8001dcd4) suma 5 por vblank (unidades de 1/300 s):
  * DAT_800af714 siempre y DAT_800af738 solo en los estados 4 y 13 (tiempo de juego, se para en pausa).

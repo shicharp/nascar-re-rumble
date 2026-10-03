@@ -4,6 +4,7 @@
 #define NR_FRONTEND_H
 
 #include <stdint.h>
+#include "libgte.h"
 #include "stream.h"
 
 /* Definicion de opcion en el EXE (10 bytes, tablas 800ab7b4...) */
@@ -75,6 +76,24 @@ typedef struct
     uint8_t  stat7;
     uint32_t stat8;
 } DriverInfo;
+
+/* Sede o pista de la pantalla 1300 (16 bytes en +0x6CC) */
+typedef struct
+{
+    const char* name;       /* textos 5000 + sede*10 + k */
+    const char* file;       /* 800abdd4: codigo de sede / fichero .trk */
+    short    venue;
+    short    unk6;
+    short    tkfe;          /* id del asset TkFE con el trazado */
+    short    image;         /* miniatura Lmdc/Tmdc (sede*4 + k) */
+} VenueEntry;
+
+typedef struct
+{
+    uint8_t venue;
+    uint8_t k;              /* 0 la sede, 1..3 pista */
+    int8_t  slot;           /* hueco en VRAM (0x200, slot*32) */
+} VenueCarousel;
 
 #define NUM_DRIVERS 56
 extern const DriverInfo g_Drivers[NUM_DRIVERS];
@@ -151,14 +170,31 @@ typedef struct
     char     stage[2];      /* +0x6A8 0 piloto, -1 compañero, 1..5 rival N, 100 listo */
     char     pad6aa[2];
     int      thumbClut[8];  /* +0x6AC CLUT de cada miniatura */
-    char     pad6cc[0x948 - 0x6cc];
+    VenueEntry venues[9][4];/* +0x6CC por sede: [0] la sede, [1..3] sus pistas */
+    SVECTOR  previewLight;  /* +0x90C luz del trazado 3D */
+    void*    preview;       /* +0x914 trazado 3D (TrackPreview) */
+    char     previewAnim;   /* +0x918 1 entra, -1 sale, -2 sale y vuelve */
+    char     pad919;
+    short    previewOffset; /* +0x91A 0 en su sitio, 15000 fuera */
+    short    previewDX;     /* +0x91C */
+    short    previewDY;     /* +0x91E */
+    int      previewZoom;   /* +0x920 */
+    VenueCarousel vcar[10]; /* +0x924 [0..3] carrusel de sedes, [4..9] lista de pistas */
+    char     vScrollDir;    /* +0x942 */
+    char     pad943;
+    short    vScrollX;      /* +0x944 */
+    char     vScrollAgain;  /* +0x946 */
+    char     pad947;
     int      volumeSound;   /* +0x948 sonido de prueba de la pantalla de audio */
-    char     portPopup;     /* +0x94C aviso de mandos (1: puerto 1, 2: ambos) */
-    char     pad94d[0x9f2 - 0x94d];
+    char     portPopup;     /* +0x94C aviso de mandos; en la pantalla 1300, empezar la carrera */
+    char     champReady[2]; /* +0x94D */
+    char     pad94f[0x9f2 - 0x94f];
     char     teamMode;      /* +0x9F2 cada jugador elige tambien compañero de equipo */
     char     pickOpponents; /* +0x9F3 el jugador elige los rivales */
     uint8_t  numOpponents;  /* +0x9F4 */
-    char     pad9f5[0xa9c - 0x9f5];
+    char     pad9f5[0xa48 - 0x9f5];
+    void*    trophies[12];  /* +0xA48 modelos Cobj 5-16 (copas) */
+    char     pada78[0xa9c - 0xa78];
     MenuItem mainMenu[7];   /* +0xA9C pantalla 100 (tabla 800ab7b4) */
     MenuItem raceMenu1P[5]; /* +0xB7C pantalla 200, 1 jugador (800ab7fc) */
     MenuItem raceMenu2P[5]; /* +0xC1C pantalla 200, 2 jugadores (800ab830) */
@@ -197,20 +233,59 @@ typedef struct
     uint8_t mateCar[2];        /* DAT_800b7188 */
     uint8_t oppDriver[6];      /* DAT_800b7189[1..5]: rivales elegidos */
     uint8_t oppCar[6];         /* DAT_800b718e[1..5] */
-    uint8_t unlocks[0x24];     /* DAT_800b7135: leyendas (b70c5 + piloto*3 + clase) y especiales (b7121 + piloto) */
+    uint8_t progress[0x38];    /* DAT_800b7121..7158: desbloqueos y copas ganadas (ver PROGRESS) */
+    /* pantalla 1300 y carrera */
+    uint8_t venue;             /* DAT_800b7194: sede elegida (0-6 pistas, 7 WC, 8 EA) */
+    uint8_t track;             /* DAT_800b7195: pista de la sede (0-2) */
+    uint8_t savedTrack;        /* DAT_800b7197 */
+    uint8_t teamRace;          /* DAT_800b7167 */
+    uint8_t champType;         /* DAT_800b7168: 0 carrera, 1 copa de sede, 2 WC, 3 EA */
+    uint8_t curVenue;          /* DAT_800b7169 */
+    uint8_t curTrack;          /* DAT_800b716a */
+    uint8_t cupRaces;          /* DAT_800b716b */
+    uint8_t raceIndex;         /* DAT_800b716c */
+    uint8_t cupVenue[6];       /* DAT_800b716d */
+    uint8_t cupTrack[6];       /* DAT_800b7173 */
+    uint8_t laps;              /* DAT_800b7116 */
+    uint8_t demo;              /* DAT_800b711b */
+    char    playerName[2][11]; /* DAT_800b70fc / 800b7107 */
+    uint8_t playerNameSet[2];  /* DAT_800b7105 / 800b7110 */
 } GameSettings;
 
-/* Parrilla que prepara la pantalla 1200 (DAT_800b0e40, 8 bytes por coche) */
+/* Indice en progress[] de una direccion del original (base DAT_800b7121) */
+#define PROGRESS(addr) g_Settings.progress[(addr) - 0x800b7121u]
+
+/* Parrilla (DAT_800b0e40): numero de coches y 8 bytes por coche */
 typedef struct
 {
-    uint8_t unk0;
-    uint8_t player;            /* +1 mando (0xFF = IA) */
-    uint8_t driver;            /* +2 */
-    uint8_t car;               /* +3 */
-    uint8_t order;             /* +4 100 = libre */
-    uint8_t pad[3];
-} RaceEntry;
-extern RaceEntry g_RaceEntries[6];
+    uint8_t player;            /* +0 mando (0xFF = IA) */
+    uint8_t driver;            /* +1 */
+    uint8_t car;               /* +2 clase del coche */
+    uint8_t team;              /* +3 equipo / orden (100 = libre en la pantalla 1200) */
+    uint8_t cls;               /* +4 nivel de la IA (clase de carrera) */
+    uint8_t model;             /* +5 equipo*3 + clase */
+    uint8_t playerNum;         /* +6 */
+    uint8_t flag;              /* +7 rival / leyenda */
+} GridCar;
+typedef struct
+{
+    uint8_t count;
+    GridCar car[8];
+} RaceGrid;
+extern RaceGrid g_RaceGrid;
+
+/* Registro de cada coche en la carrera / copa (DAT_800b706c, 0x18 bytes) */
+typedef struct
+{
+    uint8_t startPos;
+    uint8_t pad01[3];
+    int     a, b, points, d;
+    uint8_t taken;
+    uint8_t pad15[3];
+} CarRecord;
+extern CarRecord g_CarRecords[6];
+
+
 
 extern FrontendState* g_Frontend;   /* DAT_800af950 */
 extern short g_FadeDir;             /* DAT_800af976: -1 a negro, 1 desde negro, 0 nada */
@@ -239,6 +314,12 @@ void Fe_Screen400(void);                                                  /* 800
 void Fe_Screen500(void);                                                  /* 8007c540 */
 int  Fe_DecodeGmdc(int index, int x, int y);                              /* 8008e21c */
 void Fe_Screen1200(void);                                                 /* 80081a9c */
+void Fe_Screen1300(void);                                                 /* 800838f8 */
+void Fe_InitVenues(void);                                                 /* parte de 80079814 */
+int  Fe_CarAvailable(int driver, int car);                                /* 80090674 */
+void Fe_StartRace(int demo);                                              /* 8008927c */
+const char* Fe_VenueCode(int venue);                                      /* 800abdd4[sede][0] */
+int  Fe_DecodeLmdc(int index, int x, int y);
 void Fe_LoadAtlas(void);                                                  /* 80092f5c */
 void Fe_FreeAtlas(void);                                                  /* 80093050 */
 void Fe_CreateGarageObjects(void);                                        /* parte de 80079814 */

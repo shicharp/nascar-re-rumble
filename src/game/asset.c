@@ -59,6 +59,14 @@ static int Asset_Dispatch(NrAsset* a)
         return g_AssetViewerMode ? Cpag_OnLoaded(a) : Cpag_OnLoadedGame(a);
     case ASSET_Cobj:
         return Cobj_OnLoaded(a);   /* 80013374 */
+    case ASSET_TkFE:
+        /* 800188f8: trazado de la pista para la pantalla 1300; +4 pasa de tamano a numero de puntos */
+        {
+            uint32_t* d = (uint32_t*)a->data;
+            d[1] = (d[1] - 0xc) / 6;
+            Asset_Register(a);
+            return 1;
+        }
     case ASSET_Ctos:
         return Stream_OnCtos(a);   /* 8002b810 */
     case ASSET_rscB:

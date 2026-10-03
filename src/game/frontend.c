@@ -15,10 +15,12 @@ short g_FadeDir;
 short g_FadeLevel;
 unsigned g_MenuFrame;
 GameSettings g_Settings;
-RaceEntry g_RaceEntries[6];
+RaceGrid g_RaceGrid;
+CarRecord g_CarRecords[6];
 static const uint8_t* s_crle;   /* solo en el port: Crle 0 en RAM (el original lo relee de VRAM) */
 static int s_bmdcSize[13];   /* solo en el port: tamano de cada Bmdc para acotar la lectura del MDEC */
 static int s_gmdcSize[14];
+static int s_lmdcSize[36];
 
 static_assert(sizeof(FrontendState) == 0x101c, "FrontendState debe medir 0x101C");
 static_assert(sizeof(MenuItem) == 0x20, "MenuItem debe medir 0x20");
@@ -39,7 +41,15 @@ static_assert(offsetof(FrontendState, driver) == 0x678, "piloto elegido en +0x67
 static_assert(offsetof(FrontendState, carousel) == 0x688, "carrusel en +0x688");
 static_assert(offsetof(FrontendState, thumbClut) == 0x6ac, "CLUT de miniaturas en +0x6AC");
 static_assert(offsetof(FrontendState, teamMode) == 0x9f2, "parametros de carrera en +0x9F2");
-static_assert(sizeof(RaceEntry) == 8, "RaceEntry debe medir 8");
+static_assert(sizeof(GridCar) == 8, "GridCar debe medir 8");
+static_assert(sizeof(CarRecord) == 0x18, "CarRecord debe medir 0x18");
+static_assert(sizeof(VenueEntry) == 0x10, "VenueEntry debe medir 0x10");
+static_assert(offsetof(FrontendState, venues) == 0x6cc, "sedes en +0x6CC");
+static_assert(offsetof(FrontendState, preview) == 0x914, "trazado en +0x914");
+static_assert(offsetof(FrontendState, vcar) == 0x924, "carrusel de sedes en +0x924");
+static_assert(offsetof(FrontendState, vScrollAgain) == 0x946, "+0x946");
+static_assert(offsetof(FrontendState, volumeSound) == 0x948, "+0x948");
+static_assert(offsetof(FrontendState, trophies) == 0xa48, "copas en +0xA48");
 
 /* Definiciones de menus del EXE: texto, pantalla con X, con triangulo, nº valores, ayuda, tipo, ancho */
 static const MenuDef s_mainMenuDefs[7] = {          /* 800ab7b4 */
@@ -128,9 +138,9 @@ void Frontend_InitCamera(void)
     memset(g_Frontend, 0, sizeof(FrontendState));
     g_Frontend->bgIndex = 0xff;
     g_GameInfo->unk5c = 0;
-    g_GameInfo->unk0c = 1;
+    g_GameInfo->numPlayers = 1;
     g_GameInfo->unk08 = 1;
-    g_GameInfo->unk58 = 1;
+    g_GameInfo->powerUps = 1;
 }
 
 void Frontend_Free(void)
@@ -202,7 +212,7 @@ void Frontend_InitScreens(void)
             g_Settings.oppDriver[i] = (uint8_t)(rand() % 33);
             g_Settings.oppCar[i] = 0;
         }
-        memset(g_Settings.unlocks, 0, sizeof(g_Settings.unlocks));
+        memset(g_Settings.progress, 0, sizeof(g_Settings.progress));
         g_BootState = 1;
     }
     fe->nextScreen = 100;
@@ -213,6 +223,7 @@ void Frontend_InitScreens(void)
             for (int k = 0; k < 3; k++)
                 fe->carInfo[d][c][k] = (short)(g_Drivers[d].team * 3 + c);
 
+    Fe_InitVenues();
     Fe_CreateGarageObjects();
 
     fe->firstFrame = 1;
@@ -303,9 +314,10 @@ void Frontend_Update(void)
     case 400:  Fe_Screen400(); break;
     case 500:  Fe_Screen500(); break;
     case 1200: Fe_Screen1200(); break;
+    case 1300: Fe_Screen1300(); break;
     case 2000: Fe_Screen2000(); break;
     /* 600 FUN_80088edc, 700 FUN_8007cb6c, 800 FUN_8007d32c, 900 FUN_8007ddb4, 1000 FUN_8007f810,
-     * 1100 FUN_80080cbc, 1300 FUN_800838f8, 1400 FUN_800855a0, 1500 FUN_80085d90,
+     * 1100 FUN_80080cbc, 1400 FUN_800855a0, 1500 FUN_80085d90,
      * 1600 FUN_8007ea64, 1700 FUN_80087130, 1800 FUN_80087fa8, 1900 FUN_8008a52c */
     default: Fe_ScreenPending(); break;
     }
@@ -451,6 +463,17 @@ int Fe_DecodeGmdc(int index, int x, int y)
     return 1;
 }
 
+/* 8008e13c (parte del MDEC): miniatura de sede/pista 64x32 en (x, y) de VRAM */
+int Fe_DecodeLmdc(int index, int x, int y)
+{
+    FrontendState* fe = g_Frontend;
+    if (index < 0 || index >= 36 || !fe->lmdc[index])
+        return 0;
+    DrawSync(0);
+    Lsc_DecodeToVram(fe->lmdc[index], s_lmdcSize[index], x, y);
+    return 1;
+}
+
 /* 80092e08: Crle id 0 = imagen cruda para VRAM (0x240,0) (+ resto en (0x2C0,0));
  * otros ids = tabla que se queda en memoria */
 int Fe_OnCrle(NrAsset* a)
@@ -522,7 +545,10 @@ int Fe_OnMdc(NrAsset* a)
         fe->bmdc[fe->numBmdc++] = a->data;
     }
     else if ((t == 'L' || t == 'T') && fe->numLmdc < 36)
-        fe->lmdc[fe->numLmdc++] = a->data;
+    {
+        s_lmdcSize[fe->numLmdc] = a->size;
+        fe->lmdc[fe->numLmdc++] = a->data;   /* en orden de llegada: sede*4 + k */
+    }
     else if (t == 'G' && fe->numGmdc < 14)
     {
         s_gmdcSize[fe->numGmdc] = a->size;

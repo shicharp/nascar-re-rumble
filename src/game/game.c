@@ -93,7 +93,7 @@ const char* Level_GetDataDir(void)
     if (g_IsFrontend)
         snprintf(dir, sizeof(dir), "%s%s", "CW\\", "FEnd\\");
     else
-        snprintf(dir, sizeof(dir), "%sLoc%s\\", "CW\\", "BB");   /* TODO: tabla de sedes (DAT_800af386) */
+        snprintf(dir, sizeof(dir), "%sLoc%s\\", "CW\\", Fe_VenueCode(g_Venue));   /* sede DAT_800af386 */
     return dir;
 }
 

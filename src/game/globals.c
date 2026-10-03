@@ -10,6 +10,10 @@ int       g_FrontendFrames;
 char      g_LevelPath[128];
 char      g_SelectedTrack[16];
 int       g_BootState;
+short     g_Venue;
+char      g_TrackName[32];
+char      g_SplitScreen;
+uint8_t   g_PlayerTeam[2];
 
 static_assert(sizeof(GameInfo) == 0xac, "GameInfo debe medir 0xAC como en el original");
 

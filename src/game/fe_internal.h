@@ -20,6 +20,12 @@ int      Fe_PadPressed(uint32_t mask, int port, int repeat);   /* 8008a994 */
 void     Fe_PadRepeatReset(void);                              /* 8008aa90 */
 int      Fe_Clamp(int v, int lo, int hi);                      /* 8008aad8 */
 
+/* fe_select.c */
+void        Fe_DrawSpinningModel(int x, int y, int dist, int model, int speed);   /* 8008de60 */
+void        Fe_DrawCallout(int x, int y, int w, int h, int down, int left, int down2, int right); /* 8008dc1c */
+int         Fe_DrawTextRgb(int r, int g, int b, const char* text, int x, int y, int align);    /* 8008efec */
+const char* HelpText(int i);                                                      /* DAT_800b6e78[i] */
+
 /* Sonidos del front-end (FUN_8003f6fc): sin audio todavia */
 static inline void Fe_PlaySound(int id) { (void)id; }
 

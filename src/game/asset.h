@@ -19,6 +19,7 @@
 #define ASSET_Ctos NR_TAG('C', 't', 'o', 's')
 #define ASSET_rscB NR_TAG('r', 's', 'c', 'B')
 #define ASSET_rscE NR_TAG('r', 's', 'c', 'E')
+#define ASSET_TkFE NR_TAG('T', 'k', 'F', 'E')
 
 /* El visor de depuracion guarda las paginas Cpag en memoria en vez de subirlas a sus slots */
 extern int g_AssetViewerMode;

@@ -270,7 +270,7 @@ static void Fe_DrawCarousel(int p, int first, int last, int scrolled)
 /* ---------------------------------------------------------------- coches del garaje */
 
 /* 80090674: el coche (piloto, clase) se puede elegir */
-static int Fe_CarAvailable(int driver, int car)
+int Fe_CarAvailable(int driver, int car)
 {
     if (car > g_Settings.maxClassUnlocked)
         return 0;
@@ -278,7 +278,7 @@ static int Fe_CarAvailable(int driver, int car)
         return 1;
     if (driver < 0x2e)
     {
-        int v = g_Settings.unlocks[driver * 3 + car - 0x70];   /* DAT_800b70c5 */
+        int v = PROGRESS(0x800b70c5u + driver * 3 + car);       /* copa de la sede ganada en esa clase */
         if (v == 2)
             return 1;
         if (g_Frontend->screen == 1200)
@@ -287,7 +287,7 @@ static int Fe_CarAvailable(int driver, int car)
     }
     if (driver > 0x37)
         return 0;
-    return g_Settings.unlocks[driver - 0x14] == 1;              /* DAT_800b7121 */
+    return PROGRESS(0x800b7121u + driver) == 1;
 }
 
 /* 80023e88: empieza a cargar por streaming la seccion del coche (una a la vez; rscE la cierra) */
@@ -592,6 +592,12 @@ void Fe_CreateGarageObjects(void)
         o->flags |= 0x80;
         fe->lockModel[i] = o;
     }
+    for (int i = 0; i < 12; i++)
+    {
+        GfxObj* o = NewGarageObject(5 + i);
+        o->flags |= 0x80;
+        fe->trophies[i] = o;
+    }
 }
 
 void Fe_FreeGarageObjects(void)
@@ -612,6 +618,11 @@ void Fe_FreeGarageObjects(void)
             Asset_Free((NrAsset*)fe->carSlots[i].data);
         Pool_Free(fe->carSlots[i].model);
         memset(&fe->carSlots[i], 0, sizeof(fe->carSlots[i]));
+    }
+    for (int i = 0; i < 12; i++)
+    {
+        Pool_Free(fe->trophies[i]);
+        fe->trophies[i] = NULL;
     }
     for (int i = 0; i < 2; i++)
     {
@@ -763,7 +774,7 @@ static void Fe_DrawCarModel(int p, int x, int y, int dist, int reflection)
 }
 
 /* 8008de60: modelo pequeño girando (3/4 = candados) en (x, y) de pantalla */
-static void Fe_DrawSpinningModel(int x, int y, int dist, int model, int speed)
+void Fe_DrawSpinningModel(int x, int y, int dist, int model, int speed)
 {
     FrontendState* fe = g_Frontend;
     GfxObj* o;
@@ -771,7 +782,11 @@ static void Fe_DrawSpinningModel(int x, int y, int dist, int model, int speed)
     {
     case 3: o = (GfxObj*)fe->lockModel[0]; break;
     case 4: o = (GfxObj*)fe->lockModel[1]; break;
-    default: return;   /* 5-16: objetos del salon de la fama / showcase (fe+0xA48...) */
+    default:
+        if (model < 5 || model > 16)
+            return;
+        o = (GfxObj*)fe->trophies[model - 5];   /* copas (fe+0xA48) */
+        break;
     }
     if (!o || !o->model)
         return;
@@ -781,7 +796,7 @@ static void Fe_DrawSpinningModel(int x, int y, int dist, int model, int speed)
     o->pos[0] = 0;
     o->pos[1] = 0;
     o->pos[2] = dist;
-    int eye[3] = { 0, 0x9c4, 500 };
+    int eye[3] = { 0, model >= 11 ? -10 : 0x9c4, 500 };
     Camera_LookAt(eye, o->pos);
     Render_ClearList();
     Render_Add(o);
@@ -942,7 +957,7 @@ static void Fe_ScrollCarousel(int p)
 
 /* 8008dc1c: marco (x, y, w, h) con una flecha que baja 'down', va a la izquierda 'left', baja 'down2'
  * y apunta a la derecha 'right' (une la miniatura elegida con la clase) */
-static void Fe_DrawCallout(int x, int y, int w, int h, int down, int left, int down2, int right)
+void Fe_DrawCallout(int x, int y, int w, int h, int down, int left, int down2, int right)
 {
     int r, g, b;
     Fe_ItemColor(&r, &g, &b, 2);
@@ -969,7 +984,7 @@ static void Fe_DrawCallout(int x, int y, int w, int h, int down, int left, int d
 }
 
 /* 8008efec: texto en color RGB555 directo; align 1 centrado, 2 a la derecha */
-static int Fe_DrawTextRgb(int r, int g, int b, const char* text, int x, int y, int align)
+int Fe_DrawTextRgb(int r, int g, int b, const char* text, int x, int y, int align)
 {
     int w, h;
     Font_Measure(text, &w, &h);
@@ -981,7 +996,7 @@ static int Fe_DrawTextRgb(int r, int g, int b, const char* text, int x, int y, i
     return w;
 }
 
-static const char* HelpText(int i)
+const char* HelpText(int i)
 {
     return Fe_GetString(3000 + i);   /* DAT_800b6e78[i] */
 }
@@ -1118,31 +1133,31 @@ static void Confirm(int p)
         Fe_PlaySound(0x48);
 
     int st = fe->stage[p];
-    RaceEntry* e;
+    GridCar* e;
     if (st == 0)
     {
-        e = &g_RaceEntries[p];
+        e = &g_RaceGrid.car[p];
         e->player = (uint8_t)p;
         e->driver = fe->driver[p];
         e->car = fe->car[p];
-        e->order = (uint8_t)p;
+        e->team = (uint8_t)p;
     }
     else if (st == -1)
     {
-        e = &g_RaceEntries[p + np];
+        e = &g_RaceGrid.car[p + np];
         e->player = 0xff;
         e->driver = fe->driver[p];
         e->car = fe->car[p];
-        e->order = (uint8_t)p;
+        e->team = (uint8_t)p;
     }
     else if ((uint8_t)(st - 1) < 5)
     {
         int idx = OpponentBase() + st - 1;
-        e = &g_RaceEntries[idx];
+        e = &g_RaceGrid.car[idx];
         e->player = 0xff;
         e->driver = fe->driver[p];
         e->car = fe->car[p];
-        e->order = (uint8_t)(idx + 1);
+        e->team = (uint8_t)(idx + 1);
         if (st == fe->numOpponents)
             fe->stage[p] = 100;
         else
@@ -1234,7 +1249,7 @@ static void Back(int p)
     else
     {
         fe->stage[0]--;
-        g_RaceEntries[OpponentBase() + fe->stage[p] - 1].order = 100;
+        g_RaceGrid.car[OpponentBase() + fe->stage[p] - 1].team = 100;
         Fe_SetDriver(0, g_Settings.oppDriver[(int)fe->stage[0]], g_Settings.oppCar[(int)fe->stage[0]]);
     }
 }
@@ -1310,9 +1325,9 @@ static void HandleInput(int p)
             /* el resto de rivales los elige el juego */
             for (int i = st; i <= fe->numOpponents; i++)
             {
-                RaceEntry* e = &g_RaceEntries[OpponentBase() + i - 1];
+                GridCar* e = &g_RaceGrid.car[OpponentBase() + i - 1];
                 e->player = 0xff;
-                e->order = 100;
+                e->team = 100;
             }
             fe->stage[p] = 100;
             fe->nextScreen = 1300;
@@ -1382,7 +1397,7 @@ void Fe_Screen1200(void)
             fe->stage[1] = np == 1 ? 100 : 0;
             fe->selectMode = 0;
             for (int i = 0; i < 6; i++)
-                g_RaceEntries[i].order = 100;
+                g_RaceGrid.car[i].team = 100;
             for (int p = 0; p < np; p++)
                 Fe_SetDriver(p, g_Settings.lastDriver[p], g_Settings.lastCar[p]);
         }
