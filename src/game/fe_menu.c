@@ -1,4 +1,4 @@
-/* Widgets del front-end y pantalla 100 (menu principal). */
+/* Widgets del front-end y pantallas de menu 100-500. */
 #include <stdio.h>
 #include <string.h>
 #include "libgte.h"
@@ -10,16 +10,17 @@
 #include "font.h"
 #include "globals.h"
 #include "frontend.h"
+#include "fe_internal.h"
 
 /* ---------------------------------------------------------------- primitivas 2D */
 
-static int Fe_BaseDepth(void)
+int Fe_BaseDepth(void)
 {
     return g_Frontend->screen == 900 ? 2000 : 0;
 }
 
 /* 8008e614: rectangulo relleno (opcionalmente semitransparente al 50%) */
-static void Fe_DrawBox(int r, int g, int b, int x0, int y0, int x1, int y1, int semi)
+void Fe_DrawBox(int r, int g, int b, int x0, int y0, int x1, int y1, int semi)
 {
     int depth = Fe_BaseDepth();
     if (semi)
@@ -43,7 +44,7 @@ static void Fe_DrawBox(int r, int g, int b, int x0, int y0, int x1, int y1, int 
 }
 
 /* 80079784: linea horizontal o vertical de grosor 'thick' como POLY_F4. color = 0x28BBGGRR. */
-static void Fe_DrawLine(uint32_t color, int x0, int y0, int x1, int y1, int thick)
+void Fe_DrawLine(uint32_t color, int x0, int y0, int x1, int y1, int thick)
 {
     POLY_F4* p = (POLY_F4*)Gfx_AllocPrim(sizeof(POLY_F4));
     if (!p)
@@ -57,13 +58,13 @@ static void Fe_DrawLine(uint32_t color, int x0, int y0, int x1, int y1, int thic
     Gfx_AddPrimDepth(0, p);
 }
 
-static uint32_t Rgb(int r, int g, int b)
+uint32_t Rgb(int r, int g, int b)
 {
     return 0x28000000u | (uint32_t)b << 16 | (uint32_t)g << 8 | (uint32_t)r;
 }
 
 /* 8008e51c: contorno rectangular */
-static void Fe_DrawOutline(int r, int g, int b, int x0, int y0, int x1, int y1, int thick)
+void Fe_DrawOutline(int r, int g, int b, int x0, int y0, int x1, int y1, int thick)
 {
     uint32_t c = Rgb(r, g, b);
     Fe_DrawLine(c, x0, y0, x1, y0, thick);
@@ -73,7 +74,7 @@ static void Fe_DrawOutline(int r, int g, int b, int x0, int y0, int x1, int y1, 
 }
 
 /* 8008e75c: marco biselado con esquinas recortadas (color claro y su sombra a mitad) */
-static void Fe_DrawFrame(int r, int g, int b, int x0, int y0, int x1, int y1)
+void Fe_DrawFrame(int r, int g, int b, int x0, int y0, int x1, int y1)
 {
     uint32_t c = Rgb(r, g, b);
     uint32_t d = Rgb(r / 2, g / 2, (b * 10) / 15);
@@ -106,7 +107,7 @@ static void Fe_DrawFrame(int r, int g, int b, int x0, int y0, int x1, int y1)
 /* ---------------------------------------------------------------- mando */
 
 /* 8008a7f4: botones del frame; X, triangulo y cuadrado cuentan solo al pulsarlos */
-static void Fe_ReadPads(void)
+void Fe_ReadPads(void)
 {
     FrontendState* fe = g_Frontend;
     const uint32_t once = PADB_CROSS | PADB_TRIANGLE | PADB_SQUARE;
@@ -129,7 +130,7 @@ static void Fe_ReadPads(void)
 }
 
 /* 8008a994: pulsacion con autorrepeticion cada 100 ticks; port -1 = cualquiera de los dos */
-static int Fe_PadPressed(uint32_t mask, int port, int repeat)
+int Fe_PadPressed(uint32_t mask, int port, int repeat)
 {
     FrontendState* fe = g_Frontend;
     int first = port, last = port, hit = 0;
@@ -157,7 +158,7 @@ static int Fe_PadPressed(uint32_t mask, int port, int repeat)
 }
 
 /* 8008aa90: sin tecla mantenida, la siguiente pulsacion dispara al momento */
-static void Fe_PadRepeatReset(void)
+void Fe_PadRepeatReset(void)
 {
     for (int i = 0; i < 2; i++)
         if (!g_Frontend->held[i])
@@ -165,7 +166,7 @@ static void Fe_PadRepeatReset(void)
 }
 
 /* 8008aad8 */
-static int Fe_Clamp(int v, int lo, int hi)
+int Fe_Clamp(int v, int lo, int hi)
 {
     return v < lo ? lo : (v > hi ? hi : v);
 }
@@ -274,7 +275,7 @@ void Fe_ResetMenu(MenuItem* items, int count)
 }
 
 /* 8008ac5c: color de la opcion (seleccionada = pulso) */
-static void Fe_ItemColor(int* r, int* g, int* b, int mode)
+void Fe_ItemColor(int* r, int* g, int* b, int mode)
 {
     unsigned f = g_MenuFrame;
     if (mode == 1)
@@ -418,16 +419,20 @@ static void Fe_DrawOptionValue(int r, int g, int b, MenuItem* it, const char* va
     Font_DrawString(buf, x - (sx - 0x6e), y - 7, textColor);
 }
 
-/* 8008d5f4: barra de ayuda inferior; si no cabe se desplaza con los bordes difuminados */
-static void Fe_DrawHelp(const char* text, int x, int y, int clipX0, int clipX1)
+/* 8008d5f4: barra de ayuda inferior; si no cabe se desplaza con los bordes difuminados.
+ * port: mando cuyo tipo se comprueba (1 = el segundo); edges: 0 ambos degradados, 1 solo el izquierdo,
+ * 2 solo el derecho, 3 ninguno. Pendiente: sustitucion de iconos para el mando neGcon (tipo 2). */
+void Fe_DrawHelp(int port, const char* text, int x, int y, int clipX0, int clipX1, int edges)
 {
     FrontendState* fe = g_Frontend;
-    if (!text || Pad_GetType(0) <= 0 || fe->padDisabled)
+    if (!text || Pad_GetType(port == 1) <= 0 || fe->padDisabled || Pad_GetType(0) <= 0)
         return;
     strncpy(fe->textBuf, text, sizeof(fe->textBuf) - 1);
     Font_Select(0);
     int w, h;
     Font_Measure(fe->textBuf, &w, &h);
+    if (clipX1 != clipX0 && fe->marquee)
+        return;
     if (clipX1 - clipX0 >= w || clipX1 - clipX0 <= 0)
     {
         Font_DrawString(fe->textBuf, x, y, 9);
@@ -439,14 +444,19 @@ static void Fe_DrawHelp(const char* text, int x, int y, int clipX0, int clipX1)
     Font_DrawClipped(fe->textBuf, sx + w, y, clipX0, clipX1, 9);
 
     /* degradados que oscurecen los extremos (mezcla 2 = resta) */
-    DR_TPAGE* tp = (DR_TPAGE*)Gfx_AllocPrim(sizeof(DR_TPAGE));
-    if (tp)
+    if (edges < 3)
     {
-        setDrawTPage(tp, 1, 1, getTPage(0, 2, 0, 0));
-        Gfx_AddPrimDepth(0, tp);
+        DR_TPAGE* tp = (DR_TPAGE*)Gfx_AllocPrim(sizeof(DR_TPAGE));
+        if (tp)
+        {
+            setDrawTPage(tp, 1, 1, getTPage(0, 2, 0, 0));
+            Gfx_AddPrimDepth(0, tp);
+        }
     }
     for (int side = 0; side < 2; side++)
     {
+        if ((side == 0 && edges >= 2) || (side == 1 && edges != 0 && edges != 2))
+            continue;
         POLY_G4* p = (POLY_G4*)Gfx_AllocPrim(sizeof(POLY_G4));
         if (!p)
             return;
@@ -476,7 +486,7 @@ static void Fe_DrawDescription(int w, int h, const char* text)
 
 /* 8008cb88: cuadro de mensaje. Sin 'yesNo' es de tipo OK; con 'yesNo' es Si/No (izquierda/derecha
  * cambian *yesNo). Devuelve -1 mientras sigue abierto, 1 si se acepta y 0 si se cancela. */
-static int Fe_MsgBox(int x, int y, const char* text, uint8_t* yesNo, int port)
+int Fe_MsgBox(int x, int y, const char* text, uint8_t* yesNo, int port)
 {
     FrontendState* fe = g_Frontend;
     fe->marquee = 0;
@@ -484,7 +494,7 @@ static int Fe_MsgBox(int x, int y, const char* text, uint8_t* yesNo, int port)
     if (!y) y = 0x51;
     Fe_DrawBox(0x1e, 0x1e, 0x1e, x, y, x + 0x82, y + 0x40, 0);
     Fe_DrawBox(0, 0, 0, x, y + 0x35, x + 0x82, y + 0x40, 0);
-    Fe_DrawHelp(Fe_GetString(yesNo ? 3028 : 3029), x + 6, y + 0x35, x + 5, x + 0x7e);   /* DAT_800b6ee8/ec */
+    Fe_DrawHelp(port == 1, Fe_GetString(yesNo ? 3028 : 3029), x + 6, y + 0x35, x + 5, x + 0x7e, 0);   /* DAT_800b6ee8/ec */
     Fe_DrawLine(0x28323232, x, y + 0x35, x + 0x82, y + 0x35, 1);
     Fe_DrawFrame(0x6e, 0x6e, 0x6e, x, y, x + 0x82, y + 0x40);
     Font_Select(0);
@@ -549,7 +559,7 @@ static void Fe_DrawMenuScreen(MenuItem* items, int count, const char* (*valueOf)
 {
     FrontendState* fe = g_Frontend;
     Fe_DrawBackground(20000);
-    Fe_DrawHelp(items[fe->cursor].help, 0x21, 0xd5, 0x23, 0x109);
+    Fe_DrawHelp(0, items[fe->cursor].help, 0x21, 0xd5, 0x23, 0x109, 0);
     if (fe->descAnim > 0x1e && items[fe->cursor].values)
     {
         const MenuValue* v = &items[fe->cursor].values[descIndex];
@@ -668,7 +678,7 @@ static const char* RaceMenuValue(int item)
     return NULL;
 }
 
-/* 8007b7fc. Pendiente: los parametros de carrera que prepara al elegir (fe+0x9F2..0x9F4). */
+/* 8007b7fc */
 void Fe_Screen200(void)
 {
     FrontendState* fe = g_Frontend;
@@ -709,6 +719,8 @@ void Fe_Screen200(void)
     }
     else if (fe->nextScreen == 1200)
     {
+        fe->teamMode = 0;
+        fe->pickOpponents = 0;
         if (g_Settings.racingClass == 0 && fe->cursor == 1)
         {
             fe->popup = 1;
@@ -717,13 +729,56 @@ void Fe_Screen200(void)
         else
         {
             /* DAT_800b7115: 1 jugador 0/1 carrera, 2..4 campeonato, 5 contrarreloj, 6 showdown;
-             * 2 jugadores 7..9 carrera, 10..12 campeonato, 13 contrarreloj, 14 showdown */
-            static const uint8_t modes1P[4] = { 0, 2, 5, 6 }, modes2P[4] = { 7, 10, 13, 14 };
-            uint8_t mode = (p == 1 ? modes1P : modes2P)[fe->cursor < 4 ? fe->cursor : 0];
-            if (fe->cursor == 0)
-                mode += g_Settings.singleRace[p];
-            else if (fe->cursor == 1)
-                mode += g_Settings.championship[p];
+             * 2 jugadores 7..9 carrera, 10..12 campeonato, 13 contrarreloj, 14 showdown.
+             * fe+0x9F2..0x9F4: equipos, elegir rivales y cuantos (de las opciones de carrera). */
+            const int8_t* o1 = g_Settings.raceOpts1P;   /* vehiculos, equipos, vueltas, elegir rivales */
+            const int8_t* o2 = g_Settings.raceOpts2P;   /* vehiculos, equipos, equipos cyber, vueltas, elegir */
+            uint8_t mode = 0;
+            switch (fe->cursor)
+            {
+            case 0:
+                if (p == 1)
+                {
+                    mode = g_Settings.singleRace[1];
+                    if (mode == 0)
+                        fe->numOpponents = (uint8_t)(o1[0] - 1);
+                    else
+                    {
+                        fe->numOpponents = (uint8_t)(o1[1] * 2 - 2);
+                        fe->teamMode = 1;
+                    }
+                    fe->pickOpponents = o1[3];
+                }
+                else
+                {
+                    mode = (uint8_t)(g_Settings.singleRace[2] + 7);
+                    if (mode == 7)
+                        fe->numOpponents = (uint8_t)(o2[0] - 2);
+                    else if (mode == 8)
+                        fe->numOpponents = (uint8_t)(o2[1] * 2 - 2);
+                    else
+                    {
+                        fe->numOpponents = (uint8_t)(o2[2] * 2 - 4);
+                        fe->teamMode = 1;
+                    }
+                    fe->pickOpponents = o2[4];
+                }
+                break;
+            case 1:
+                mode = (uint8_t)(g_Settings.championship[p] + (p == 1 ? 2 : 10));
+                if (mode == (p == 1 ? 3 : 12))
+                    fe->teamMode = 1;
+                break;
+            case 2:
+                mode = p == 1 ? 5 : 13;
+                break;
+            case 3:
+                mode = p == 1 ? 6 : 14;
+                fe->numOpponents = p == 1 ? 1 : 0;
+                if (p == 1)
+                    fe->pickOpponents = 1;
+                break;
+            }
             g_Settings.gameMode = mode;
             g_Settings.raceMenuCursor = fe->cursor;
         }

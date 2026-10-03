@@ -16,7 +16,8 @@ void Pad_SetScript(const char* script)
     static const struct { const char* name; uint32_t mask; } names[] = {
         { "up", PADB_UP }, { "down", PADB_DOWN }, { "left", PADB_LEFT }, { "right", PADB_RIGHT },
         { "cross", PADB_CROSS }, { "circle", PADB_CIRCLE }, { "triangle", PADB_TRIANGLE },
-        { "square", PADB_SQUARE }, { "start", PADB_START }, { "select", PADB_SELECT } };
+        { "square", PADB_SQUARE }, { "start", PADB_START }, { "select", PADB_SELECT },
+        { "l1", PADB_L1 }, { "r1", PADB_R1 }, { "l2", PADB_L2 }, { "r2", PADB_R2 } };
     const char* p = script;
     while (p && *p && s_scriptCount < MAX_SCRIPT)
     {

@@ -33,7 +33,7 @@ typedef struct
 extern int       g_GameState;       /* DAT_800af6e4 */
 extern int       g_IsFrontend;      /* DAT_800af6c8 */
 extern GameInfo* g_GameInfo;        /* DAT_800af744 */
-extern int       g_FrameDelta;      /* DAT_800af6e0: vblanks del ultimo frame (max 30) */
+extern int       g_FrameDelta;      /* DAT_800af6e0: ticks (1/300 s) del ultimo frame, maximo 30 */
 extern int       g_FrameCount;      /* DAT_800af728 */
 extern int       g_FrontendFrames;  /* DAT_800af17c */
 extern char      g_LevelPath[128];  /* DAT_800b0d70 */

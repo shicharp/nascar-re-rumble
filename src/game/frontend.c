@@ -15,6 +15,8 @@ short g_FadeDir;
 short g_FadeLevel;
 unsigned g_MenuFrame;
 GameSettings g_Settings;
+RaceEntry g_RaceEntries[6];
+static const uint8_t* s_crle;   /* solo en el port: Crle 0 en RAM (el original lo relee de VRAM) */
 static int s_bmdcSize[13];   /* solo en el port: tamano de cada Bmdc para acotar la lectura del MDEC */
 static int s_gmdcSize[14];
 
@@ -28,6 +30,16 @@ static_assert(offsetof(FrontendState, raceMenu1P) == 0xb7c, "menu de carrera en 
 static_assert(offsetof(FrontendState, gameOptions) == 0xddc, "opciones en +0xDDC");
 static_assert(offsetof(FrontendState, showcaseMenu) == 0xf9c, "showcase en +0xF9C");
 static_assert(offsetof(FrontendState, portPopup) == 0x94c, "aviso de mandos en +0x94C");
+static_assert(offsetof(FrontendState, modelAngle) == 0xc4, "giro del coche en +0xC4");
+static_assert(offsetof(FrontendState, carInfo) == 0x1fa, "tabla de coches en +0x1FA");
+static_assert(sizeof(CarSlot) == 0x14, "CarSlot debe medir 0x14");
+static_assert(offsetof(FrontendState, carSlots) == 0x5ec, "coches cargados en +0x5EC");
+static_assert(offsetof(FrontendState, carModel) == 0x640, "modelos de los paneles en +0x640");
+static_assert(offsetof(FrontendState, driver) == 0x678, "piloto elegido en +0x678");
+static_assert(offsetof(FrontendState, carousel) == 0x688, "carrusel en +0x688");
+static_assert(offsetof(FrontendState, thumbClut) == 0x6ac, "CLUT de miniaturas en +0x6AC");
+static_assert(offsetof(FrontendState, teamMode) == 0x9f2, "parametros de carrera en +0x9F2");
+static_assert(sizeof(RaceEntry) == 8, "RaceEntry debe medir 8");
 
 /* Definiciones de menus del EXE: texto, pantalla con X, con triangulo, nº valores, ayuda, tipo, ancho */
 static const MenuDef s_mainMenuDefs[7] = {          /* 800ab7b4 */
@@ -175,9 +187,30 @@ void Frontend_InitScreens(void)
         /* volumenes: el original los lee del motor de sonido (FUN_8003d520...); sin audio, al maximo */
         memset(g_Settings.volume, 0x7f, sizeof(g_Settings.volume));
         g_Settings.audioMode = 1;
+        /* pilotos iniciales al azar entre los 33 de la Winston Cup (FUN_800181ac % 33) */
+        for (int p = 0; p < 2; p++)
+        {
+            g_Settings.lastDriver[p] = (uint8_t)(rand() % 33);
+            g_Settings.lastCar[p] = 0;
+            g_Settings.mateDriver[p] = (uint8_t)(rand() % 33);
+            g_Settings.mateCar[p] = 0;
+            g_Settings.transmission[p] = 0;
+        }
+        for (int i = 1; i <= 5; i++)
+        {
+            g_Settings.oppDriver[i] = (uint8_t)(rand() % 33);
+            g_Settings.oppCar[i] = 0;
+        }
+        memset(g_Settings.unlocks, 0, sizeof(g_Settings.unlocks));
         g_BootState = 1;
     }
     fe->nextScreen = 100;
+
+    /* 8007a3e4: seccion del coche y miniatura de cada piloto y clase */
+    for (int c = 0; c < 3; c++)
+        for (int d = 0; d < NUM_DRIVERS; d++)
+            for (int k = 0; k < 3; k++)
+                fe->carInfo[d][c][k] = (short)(g_Drivers[d].team * 3 + c);
 
     fe->firstFrame = 1;
     fe->valueDir = 0;
@@ -266,9 +299,10 @@ void Frontend_Update(void)
     case 300:  Fe_Screen300(); break;
     case 400:  Fe_Screen400(); break;
     case 500:  Fe_Screen500(); break;
+    case 1200: Fe_Screen1200(); break;
     case 2000: Fe_Screen2000(); break;
     /* 600 FUN_80088edc, 700 FUN_8007cb6c, 800 FUN_8007d32c, 900 FUN_8007ddb4, 1000 FUN_8007f810,
-     * 1100 FUN_80080cbc, 1200 FUN_80081a9c, 1300 FUN_800838f8, 1400 FUN_800855a0, 1500 FUN_80085d90,
+     * 1100 FUN_80080cbc, 1300 FUN_800838f8, 1400 FUN_800855a0, 1500 FUN_80085d90,
      * 1600 FUN_8007ea64, 1700 FUN_80087130, 1800 FUN_80087fa8, 1900 FUN_8008a52c */
     default: Fe_ScreenPending(); break;
     }
@@ -437,15 +471,29 @@ int Fe_OnCrle(NrAsset* a)
             LoadImage(&r, (u_long*)(a->data + 0x20000));
             DrawSync(0);
         }
+        s_crle = a->data;
         if (g_Frontend)
         {
-            g_Frontend->unk1e4 = 0;
+            g_Frontend->atlas = NULL;
             g_Frontend->crleRows = (short)rows;
             g_Frontend->crleRows2 = (short)rows2;
         }
-        return 0;   /* el original hace Pool_Free del asset */
+        return 1;   /* el original hace Pool_Free del asset y luego lo relee de VRAM */
     }
     return 1;       /* TODO: tabla en DAT_800af950 + 0x9d8 */
+}
+
+/* 80092f5c: el original copia con StoreImage las filas subidas del Crle 0 y apunta las tablas de la
+ * cabecera; aqui basta con el asset que se guardo en RAM */
+void Fe_LoadAtlas(void)
+{
+    g_Frontend->atlas = s_crle;
+}
+
+/* 80093050 */
+void Fe_FreeAtlas(void)
+{
+    g_Frontend->atlas = NULL;
 }
 
 /* 80092dec */
