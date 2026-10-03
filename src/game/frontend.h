@@ -82,19 +82,41 @@ typedef struct
     unsigned short textSize;/* +0x1E8 */
     short    crleRows;      /* +0x1EA filas subidas del Crle 0 */
     short    crleRows2;     /* +0x1EC */
-    char     pad1ee[0xa9c - 0x1ee];
-    MenuItem mainMenu[7];   /* +0xA9C pantalla 100 */
-    char     unkb7c[0x101c - 0xb7c];
+    char     pad1ee[0x948 - 0x1ee];
+    int      volumeSound;   /* +0x948 sonido de prueba de la pantalla de audio */
+    char     portPopup;     /* +0x94C aviso de mandos (1: puerto 1, 2: ambos) */
+    char     pad94d[0xa9c - 0x94d];
+    MenuItem mainMenu[7];   /* +0xA9C pantalla 100 (tabla 800ab7b4) */
+    MenuItem raceMenu1P[5]; /* +0xB7C pantalla 200, 1 jugador (800ab7fc) */
+    MenuItem raceMenu2P[5]; /* +0xC1C pantalla 200, 2 jugadores (800ab830) */
+    MenuItem raceOpts1P[4]; /* +0xCBC pantalla 300, 1 jugador (800ab864) */
+    MenuItem raceOpts2P[5]; /* +0xD3C pantalla 300, 2 jugadores (800ab88c) */
+    MenuItem gameOptions[6];/* +0xDDC pantalla 400 (800ab8c0) */
+    MenuItem audioMenu[5];  /* +0xE9C pantalla 500 (800ab8fc) */
+    MenuItem loadSaveMenu[3]; /* +0xF3C pantalla 700 (800ab930) */
+    MenuItem showcaseMenu[4]; /* +0xF9C pantalla 600 (800ab950) */
 } FrontendState;
 
-/* Ajustes de partida (DAT_800b7114, DAT_800b7158 bytes 1..3, DAT_800b7134 byte 1) */
+/* Ajustes de partida y del front-end (bloque DAT_800b7114..800b7181 y DAT_800b7978..7c) */
 typedef struct
 {
-    uint8_t numPlayers;
-    uint8_t racingClass;
-    uint8_t powerUps;
-    uint8_t hallType;
-    uint8_t maxClassUnlocked;
+    uint8_t numPlayers;        /* DAT_800b7114 */
+    uint8_t gameMode;          /* DAT_800b7115: modo de carrera elegido en la pantalla 200 */
+    uint8_t racingClass;       /* DAT_800b7158 byte 1 */
+    uint8_t powerUps;          /* byte 2 */
+    uint8_t hallType;          /* byte 3 */
+    uint8_t maxClassUnlocked;  /* DAT_800b7134 byte 1 */
+    uint8_t setNamePlayers;    /* DAT_800b715c */
+    uint8_t loadSaveMode;      /* DAT_800b715d: 0 tarjeta, 1 password */
+    uint8_t clearRecords;      /* DAT_800b715e: 0 pista, 1 copas */
+    uint8_t singleRace[3];     /* DAT_800b7161 + jugadores */
+    uint8_t championship[3];   /* DAT_800b7163 + jugadores */
+    uint8_t raceMenuCursor;    /* DAT_800b7166 */
+    int8_t  raceOpts1P[4];     /* DAT_800b7179: vehiculos, equipos, vueltas, rivales */
+    int8_t  raceOpts2P[5];     /* DAT_800b717d: vehiculos, equipos, equipos cyber, vueltas, rivales */
+    uint8_t volume[4];         /* DAT_800b7978: efectos, motor, musica, voces (0..127) */
+    uint8_t audioMode;         /* DAT_800b797c: mono, estereo, dolby */
+    uint8_t yesNo;             /* DAT_800b8d1a: eleccion del cuadro Si/No */
 } GameSettings;
 
 extern FrontendState* g_Frontend;   /* DAT_800af950 */
@@ -118,6 +140,11 @@ int  Fe_SetBackground(int index);    /* 8008dfd0 */
 void Fe_InitMenuItem(MenuItem* item, const MenuDef* def, int x, int y);   /* 8007a684 */
 void Fe_ResetMenu(MenuItem* items, int count);                            /* 8008abf8 */
 void Fe_Screen100(void);                                                  /* 8007b2ac */
+void Fe_Screen200(void);                                                  /* 8007b7fc */
+void Fe_Screen300(void);                                                  /* 8007f4a0 */
+void Fe_Screen400(void);                                                  /* 8007bf00 */
+void Fe_Screen500(void);                                                  /* 8007c540 */
+int  Fe_DecodeGmdc(int index, int x, int y);                              /* 8008e21c */
 
 /* Manejadores de assets del front-end */
 int  Fe_OnCrle(NrAsset* a);          /* 80092e08 */

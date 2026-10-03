@@ -1,4 +1,5 @@
 /* Widgets del front-end y pantalla 100 (menu principal). */
+#include <stdio.h>
 #include <string.h>
 #include "libgte.h"
 #include "libgpu.h"
@@ -471,10 +472,118 @@ static void Fe_DrawDescription(int w, int h, const char* text)
     Font_DrawWrapped(0x12d - w, 0x1b, 0x127, h + 0x15, text, 0xe702);
 }
 
-/* ---------------------------------------------------------------- pantalla 100 */
+/* ---------------------------------------------------------------- cuadro de mensaje */
 
-/* Nombres de los ajustes (DAT_800b6fc8 = 0x7A.., DAT_800b6fe8 = 0x84.., DAT_800b6ff8 = 0x8E..) */
-static const char* SettingName(int item)
+/* 8008cb88: cuadro de mensaje. Sin 'yesNo' es de tipo OK; con 'yesNo' es Si/No (izquierda/derecha
+ * cambian *yesNo). Devuelve -1 mientras sigue abierto, 1 si se acepta y 0 si se cancela. */
+static int Fe_MsgBox(int x, int y, const char* text, uint8_t* yesNo, int port)
+{
+    FrontendState* fe = g_Frontend;
+    fe->marquee = 0;
+    if (!x) x = 0x5f;
+    if (!y) y = 0x51;
+    Fe_DrawBox(0x1e, 0x1e, 0x1e, x, y, x + 0x82, y + 0x40, 0);
+    Fe_DrawBox(0, 0, 0, x, y + 0x35, x + 0x82, y + 0x40, 0);
+    Fe_DrawHelp(Fe_GetString(yesNo ? 3028 : 3029), x + 6, y + 0x35, x + 5, x + 0x7e);   /* DAT_800b6ee8/ec */
+    Fe_DrawLine(0x28323232, x, y + 0x35, x + 0x82, y + 0x35, 1);
+    Fe_DrawFrame(0x6e, 0x6e, 0x6e, x, y, x + 0x82, y + 0x40);
+    Font_Select(0);
+    int r, g, b;
+    Fe_ItemColor(&r, &g, &b, 1);
+    unsigned hilite = (unsigned)b | 0xe300;
+    Font_DrawWrapped(x + 0xd, y + 2, x + 0x70, y + 0x33, text, 9);
+    Font_Select(1);
+
+    const char* last;
+    int lastX;
+    if (!yesNo)
+    {
+        Fe_DrawBox(0, 0, 0, x + 0x34, y + 0x22, x + 0x50, y + 0x2e, 0);
+        Fe_DrawFrame(0x30, 0x30, 0x3a, x + 0x33, y + 0x22, x + 0x51, y + 0x2e);
+        last = Fe_GetString(0xfa7);                                         /* Ok */
+        lastX = x + 0x3b;
+    }
+    else
+    {
+        if (*yesNo == 0)
+        {
+            Fe_DrawBox(0, 0, 0, x + 0x47, y + 0x22, x + 0x61, y + 0x2e, 0);
+            Fe_DrawFrame(0x30, 0x30, 0x3a, x + 0x46, y + 0x22, x + 0x62, y + 0x2e);
+        }
+        else
+        {
+            Fe_DrawBox(0, 0, 0, x + 0x1f, y + 0x22, x + 0x3b, y + 0x2e, 0);
+            Fe_DrawFrame(0x30, 0x30, 0x3a, x + 0x1e, y + 0x22, x + 0x3c, y + 0x2e);
+        }
+        Font_DrawString(Fe_GetString(0xfa5), x + 0x24, y + 0x1d, *yesNo ? hilite : 0xe31a);   /* Yes */
+        last = Fe_GetString(0xfa6);                                                         /* No */
+        lastX = x + 0x4d;
+        if (*yesNo)
+            hilite = 0xe31a;
+    }
+    Font_DrawString(last, lastX, y + 0x1d, hilite);
+
+    int result = -1;
+    if (Fe_PadPressed(PADB_CROSS, port, 1))
+        result = (!yesNo || *yesNo) ? 1 : 0;      /* sonidos 0x48 / 0x5c */
+    else if (Fe_PadPressed(PADB_TRIANGLE, port, 1))
+        result = 0;
+    else if (yesNo)
+    {
+        if ((Fe_PadPressed(PADB_LEFT, port, 1) && !*yesNo) || (Fe_PadPressed(PADB_RIGHT, port, 1) && *yesNo))
+        {
+            *yesNo = !*yesNo;
+            fe->valueDir = 1;
+        }
+    }
+    fe->idleTimer = 0;
+    fe->marquee = result == -1;
+    return result;
+}
+
+/* ---------------------------------------------------------------- menus */
+
+/* Lo que repiten todas las pantallas de menu: descripcion (con zoom), ayuda, opciones y sus valores.
+ * valueOf(i) devuelve el texto del valor de la opcion i (o NULL); descIndex elige la descripcion. */
+static void Fe_DrawMenuScreen(MenuItem* items, int count, const char* (*valueOf)(int), int descIndex)
+{
+    FrontendState* fe = g_Frontend;
+    Fe_DrawBackground(20000);
+    Fe_DrawHelp(items[fe->cursor].help, 0x21, 0xd5, 0x23, 0x109);
+    if (fe->descAnim > 0x1e && items[fe->cursor].values)
+    {
+        const MenuValue* v = &items[fe->cursor].values[descIndex];
+        Fe_DrawDescription((v->w * fe->descAnim) / 1024, (v->h * fe->descAnim) / 1024, v->text);
+    }
+    for (int i = 0; i < count; i++)
+    {
+        int r, g, b;
+        Fe_ItemColor(&r, &g, &b, i == fe->cursor);
+        Fe_DrawMenuItem(r, g, b, items, i, count);
+        const char* value = valueOf ? valueOf(i) : NULL;
+        if (value && *value)
+            Fe_DrawOptionValue(r, g, b, &items[i], value, 1);
+    }
+}
+
+static int Fe_LeftRight(int port, int repeat)
+{
+    if (Fe_PadPressed(PADB_LEFT, port, repeat))
+        return -1;
+    if (Fe_PadPressed(PADB_RIGHT, port, repeat))
+        return 1;
+    return 0;
+}
+
+static int PlayersPort(void)
+{
+    return g_Settings.numPlayers == 1 ? 0 : -1;
+}
+
+/* ---------------------------------------------------------------- pantalla 100: menu principal */
+
+/* DAT_800b6fc8 = 0x7A.., DAT_800b6fe8 = 0x84.., DAT_800b6ff8 = 0x8E.. */
+static const char* MainMenuValue(int item)
 {
     switch (item)
     {
@@ -485,8 +594,7 @@ static const char* SettingName(int item)
     }
 }
 
-/* 8007b2ac. Pendiente: mensajes emergentes (FUN_8008cb88, textos 0xAF0/0xAF1), sonidos y el ajuste
- * de espaciado de la 'r' que hace el original mientras pinta las opciones. */
+/* 8007b2ac. Pendiente: sonidos y el ajuste de espaciado de la letra r mientras pinta las opciones. */
 void Fe_Screen100(void)
 {
     FrontendState* fe = g_Frontend;
@@ -500,70 +608,319 @@ void Fe_Screen100(void)
         fe->slideX = 300;
         g_Settings.numPlayers = 2;
     }
-
-    Fe_DrawBackground(20000);
-    Fe_DrawHelp(items[fe->cursor].help, 0x21, 0xd5, 0x23, 0x109);
-    if (fe->descAnim > 0x1e && items[fe->cursor].values)
-    {
-        const MenuValue* v = &items[fe->cursor].values[0];
-        Fe_DrawDescription((v->w * fe->descAnim) / 1024, (v->h * fe->descAnim) / 1024, v->text);
-    }
-
-    for (int i = 0; i < 7; i++)
-    {
-        int r, g, b;
-        Fe_ItemColor(&r, &g, &b, i == fe->cursor);
-        Fe_DrawMenuItem(r, g, b, items, i, 7);
-        const char* value = SettingName(i);
-        if (value && *value)
-            Fe_DrawOptionValue(r, g, b, &items[i], value, 1);
-    }
-
+    Fe_DrawMenuScreen(items, 7, MainMenuValue, 0);
     Fe_ReadPads();
 
-    if (fe->popup == 0)
+    if (fe->popup == 1 || fe->popup == 2)
     {
-        int act = Fe_MenuNavigate(items, 7);
-        if (act == 0)
+        if (Fe_MsgBox(0, 100, Fe_GetString(fe->popup == 1 ? 0xaf0 : 0xaf1), NULL, -1) != -1)
+            fe->popup = 0;
+    }
+    else if (Fe_MenuNavigate(items, 7) == 0)
+    {
+        int dir = Fe_LeftRight(-1, 1);
+        switch (dir ? fe->cursor : -1)
         {
-            int dir = 0;
-            if (Fe_PadPressed(PADB_LEFT, -1, 1))
-                dir = -1;
-            else if (Fe_PadPressed(PADB_RIGHT, -1, 1))
-                dir = 1;
-            if (dir)
-            {
-                switch (fe->cursor)
-                {
-                case 2: g_Settings.racingClass = (uint8_t)Fe_Clamp(g_Settings.racingClass + dir, 0, g_Settings.maxClassUnlocked + 1); break;
-                case 3: g_Settings.powerUps = (uint8_t)Fe_Clamp(g_Settings.powerUps + dir, 0, 3); break;
-                case 4: g_Settings.hallType = (uint8_t)Fe_Clamp(g_Settings.hallType + dir, 0, 1); break;
-                default: dir = 0; break;
-                }
-                fe->valueDir = (char)dir;
-            }
+        case 2: g_Settings.racingClass = (uint8_t)Fe_Clamp(g_Settings.racingClass + dir, 0, g_Settings.maxClassUnlocked + 1); break;
+        case 3: g_Settings.powerUps = (uint8_t)Fe_Clamp(g_Settings.powerUps + dir, 0, 3); break;
+        case 4: g_Settings.hallType = (uint8_t)Fe_Clamp(g_Settings.hallType + dir, 0, 1); break;
+        default: dir = 0; break;
         }
-        else if (fe->nextScreen == 200)
+        if (dir)
+            fe->valueDir = (char)dir;
+    }
+    else if (fe->nextScreen == 200)
+    {
+        if (fe->cursor == 0)
         {
-            if (fe->cursor == 0)
+            if (fe->lastPort == 0)
                 g_Settings.numPlayers = 1;
-            else if (fe->cursor == 1)
+            else
             {
-                if (Pad_GetType(0) > 0 && Pad_GetType(1) > 0)
-                    g_Settings.numPlayers = 2;
-                else
-                {
-                    fe->popup = 2;          /* "conecta un segundo mando" */
-                    fe->nextScreen = -1;
-                }
+                fe->popup = 1;      /* 1 jugador tiene que usar el puerto 1 */
+                fe->nextScreen = -1;
             }
         }
+        else if (fe->cursor == 1)
+        {
+            if (Pad_GetType(0) > 0 && Pad_GetType(1) > 0)
+                g_Settings.numPlayers = 2;
+            else
+            {
+                fe->popup = 2;      /* hacen falta mandos en los dos puertos */
+                fe->nextScreen = -1;
+            }
+        }
+    }
+    Fe_PadRepeatReset();
+}
+
+/* ---------------------------------------------------------------- pantalla 200: tipo de carrera */
+
+/* DAT_800b7008/7018 (1 jugador) y DAT_800b7028/7038 (2 jugadores) */
+static const char* RaceMenuValue(int item)
+{
+    int p = g_Settings.numPlayers;
+    if (item == 0)
+        return Fe_GetString((p == 1 ? 0xcb : 0x130) + g_Settings.singleRace[p]);
+    if (item == 1)
+        return Fe_GetString((p == 1 ? 0xd6 : 0x13a) + g_Settings.championship[p]);
+    return NULL;
+}
+
+/* 8007b7fc. Pendiente: los parametros de carrera que prepara al elegir (fe+0x9F2..0x9F4). */
+void Fe_Screen200(void)
+{
+    FrontendState* fe = g_Frontend;
+    int p = g_Settings.numPlayers;
+    int port = PlayersPort();
+    MenuItem* items = p == 1 ? fe->raceMenu1P : fe->raceMenu2P;
+
+    if (fe->firstFrame)
+    {
+        Fe_SetBackground(0);
+        Fe_ResetMenu(items, 5);
+        fe->popup = 0;
+    }
+    int desc = fe->cursor == 0 ? g_Settings.singleRace[p] : (fe->cursor == 1 ? g_Settings.championship[p] : 0);
+    Fe_DrawMenuScreen(items, 5, RaceMenuValue, desc);
+    Fe_ReadPads();
+
+    if (fe->popup == 1)
+    {
+        if (Fe_MsgBox(0, 0, Fe_GetString(0x898), NULL, port) != -1)   /* sin campeonato en Kid Play */
+            fe->popup = 0;
+    }
+    else if (Fe_MenuNavigate(items, 5) == 0)
+    {
+        int dir = Fe_LeftRight(port, 1);
+        if (dir && fe->cursor == 0)
+            g_Settings.singleRace[p] = (uint8_t)Fe_Clamp(g_Settings.singleRace[p] + dir, 0, p == 1 ? 1 : 2);
+        else if (dir && fe->cursor == 1)
+            g_Settings.championship[p] = (uint8_t)Fe_Clamp(g_Settings.championship[p] + dir, 0, 2);
+        else
+            dir = 0;
+        fe->valueDir = (char)dir;
+        if (dir)
+        {
+            fe->descAnim = (short)0xf000;
+            fe->descAnimOn = 1;
+        }
+    }
+    else if (fe->nextScreen == 1200)
+    {
+        if (g_Settings.racingClass == 0 && fe->cursor == 1)
+        {
+            fe->popup = 1;
+            fe->nextScreen = -1;
+        }
+        else
+        {
+            /* DAT_800b7115: 1 jugador 0/1 carrera, 2..4 campeonato, 5 contrarreloj, 6 showdown;
+             * 2 jugadores 7..9 carrera, 10..12 campeonato, 13 contrarreloj, 14 showdown */
+            static const uint8_t modes1P[4] = { 0, 2, 5, 6 }, modes2P[4] = { 7, 10, 13, 14 };
+            uint8_t mode = (p == 1 ? modes1P : modes2P)[fe->cursor < 4 ? fe->cursor : 0];
+            if (fe->cursor == 0)
+                mode += g_Settings.singleRace[p];
+            else if (fe->cursor == 1)
+                mode += g_Settings.championship[p];
+            g_Settings.gameMode = mode;
+            g_Settings.raceMenuCursor = fe->cursor;
+        }
+    }
+    Fe_PadRepeatReset();
+}
+
+/* ---------------------------------------------------------------- pantalla 300: opciones de carrera */
+
+/* 800abeed: minimo y maximo de cada opcion (indice jugadores * 10 + opcion * 2 + 5) y 800abef8: hasta que
+ * opcion se muestran numeros y que opcion es Si/No */
+static const int8_t s_raceOptLimits[3][5][2] = {
+    { { 0, 0 } },
+    { { 1, 6 }, { 1, 3 }, { 1, 8 }, { 0, 1 }, { 0, 0 } },
+    { { 2, 6 }, { 1, 3 }, { 2, 3 }, { 1, 8 }, { 0, 1 } },
+};
+static const uint8_t s_raceOptNumbers[3][2] = { { 0, 0 }, { 2, 3 }, { 3, 4 } };
+
+static const char* RaceOptValue(int item)
+{
+    static char buf[16];
+    int p = g_Settings.numPlayers;
+    const int8_t* opts = p == 1 ? g_Settings.raceOpts1P : g_Settings.raceOpts2P;
+    if (item <= s_raceOptNumbers[p][0])
+        snprintf(buf, sizeof(buf), "%i", opts[item]);
+    else if (item == s_raceOptNumbers[p][1])
+        snprintf(buf, sizeof(buf), "%s", Fe_GetString(opts[item] ? 0xfa5 : 0xfa6));
+    return buf;
+}
+
+/* 8007f4a0 */
+void Fe_Screen300(void)
+{
+    FrontendState* fe = g_Frontend;
+    int p = g_Settings.numPlayers;
+    int port = PlayersPort();
+    int count = p == 1 ? 4 : 5;
+    MenuItem* items = p == 1 ? fe->raceOpts1P : fe->raceOpts2P;
+    int8_t* opts = p == 1 ? g_Settings.raceOpts1P : g_Settings.raceOpts2P;
+
+    if (fe->firstFrame)
+    {
+        Fe_SetBackground(0);
+        Fe_ResetMenu(items, count);
+    }
+    Fe_DrawMenuScreen(items, count, RaceOptValue, 0);
+    Fe_ReadPads();
+    if (Fe_MenuNavigate(items, count) == 0)
+    {
+        int dir = Fe_LeftRight(port, 1);
+        if (dir)
+        {
+            int c = fe->cursor;
+            opts[c] = (int8_t)Fe_Clamp(opts[c] + dir, s_raceOptLimits[p][c][0], s_raceOptLimits[p][c][1]);
+            fe->valueDir = 1;
+        }
+    }
+    Fe_PadRepeatReset();
+}
+
+/* ---------------------------------------------------------------- pantalla 400: opciones de juego */
+
+/* DAT_800af958 = 0x264.. (jugadores), DAT_800af960 = 0x26E.. (memoria), DAT_800af968 = 0x278.. (records) */
+static const char* GameOptValue(int item)
+{
+    switch (item)
+    {
+    case 1: return Fe_GetString(0x264 + g_Settings.setNamePlayers);
+    case 2: return Fe_GetString(0x26e + g_Settings.loadSaveMode);
+    case 3: return Fe_GetString(0x278 + g_Settings.clearRecords);
+    default: return NULL;
+    }
+}
+
+/* 8007bf00. popup: -1 nada, 0/1 confirmar borrado (pistas/copas), 10/11 borrado hecho.
+ * Pendiente: el borrado real de records (FUN_800931d8). */
+void Fe_Screen400(void)
+{
+    FrontendState* fe = g_Frontend;
+    MenuItem* items = fe->gameOptions;
+
+    if (fe->firstFrame)
+    {
+        Fe_SetBackground(0);
+        Fe_ResetMenu(items, 6);
+        g_Settings.numPlayers = 2;
+        fe->popup = -1;
+        fe->portPopup = 0;
+    }
+    Fe_DrawMenuScreen(items, 6, GameOptValue, 0);
+    Fe_ReadPads();
+
+    if (fe->portPopup)
+    {
+        if (Fe_MsgBox(0, 100, Fe_GetString(fe->portPopup == 1 ? 0xaf0 : 0xaf1), NULL, -1) != -1)
+            fe->portPopup = 0;
+    }
+    else if (fe->popup == 0 || fe->popup == 1)
+    {
+        int r = Fe_MsgBox(0, 100, Fe_GetString(fe->popup == 0 ? 0x8fc : 0x8fd), &g_Settings.yesNo, -1);
+        if (r == 1)
+        {
+            fe->marquee = 1;
+            fe->popup = (short)(fe->popup + 10);
+        }
+        else if (r == 0)
+            fe->popup = -1;
+    }
+    else if (fe->popup >= 10)
+    {
+        if (Fe_MsgBox(0, 100, Fe_GetString(fe->popup == 10 ? 0x8fe : 0x8ff), NULL, -1) != -1)
+            fe->popup = -1;
     }
     else
     {
-        /* TODO: FUN_8008cb88 (cuadro de mensaje). De momento se cierra con X. */
-        if (Fe_PadPressed(PADB_CROSS, -1, 0))
-            fe->popup = 0;
+        int act = Fe_MenuNavigate(items, 6);
+        if (act == 0)
+        {
+            int dir = Fe_LeftRight(-1, 1);
+            switch (dir ? fe->cursor : -1)
+            {
+            case 1: g_Settings.setNamePlayers = (uint8_t)Fe_Clamp(g_Settings.setNamePlayers + dir, 0, 1); break;
+            case 2: g_Settings.loadSaveMode = (uint8_t)Fe_Clamp(g_Settings.loadSaveMode + dir, 0, 1); break;
+            case 3: g_Settings.clearRecords = (uint8_t)Fe_Clamp(g_Settings.clearRecords + dir, 0, 1); break;
+            default: dir = 0; break;
+            }
+            fe->valueDir = (char)dir;
+        }
+        else if (act == -1)
+        {
+            if (fe->cursor == 3)
+            {
+                g_Settings.yesNo = 0;
+                fe->popup = g_Settings.clearRecords;
+            }
+            else if (fe->cursor == 2)
+                fe->nextScreen = g_Settings.loadSaveMode == 0 ? 800 : 700;
+        }
+        else if (fe->nextScreen == 1100)
+        {
+            if (g_Settings.setNamePlayers == 0 && fe->lastPort != 0)
+            {
+                fe->portPopup = 1;
+                fe->nextScreen = -1;
+            }
+            else if (g_Settings.setNamePlayers == 1 && (Pad_GetType(0) < 1 || Pad_GetType(1) < 1))
+            {
+                fe->portPopup = 2;
+                fe->nextScreen = -1;
+            }
+            else
+                g_Settings.numPlayers = (uint8_t)(g_Settings.setNamePlayers + 1);
+        }
+    }
+    Fe_PadRepeatReset();
+}
+
+/* ---------------------------------------------------------------- pantalla 500: audio */
+
+/* DAT_800b7048 = 0x2BE.. (Mono/Stereo/Dolby) */
+static const char* AudioValue(int item)
+{
+    return item == 4 ? Fe_GetString(0x2be + g_Settings.audioMode) : NULL;
+}
+
+/* 8007c540. Las barras de volumen usan la imagen Gmdc 5 decodificada en (0x300, 0x100).
+ * Pendiente: aplicar los volumenes al motor de sonido y el sonido de prueba (FUN_8003f4b0). */
+void Fe_Screen500(void)
+{
+    FrontendState* fe = g_Frontend;
+    MenuItem* items = fe->audioMenu;
+
+    if (fe->firstFrame)
+    {
+        Fe_SetBackground(0);
+        Fe_ResetMenu(items, 5);
+        Fe_DecodeGmdc(5, 0x300, 0x100);
+    }
+    Fe_DrawMenuScreen(items, 5, AudioValue, 0);
+    for (int i = 0; i < 4; i++)
+    {
+        const MenuItem* it = &items[i];
+        Fe_DrawVramRect(0x300, 0x100, 0x4e, 0xd, it->x + 0x71, it->y - 1, 0, 0);
+        int knob = it->x + (g_Settings.volume[i] * 0x32) / 0x7f;
+        Fe_DrawOutline(0, 0, 0, knob + 0x7b, it->y, knob + 0x82, it->y + 9, 2);
+    }
+    Fe_ReadPads();
+    if (Fe_MenuNavigate(items, 5) == 0)
+    {
+        int dir = Fe_LeftRight(-1, fe->cursor > 3);   /* los volumenes cambian sin espera */
+        if (dir && fe->cursor == 4)
+        {
+            g_Settings.audioMode = (uint8_t)Fe_Clamp(g_Settings.audioMode + dir, 0, 2);
+            fe->valueDir = 1;
+        }
+        else if (dir)
+            g_Settings.volume[fe->cursor] = (uint8_t)Fe_Clamp(g_Settings.volume[fe->cursor] + dir, 0, 0x7f);
     }
     Fe_PadRepeatReset();
 }
