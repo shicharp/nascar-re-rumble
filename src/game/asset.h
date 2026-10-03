@@ -9,6 +9,8 @@
 #define ASSET_Ctrk NR_TAG('C', 't', 'r', 'k')
 #define ASSET_Cact NR_TAG('C', 'a', 'c', 't')
 #define ASSET_Cctr NR_TAG('C', 'c', 't', 'r')
+#define ASSET_Crle NR_TAG('C', 'r', 'l', 'e')
+#define ASSET_TxtR NR_TAG('T', 'x', 't', 'R')
 
 /* Procesa todos los assets que haya en la cola del stream */
 void Asset_DispatchAll(void);

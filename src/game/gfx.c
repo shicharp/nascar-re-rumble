@@ -23,16 +23,24 @@ static GfxBuffer s_buf[2];
 static int       s_cur;
 static int       s_primBytes;
 static int       s_primUsed;
+static int       s_flipCount;
+static const char* s_shotPath;
+static int       s_shotFrame = -1;
+
+/* Tabla de 800aa4c8: 16 tramos de 0x1000 de profundidad -> base + (z >> desplazamiento) */
+static const uint16_t s_depthBase[16]  = { 1, 513, 1025, 1025, 1793, 1793, 1793, 1793,
+                                           1793, 1793, 1793, 1793, 1793, 1793, 1793, 1793 };
+static const uint8_t  s_depthShift[16] = { 2, 3, 4, 4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6 };
 
 void Gfx_Init(void)
 {
     ResetGraph(0);
     SetGraphDebug(0);
 
-    /* buffer 0 dibuja arriba y muestra abajo; buffer 1 al reves */
+    /* buffer 0 dibuja en y=0 y muestra y=256; buffer 1 al reves (como el original) */
     SetDefDrawEnv(&s_buf[0].draw, 0, 0, GFX_SCREEN_W, GFX_SCREEN_H);
-    SetDefDispEnv(&s_buf[0].disp, 0, GFX_SCREEN_H, GFX_SCREEN_W, GFX_SCREEN_H);
-    SetDefDrawEnv(&s_buf[1].draw, 0, GFX_SCREEN_H, GFX_SCREEN_W, GFX_SCREEN_H);
+    SetDefDispEnv(&s_buf[0].disp, 0, 256, GFX_SCREEN_W, GFX_SCREEN_H);
+    SetDefDrawEnv(&s_buf[1].draw, 0, 256, GFX_SCREEN_W, GFX_SCREEN_H);
     SetDefDispEnv(&s_buf[1].disp, 0, 0, GFX_SCREEN_W, GFX_SCREEN_H);
     for (int i = 0; i < 2; i++)
     {
@@ -45,12 +53,12 @@ void Gfx_Init(void)
     SetDispMask(1);
 }
 
-void Gfx_InitBuffers(int primBytes)
+void Gfx_InitBuffers(int numPrims)
 {
     Gfx_FreeBuffers();
-    s_primBytes = primBytes;
+    s_primBytes = numPrims * 0x68 + 0x5818;
     for (int i = 0; i < 2; i++)
-        s_buf[i].prims = (uint8_t*)Mem_Alloc(primBytes, 0);
+        s_buf[i].prims = (uint8_t*)Mem_Alloc(s_primBytes, 0);
     s_cur = 0;
 }
 
@@ -81,6 +89,35 @@ void* Gfx_AllocPrim(int bytes)
     return p;
 }
 
+void Gfx_AddPrimDepth(int depth, void* prim)
+{
+    int idx = 0;
+    depth &= 0xffffff;
+    if (depth)
+    {
+        if (depth > 0xffff)
+            depth = 0xffff;
+        idx = s_depthBase[depth >> 12] + (depth >> s_depthShift[depth >> 12]);
+    }
+    Gfx_AddPrim(idx, prim);
+}
+
+int Gfx_GetDrawBufferY(void)
+{
+    return s_buf[s_cur].draw.clip.y;
+}
+
+int Gfx_GetDisplayBufferY(void)
+{
+    return s_buf[s_cur ^ 1].draw.clip.y;
+}
+
+void Gfx_SetAutoShot(const char* path, int frame)
+{
+    s_shotPath = path;
+    s_shotFrame = frame;
+}
+
 void Gfx_AddPrim(int z, void* prim)
 {
     if (z < 0)
@@ -90,8 +127,10 @@ void Gfx_AddPrim(int z, void* prim)
     addPrim(&s_buf[s_cur].ot[z], prim);
 }
 
-void Gfx_Flip(void)
+/* 8001a24c. Pendiente: modos de pantalla partida y retrovisor (cambian area de dibujo y offset). */
+void Gfx_Flip(int mode)
 {
+    (void)mode;
     GfxBuffer* buf = &s_buf[s_cur];
 
     DrawSync(0);
@@ -103,6 +142,14 @@ void Gfx_Flip(void)
     PsyX_EndScene();     /* en PsyCross el juego cierra la escena y presenta el frame */
 
     s_cur ^= 1;
+
+    if (s_shotPath && ++s_flipCount == s_shotFrame)
+    {
+        Gfx_SaveScreenshot(s_shotPath);
+        NR_Log("Captura del frame %d guardada en %s\n", s_flipCount, s_shotPath);
+        PsyX_Shutdown();
+        exit(0);
+    }
 }
 
 int Gfx_SaveScreenshot(const char* path)

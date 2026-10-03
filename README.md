@@ -28,24 +28,32 @@ Necesita el disco extraído (`D:\Proyecto Nascar\disc`, lo genera `tools/extract
 subiendo carpetas desde el directorio actual, o se indica con `--disc`.
 
 ```
-nascar.exe [--disc <carpeta>] [--file <fichero de stream>] [--page N] [--shot salida.bmp]
+nascar.exe [--disc <carpeta>] [--skip-legal] [--shot salida.bmp [--shot-frame N]]
+nascar.exe --viewer [fichero de stream] [--page N]
 ```
 
-Estado actual (primer hito): carga por streaming un fichero de chunks EA (por defecto `CW\FEnd\Fe.trk`),
-despacha los assets y muestra las páginas de textura Cpag desde la VRAM emulada.
-Flechas izquierda/derecha cambian de página (arriba/abajo de 10 en 10). `--shot` guarda un frame y sale.
+Estado actual: arranque real del juego. `main` → `Game_Init` → pantalla legal (`Legal.lsc`, MDEC por
+software) → vídeos (omitidos) → `Level_Run("Fe.trk")` → pantalla de carga `Feld.lsc` mientras llega
+`FE.TRK` por streaming hasta el `Cctr` → `Frontend_MainLoop` (pantalla 2000 con fundido → pantalla 100,
+aún sin portar). `--shot` guarda el frame N y sale (para verificar sin intervención).
+`--viewer` es el visor de páginas Cpag (flechas para cambiar de página).
 
 ## Estructura
 
 | Fichero | Original (SLUS_010.68) |
 |---|---|
+| `src/game/game.c` | main 800792a8, Game_Init 80079470, Legal_Show 80090d98, Level_Run 80029be4, Level_Load 80024684, Frontend_Load 80024080, Level_WaitLoaded 800252b0, Frontend_MainLoop 8002865c, Level_Unload 80025448, Frame_Wait 800285e4 |
+| `src/game/frontend.c` | Frontend_Update 8007a994 (pantallas + fundidos), pantalla 2000 80089240, Fe_GetString 80090984, Fe_DrawVramRect 8008c86c, Fe_DrawBackground 8008b79c, Crle 80092e08, TxtR 80092dec |
+| `src/game/lsc.c` | Lsc_LoadToVram 80090ef8, LoadScreen_Show 80024c58, FUN_800921a0 |
+| `src/game/mdec.c` | FUN_80095d70 + FUN_8009905c + hardware MDEC (BS v2 por software) |
+| `src/game/pad.c` | Pad_GetButtons 8001dac0, FUN_8005fc54 |
 | `src/game/mem.c` | Mem_Alloc 8001cb84, Mem_Free 8001cc04, Pool_Alloc 80017154, Pool_Free 8001745c |
 | `src/game/file.c` | File_* 8001bd68…8001ca54 (CD-ROM → stdio sobre el disco extraído) |
 | `src/game/stream.c` | Stream_* 8002a190…8002baa8 (bloques de 0x6000, SHOC/SHDR/SDAT) |
-| `src/game/asset.c` | Asset_Dispatch 80024710 |
+| `src/game/asset.c` | Asset_Dispatch 80024710 (Cpag, Cctr, Crle, TxtR por ahora) |
 | `src/game/cpag.c` | Cpag_OnLoaded 8006710c, Cpag_UploadToSlot 80066d00 |
-| `src/game/gfx.c` | Gfx_InitBuffers 8001a0b4, Gfx_Flip 8001a24c |
-| `src/main.c` | visor provisional (el `main` real está en 800792a8) |
+| `src/game/gfx.c` | Gfx_InitBuffers 8001a0b4, Gfx_Flip 8001a24c, reparto por profundidad 8001a1b4 |
+| `src/debug_viewer.c` | visor de páginas Cpag (depuración) |
 
 ## Notas de PsyCross
 
@@ -54,5 +62,8 @@ Flechas izquierda/derecha cambian de página (arriba/abajo de 10 en 10). `--shot
 - Las entradas de la OT son `OT_TAG` (8 bytes en x86), no `u_long`.
 - El juego cierra cada frame con `PsyX_EndScene()` después de `DrawOTag`; `FntFlush()` va antes.
 - `PadRead` no está implementado: el mando se lee con `PadInitDirect` + buffer.
+- PsyCross no implementa MDEC: las imágenes BS v2 (.LSC) se decodifican en `mdec.c`.
+- El original deja pantallas fijas sin presentar frames (legal, carga); con PsyCross hay que seguir
+  redibujando y presentando cada frame.
 - La VRAM emulada no recibe lo dibujado en OpenGL (`StoreImage` del framebuffer da negro); las
   capturas leen el buffer frontal con `glReadPixels`.

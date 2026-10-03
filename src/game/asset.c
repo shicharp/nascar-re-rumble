@@ -1,5 +1,7 @@
 #include "asset.h"
 #include "cpag.h"
+#include "globals.h"
+#include "frontend.h"
 
 #define MAX_TYPES 48
 
@@ -35,8 +37,19 @@ static int Asset_Dispatch(NrAsset* a)
     {
     case ASSET_Cpag:
         return Cpag_OnLoaded(a);   /* 8006710c */
+    case ASSET_Cctr:
+        /* cambia el estado del nivel: id 0 -> 2, id 1 -> 4 (en juego) */
+        if (a->id == 0)
+            g_GameState = GAMESTATE_LOADED_PART;
+        else if (a->id == 1)
+            g_GameState = GAMESTATE_RUNNING;
+        return 0;
+    case ASSET_Crle:
+        return Fe_OnCrle(a);       /* 80092e08 */
+    case ASSET_TxtR:
+        return Fe_OnTxtR(a);       /* 80092dec */
     /* TODO: Cobj 80013374, Ctrk 80062680, Cact 8004942c, Cnet 8004c368, Cfnt 80044690,
-     *       sonido 80022908, Cctr (cambia el estado del juego), menus del front-end... */
+     *       sonido 80022908, menus del front-end (Bmdc/Lmdc/Gmdc/Tmdc/McIc/TkFE)... */
     default:
         return 0;
     }
