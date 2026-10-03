@@ -10,6 +10,7 @@
 #include "vecmath.h"
 #include "frontend.h"
 #include "racecar.h"
+#include "carphys.h"
 
 RaceCar g_Cars[RACE_MAX_CARS];
 int     g_NumCars;
@@ -17,6 +18,10 @@ int     g_RaceTime;
 int     g_StartPos[3];
 int     g_StartCurve;
 int     g_HaveStart;
+int     g_PrevRaceTime;
+int     g_NumHumans;
+RaceCar* g_Humans[2];
+uint8_t* g_CarPhys[RACE_MAX_CARS];
 
 /* ---------------------------------------------------------------- salida y parrilla */
 
@@ -52,29 +57,43 @@ int Cact_OnLoaded(NrAsset* a)
     return 1;
 }
 
-static void Car_SetYaw(RaceCar* c, int yaw)
+/* Ruedas del coche: dentro del controlador (humano +0x6C, IA +0x44) */
+static GfxObj* Car_Wheels(RaceCar* c)
 {
-    c->yaw = yaw & 0xfff;
-    Math_RotMatrix(c->yaw, 0, 0, c->obj.rot);
+    if (!c->ctrl)
+        return NULL;
+    return (GfxObj*)(c->ctrl + (c->type == 1 ? 0x6c : 0x44));
 }
 
-static void Car_PlaceWheels(RaceCar* c, int spin)
+/* 8005f824: botones asignados del humano {mascara, estado} (2 = suelto) */
+static void Human_InitCtrl(uint8_t* ctrl)
 {
-    for (int k = 0; k < 4; k++)
+    static const uint32_t binds[][2] = {
+        { 0x10, 0x40000 }, { 0x18, 0x100000 }, { 0x20, 0x2000000 }, { 0x2c, 0x8000000 },
+        { 0x34, 0x200000 }, { 0x3c, 0x800000 }, { 0x44, 0x40000000 }, { 0x4c, 0x40000000 },
+    };
+    for (size_t i = 0; i < sizeof(binds) / sizeof(binds[0]); i++)
     {
-        GfxObj* w = &c->wheels[k];
-        if (!w->model || !c->obj.model)
-            continue;
-        Math_RotMatrix(c->yaw + ((k & 1) ? 0x800 : 0), (k & 1) ? -spin : spin, 0, w->rot);
-        Obj_GetPoint(&c->obj, k, w->pos);
+        *(uint32_t*)(ctrl + binds[i][0]) = binds[i][1];
+        *(uint32_t*)(ctrl + binds[i][0] + 4) = 2;
     }
+    *(uint32_t*)(ctrl + 8) = 0;
+    *(int*)(ctrl + 0x5c) = 0;
+    *(int*)(ctrl + 0x60) = 0;
+    *(int*)(ctrl + 0x68) = -1;
 }
 
-/* 8003132c: direccion de la salida = del nodo de la red mas cercano al siguiente; parrilla en dos columnas
- * (+-0xA00 a los lados, 13 * 0x200 hacia atras por coche). La orientacion la pondra la fisica
- * (FUN_8004e830); de momento se mira hacia la direccion de la salida. */
+/* 8003132c: parrilla en dos columnas (+-0xA00 a los lados, 13 * 0x200 hacia atras por coche) a partir de la
+ * direccion de la salida (del nodo de la red mas cercano al siguiente). Cada coche: HumanCar_Create 8005fca4
+ * o AiCar_Create 8002cfbc (controlador, ruedas y fisica 8004e830, que lo orienta sobre la pista). */
 void Race_CreateCars(void)
 {
+    static int s_physInit;
+    if (!s_physInit)
+    {
+        Physics_Init();
+        s_physInit = 1;
+    }
     const uint8_t* net = g_NumNets ? g_Nets[0] : NULL;
     int dir[3] = { 0, 0, 0x10000 };
     if (net && Cnet_Count(net) > 0)
@@ -92,98 +111,96 @@ void Race_CreateCars(void)
             Vec_Scale(len < 2 ? 0 : (int)(0x80000000u / (unsigned)(len >> 1)), dir);
         }
     }
-    int yaw = Math_Atan2(dir[0], dir[2]);
+    Race_FreeCars();
     g_NumCars = g_RaceGrid.count < RACE_MAX_CARS ? g_RaceGrid.count : RACE_MAX_CARS;
     for (int i = 0; i < g_NumCars; i++)
     {
         RaceCar* c = &g_Cars[i];
         memset(c, 0, sizeof(*c));
         c->slot = i;
+        c->id = (uint16_t)(1000 + i);
         c->player = (int8_t)g_RaceGrid.car[i].player;
         c->type = c->player < 0 ? 0x11 : 1;
+        c->team = g_RaceGrid.car[i].team;
         int back = g_NumCars == 2 ? 0 : (i * 13) << 9;
         int ox = Fix_Mul16(dir[2], 0xa00), oz = Fix_Mul16(dir[0], 0xa00);
         if (!(i & 1))
             ox = -ox;
         else
             oz = -oz;
-        int pos[3] = { g_StartPos[0] - Fix_Mul16(dir[0], back) + ox, 0, g_StartPos[2] - Fix_Mul16(dir[2], back) + oz };
-        c->tpos.seg = 0xff;
-        c->tpos.curve = -1;
-        int ground = Track_GroundHeight(&c->tpos, pos, 0);
         NrAsset* m = Asset_Find(ASSET_Cobj, 10000 + i * 10 + 1);
         Obj_Init(&c->obj, m ? (ModelHdr*)m->obj : NULL);
+        c->obj.pos[0] = g_StartPos[0] - Fix_Mul16(dir[0], back) + ox;
+        c->obj.pos[2] = g_StartPos[2] - Fix_Mul16(dir[2], back) + oz;
+        c->tpos.seg = 0xff;
+        c->tpos.curve = -1;
+        c->obj.pos[1] = Track_GroundHeight(&c->tpos, c->obj.pos, 0) + 0x200;
+        c->obj.flags |= 0x20;
+        c->flags2c = (c->flags2c & 0xfeffffae) | 0x40800308;
+        int human = c->type == 1;
+        c->ctrl = (uint8_t*)calloc(1, human ? 0x2c4 : 0x2a8);
+        GfxObj* wheels = Car_Wheels(c);
         NrAsset* w = Asset_Find(ASSET_Cobj, 20001 + g_RaceGrid.car[i].car * 3);
         for (int k = 0; k < 4; k++)
-            Obj_Init(&c->wheels[k], w ? (ModelHdr*)w->obj : NULL);
-        c->obj.pos[0] = pos[0];
-        c->obj.pos[1] = ground + 0x200;    /* 8005fca4 */
-        c->obj.pos[2] = pos[2];
-        c->obj.shadowY = (short)(ground >> 4);
-        Car_SetYaw(c, yaw);
-        Car_PlaceWheels(c, 0);
+            Obj_Init(&wheels[k], w ? (ModelHdr*)w->obj : NULL);
+        if (human)
+        {
+            int p = c->player < 2 && !g_Humans[c->player] ? c->player : (g_Humans[0] ? 1 : 0);
+            g_Humans[p] = c;
+            g_NumHumans++;
+            c->ctrl[0x59] = (uint8_t)p;
+            Human_InitCtrl(c->ctrl);
+        }
+        uint8_t* phys = Car_CreatePhys(c, wheels, &g_RaceGrid.car[i]);
+        *(uint8_t**)(c->ctrl + (human ? 0 : 0x40)) = phys;
+        c->phys2 = phys;
+        g_CarPhys[i] = phys;
     }
 }
 
-/* Provisional (hasta portar 80056c6c): el coche del jugador acelera con X, frena con cuadrado, gira con la
- * cruceta y se pega al suelo con la colision de la pista. Los demas esperan en la parrilla. */
-void Race_UpdateCars(int dt)
+void Race_FreeCars(void)
 {
-    for (int i = 0; i < g_NumCars; i++)
+    for (int i = 0; i < RACE_MAX_CARS; i++)
     {
         RaceCar* c = &g_Cars[i];
-        if (c->type != 1 || g_RaceTime < 900)
-        {
-            Car_PlaceWheels(c, 0);
-            continue;
-        }
-        uint32_t b = g_PadButtons[c->player >= 0 && c->player < 2 ? c->player : 0];
-        if (b & PADB_CROSS)
-            c->speed += 33 * dt;
-        else if (b & PADB_SQUARE)
-            c->speed -= 120 * dt;
-        else
-            c->speed -= 8 * dt;
-        if (c->speed < 0)
-            c->speed = 0;
-        if (c->speed > 0xc000)
-            c->speed = 0xc000;
-        int steer = ((b & PADB_LEFT) ? -1 : 0) + ((b & PADB_RIGHT) ? 1 : 0);
-        if (steer)
-            Car_SetYaw(c, c->yaw + steer * dt * (1 + (c->speed >> 14)));
-        int s, co;
-        Math_SinCos(c->yaw, &s, &co);
-        int step = (c->speed >> 8) * dt;
-        int pos[3] = { c->obj.pos[0] + Fix_Mul16(s, step), c->obj.pos[1], c->obj.pos[2] + Fix_Mul16(co, step) };
-        TrackPos tp = c->tpos;
-        int ground = Track_FindSurface(&tp, pos, 1);
-        if (ground == TRACK_NO_SURFACE || ground > c->obj.pos[1] + 0x400)
-        {
-            c->speed = 0;   /* fuera de la pista o contra un muro */
-            continue;
-        }
-        c->tpos = tp;
-        c->obj.pos[0] = pos[0];
-        c->obj.pos[1] = ground + 0x200;
-        c->obj.pos[2] = pos[2];
-        c->obj.shadowY = (short)(ground >> 4);
-        c->obj.frame = 0;
-        static int spin;
-        spin += (c->speed >> 10) * dt;
-        Car_PlaceWheels(c, spin);
+        free(c->phys);
+        free(c->ctrl);
+        c->phys = c->phys2 = c->ctrl = NULL;
+        g_CarPhys[i] = NULL;
     }
+    g_Humans[0] = g_Humans[1] = NULL;
+    g_NumHumans = 0;
+    g_NumCars = 0;
+}
+
+/* Parte de Race_UpdateSim 80030cac: mando de los humanos (8005ffbc -> 8004cae8) y fisica (80056c6c).
+ * Pendiente: vueltas (Car_UpdateLap), poderes, IA (Ai_UpdatePath / Ai_UpdateTarget) y choques (8002f4ac). */
+void Race_UpdateCars(int dt)
+{
+    for (int i = 0; i < g_NumHumans; i++)
+    {
+        RaceCar* c = g_Humans[i];
+        if (!c)
+            continue;
+        Human_ReadPad(c, c->ctrl[0x59]);
+        Human_Control(c);
+    }
+    if (g_NumCars > 0)
+        Physics_StepAll(dt);
 }
 
 void Race_AddCarsToDrawList(void)
 {
+    Physics_PlaceWheelsAll(0);
     for (int i = 0; i < g_NumCars; i++)
     {
         RaceCar* c = &g_Cars[i];
         if (!c->obj.model)
             continue;
-        for (int k = 0; k < 4; k++)
-            if (c->wheels[k].model)
-                Render_Add(&c->wheels[k]);
+        GfxObj* wheels = Car_Wheels(c);
+        for (int k = 0; wheels && k < 4; k++)
+            if (wheels[k].model)
+                Render_Add(&wheels[k]);
         Render_Add(&c->obj);
     }
 }
@@ -338,7 +355,7 @@ static void RaceCam_Spring(RaceCamView* v, const RaceCar* c, int rest, int heigh
             v->vel[k] += acc[k];
     for (int k = 0; k < 3; k++)
         v->eye[k] = pred[k] + (v->vel[k] * dt >> 8);
-    v->ground = Track_FindSurface(&v->tpos, v->eye, 1);
+    v->ground = Track_FindSurface(&v->tpos, v->eye, NULL, 1);
 
     if (v->ground != TRACK_NO_SURFACE && (c->obj.shadowY << 4) < v->eye[1] && v->eye[1] < v->ground + height)
         v->eye[1] = v->ground + height;

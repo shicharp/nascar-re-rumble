@@ -9,6 +9,7 @@
 #include "render.h"
 #include "texslot.h"
 #include "sprite.h"
+#include "vecmath.h"
 #include "track.h"
 
 Track* g_Track;
@@ -349,6 +350,7 @@ void Track_Parse(uint8_t* data, int size)
         Track_InitAnims(t);
     else
         t->numAnims = 0;
+    Track_ResetNormalCache();
     NR_Log("Track_Parse: %d segmentos, %d texturas, %d puntos de TCRV, %d horizontes\n", t->numSegs, t->numTex,
            t->numCurve, t->numHorizons);
 }
@@ -1203,9 +1205,9 @@ static int Track_FaceContains(const uint8_t* f, const uint32_t* verts, int lx, i
     return Gte_OpMac1(lz - dz, lx - dx, bz - dz, bx - dx) < 1 ? 2 : 0;
 }
 
-/* 80064998: altura (mundo, relativa al origen del segmento * 16) del plano del triangulo en (lx, lz).
- * Pendiente: la normal (param_6). */
-static int Track_PlaneHeight(uint32_t p1, uint32_t p2, uint32_t p3, int lx, int lz)
+/* 80064998: altura (mundo, relativa al origen del segmento * 16) del plano del triangulo en (lx, lz) y, si se
+ * pide, su normal sin normalizar (e1 x e2 con el producto exterior de la GTE) */
+static int Track_PlaneHeight(uint32_t p1, uint32_t p2, uint32_t p3, int lx, int lz, int* normal)
 {
     int x1 = VX(p1), z1 = VZ(p1), y1 = (int)(p1 & 0x3ff);
     int e1x = VX(p2) - x1, e2x = VX(p3) - x1;
@@ -1221,27 +1223,111 @@ static int Track_PlaneHeight(uint32_t p1, uint32_t p2, uint32_t p3, int lx, int 
         int32_t num = (int32_t)(uint32_t)(((int64_t)m1 * e1y + (int64_t)m2 * e2y) * 0x10);
         h += num / det;
     }
+    if (normal)
+    {
+        normal[0] = (int16_t)e2z * (int16_t)e1y - (int16_t)e2y * (int16_t)e1z;
+        normal[1] = det;
+        normal[2] = (int16_t)e2y * (int16_t)e1x - (int16_t)e2x * (int16_t)e1y;
+    }
     return h;
 }
 
-static int Track_FaceHeight(const TrackSeg* s, const uint8_t* f, int tri, int lx, int lz)
+static int Track_FaceHeight(const TrackSeg* s, const uint8_t* f, int tri, int lx, int lz, int* normal)
 {
     const uint32_t* v = s->verts;
-    int h = tri == 1 ? Track_PlaneHeight(v[f[0]], v[f[1]], v[f[3]], lx, lz)
-                     : Track_PlaneHeight(v[f[1]], v[f[2]], v[f[3]], lx, lz);
+    int h = tri == 1 ? Track_PlaneHeight(v[f[0]], v[f[1]], v[f[3]], lx, lz, normal)
+                     : Track_PlaneHeight(v[f[1]], v[f[2]], v[f[3]], lx, lz, normal);
     return h + s->hdr->origin[1] * 0x10;
 }
 
+/* Cache de normales (DAT_800af90c, 0x1858 bytes, iniciada en 80061cd0): 24 bloques de 32 triangulos.
+ * +0 ultimo bloque usado, +4 bloque de cada grupo de 32 claves (0xFF ninguno), +0x5C8 mascaras de validos,
+ * +0x628 grupo dueno de cada bloque, +0x658 normales (3 x s16 >> 2). Clave = cara << 1 | triangulo | seg << 8. */
+static uint8_t s_normCache[0x1858];
+
+void Track_ResetNormalCache(void)
+{
+    s_normCache[0] = 0xff;
+    for (int i = 0; i < 0x5c1; i++)
+        s_normCache[4 + i] = 0xff;
+    for (int k = 0; k < 24; k++)
+    {
+        s_normCache[0x628 + k * 2] = (uint8_t)0x5c1;
+        s_normCache[0x629 + k * 2] = (uint8_t)(0x5c1 >> 8);
+    }
+}
+
+/* 80065194 */
+static int NormCache_Get(uint32_t key, int* n)
+{
+    if ((key >> 5) >= 0x5c1)
+        return 0;
+    int slot = (int8_t)s_normCache[(key >> 5) + 4];
+    if (slot < 0 || !(NR_Read32(s_normCache + 0x5c8 + slot * 4) & (1u << (key & 31))))
+        return 0;
+    const uint8_t* p = s_normCache + slot * 0xc0 + 0x658 + (key & 31) * 6;
+    n[0] = (int16_t)NR_Read16(p) << 2;
+    n[1] = (int16_t)NR_Read16(p + 2) << 2;
+    n[2] = (int16_t)NR_Read16(p + 4) << 2;
+    return 1;
+}
+
+static void Put32(uint8_t* p, uint32_t v)
+{
+    p[0] = (uint8_t)v;
+    p[1] = (uint8_t)(v >> 8);
+    p[2] = (uint8_t)(v >> 16);
+    p[3] = (uint8_t)(v >> 24);
+}
+
+static void Put16(uint8_t* p, int v)
+{
+    p[0] = (uint8_t)v;
+    p[1] = (uint8_t)(v >> 8);
+}
+
+/* 800650b0 */
+static void NormCache_Put(uint32_t key, const int* n)
+{
+    if ((key >> 5) >= 0x5c1)
+        return;
+    uint8_t* e = &s_normCache[(key >> 5) + 4];
+    int slot = (int8_t)*e;
+    uint32_t mask;
+    if (slot < 0)
+    {
+        slot = (int8_t)s_normCache[0] + 1;
+        if (slot > 0x17)
+            slot = 0;
+        int owner = (int16_t)NR_Read16(s_normCache + 0x628 + slot * 2);
+        s_normCache[0] = (uint8_t)slot;
+        if (owner + 4 < (int)sizeof(s_normCache))
+            s_normCache[owner + 4] = 0xff;
+        Put16(s_normCache + 0x628 + slot * 2, (int)(key >> 5));
+        *e = (uint8_t)slot;
+        mask = 0;
+    }
+    else
+        mask = NR_Read32(s_normCache + 0x5c8 + slot * 4);
+    Put32(s_normCache + 0x5c8 + slot * 4, mask | 1u << (key & 31));
+    uint8_t* p = s_normCache + (key & 31) * 6 + slot * 0xc0 + 0x658;
+    Put16(p, n[0] >> 2);
+    Put16(p + 2, n[1] >> 2);
+    Put16(p + 4, n[2] >> 2);
+}
+
 /* 80064acc. tp = pista del ultimo resultado (seg 0xFF = desconocido), pos = (x, y, z) del mundo; devuelve la
- * altura del suelo (mundo) o TRACK_NO_SURFACE. Con la rejilla TIGR (celdas de 0x8000, subceldas de 0x2000) se
- * elige, entre las caras bajo el punto, la mas cercana por debajo de y. withCurve: tambien el punto de TCRV.
- * Pendiente: la normal (param_3, 80065194 / 800650b0). */
-int Track_FindSurface(TrackPos* tp, const int* pos, int withCurve)
+ * altura del suelo (mundo) o TRACK_NO_SURFACE y, si normal != NULL, la normal 16.16 (cacheada). Con la rejilla
+ * TIGR (celdas de 0x8000, subceldas de 0x2000) se elige, entre las caras bajo el punto, la mas cercana por
+ * debajo de y. withCurve: tambien el punto de TCRV. */
+int Track_FindSurface(TrackPos* tp, const int* pos, int* normal, int withCurve)
 {
     const Track* t = g_Track;
-    if (!t || !t->segs)
-        return TRACK_NO_SURFACE;
+    int* calc = NULL;           /* local_30: normal a calcular y cachear */
+    uint32_t key = 0;           /* local_34 */
     int x = pos[0], y = pos[1], z = pos[2];
+    if (!t || !t->segs)
+        goto none;
     if (tp->seg != 0xff && tp->seg < t->numSegs)
     {
         const TrackSeg* s = &t->segs[tp->seg];
@@ -1251,129 +1337,161 @@ int Track_FindSurface(TrackPos* tp, const int* pos, int withCurve)
             int lx = (x >> 4) - s->hdr->origin[0], lz = (z >> 4) - s->hdr->origin[2];
             int tri = Track_FaceContains(f, s->verts, lx, lz);
             if (tri)
-                return Track_FaceHeight(s, f, tri, lx, lz);
-        }
-    }
-
-    const uint8_t* g = t->tigr;
-    if (!g)
-        return TRACK_NO_SURFACE;
-    int w = g[8], hgt = g[9];
-    int nOffs = NR_Read16(g + 10), split = NR_Read16(g + 12);
-    const uint8_t* grid = g + 0x10 + nOffs * 2;
-    const uint8_t* blocks = grid + w * hgt;
-    int gx = x, gz = z;
-    if (gx < 0 || (gx >> 15) >= hgt)
-        gx = 0;
-    if (gz < 0 || (gz >> 15) >= w)
-        gz = 0;
-    int cell = (gx >> 15) * w + (gz >> 15);
-    int ci = grid[cell];
-    if (ci != 0xff)
-    {
-        int oi = cell >= split ? ci + 0xff : ci;
-        const uint8_t* block = blocks + NR_Read16(g + 0x10 + oi * 2);
-        int start = block[((gx >> 11) & 0xc) + ((gz >> 13) & 3)];
-        const uint8_t* list = block + 0x10;
-        if (start != 0xff)
-        {
-            int curSeg = -1, left = -1, more = 1;
-            int bestDy = 0, bestH = 0, bestSeg = 0, bestFace = 0;
-            const TrackSeg* s = NULL;
-            int lx = 0, lz = 0;
-            const uint8_t* p = list + start;
-            int found = 0, h = 0, face = 0;
-            do
             {
-                int b = *p++;
-                if (left < 0)
+                if (normal)
                 {
-                    if (b & 0x80)
-                        more = 0;
-                    int segNum = list[(b >> 4) & 7];
-                    left = b & 0xf;
-                    if (segNum != curSeg && segNum < t->numSegs)
-                    {
-                        s = &t->segs[segNum];
-                        lx = (x >> 4) - s->hdr->origin[0];
-                        lz = (z >> 4) - s->hdr->origin[2];
-                        curSeg = segNum;
-                    }
-                    b = *p++;
+                    key = (uint32_t)tp->face << 1 | (tri & 1) | (uint32_t)tp->seg << 8;
+                    if (!NormCache_Get(key, normal))
+                        calc = normal;
                 }
-                face = b & 0x7f;
-                if (s && face < s->hdr->numFaces)
+                int h = Track_FaceHeight(s, f, tri, lx, lz, calc);
+                if (calc)
                 {
-                    const uint8_t* f = s->faces + face * 10;
-                    int tri = Track_FaceContains(f, s->verts, lx, lz);
-                    if (tri)
-                    {
-                        h = Track_FaceHeight(s, f, tri, lx, lz);
-                        int dy = y - h;
-                        if (bestDy == 0)
-                        {
-                            bestDy = dy;
-                            bestH = h;
-                            bestSeg = curSeg;
-                            bestFace = face;
-                            if ((unsigned)(dy + 0x1ff) < 0x11ff)
-                            {
-                                found = 1;  /* esta misma */
-                                break;
-                            }
-                        }
-                        else if ((unsigned)(bestDy - dy + 0x40) > 0x80)
-                        {
-                            if (bestDy < 1)
-                                found = bestDy <= dy ? 1 : 2;
-                            else
-                                found = (dy < -0x200 || bestDy < dy) ? 2 : 1;
-                            break;
-                        }
-                    }
-                }
-                left--;
-            } while (left >= 0 || more);
-            if (!found && bestDy != 0)
-                found = 2;
-            if (found)
-            {
-                if (found == 2)
-                {
-                    curSeg = bestSeg;
-                    face = bestFace;
-                    h = bestH;
-                }
-                tp->seg = (uint8_t)curSeg;
-                tp->face = (uint8_t)face;
-                if (withCurve)
-                {
-                    /* fila de la cara -> punto de TCRV (busqueda binaria en las filas de +0x2C) */
-                    const TrackSegHdr* sh = t->segs[curSeg].hdr;
-                    const uint8_t* rows = (const uint8_t*)sh + 0x2c;
-                    unsigned hi = sh->numRows, mid = hi >> 1, lo = 0, prev = 0;
-                    if (mid != 0)
-                    {
-                        do
-                        {
-                            lo = mid;
-                            if (face < rows[mid])
-                            {
-                                lo = prev;
-                                hi = mid;
-                            }
-                            mid = (lo + hi) / 2;
-                            prev = lo;
-                        } while (mid != lo);
-                    }
-                    int c = (int)lo + sh->curveStart;
-                    if (t->numCurve > 0 && c >= t->numCurve)
-                        c -= t->numCurve;
-                    tp->curve = (int16_t)c;
+                    Vec_Normalize(calc);
+                    NormCache_Put(key, calc);
                 }
                 return h;
             }
         }
+    }
+
+    {
+        const uint8_t* g = t->tigr;
+        if (!g)
+            goto none;
+        int w = g[8], hgt = g[9];
+        int nOffs = NR_Read16(g + 10), split = NR_Read16(g + 12);
+        const uint8_t* grid = g + 0x10 + nOffs * 2;
+        const uint8_t* blocks = grid + w * hgt;
+        int gx = x, gz = z;
+        if (gx < 0 || (gx >> 15) >= hgt)
+            gx = 0;
+        if (gz < 0 || (gz >> 15) >= w)
+            gz = 0;
+        int cell = (gx >> 15) * w + (gz >> 15);
+        int ci = grid[cell];
+        if (ci == 0xff)
+            goto none;
+        int oi = cell >= split ? ci + 0xff : ci;
+        const uint8_t* block = blocks + NR_Read16(g + 0x10 + oi * 2);
+        int start = block[((gx >> 11) & 0xc) + ((gz >> 13) & 3)];
+        const uint8_t* list = block + 0x10;
+        if (start == 0xff)
+            goto none;
+        int curSeg = -1, left = -1, more = 1;
+        int bestDy = 0, bestH = 0, bestSeg = 0, bestFace = 0;
+        const TrackSeg* s = NULL;
+        int lx = 0, lz = 0;
+        const uint8_t* p = list + start;
+        int found = 0, h = 0, face = 0;
+        do
+        {
+            int b = *p++;
+            if (left < 0)
+            {
+                if (b & 0x80)
+                    more = 0;
+                int segNum = list[(b >> 4) & 7];
+                left = b & 0xf;
+                if (segNum != curSeg && segNum < t->numSegs)
+                {
+                    s = &t->segs[segNum];
+                    lx = (x >> 4) - s->hdr->origin[0];
+                    lz = (z >> 4) - s->hdr->origin[2];
+                    curSeg = segNum;
+                }
+                b = *p++;
+            }
+            face = b & 0x7f;
+            if (s && face < s->hdr->numFaces)
+            {
+                const uint8_t* f = s->faces + face * 10;
+                int tri = Track_FaceContains(f, s->verts, lx, lz);
+                if (tri)
+                {
+                    calc = NULL;
+                    if (normal)
+                    {
+                        key = (uint32_t)face << 1 | (tri & 1) | (uint32_t)curSeg << 8;
+                        if (!NormCache_Get(key, normal))
+                            calc = normal;
+                    }
+                    h = Track_FaceHeight(s, f, tri, lx, lz, calc);
+                    int dy = y - h;
+                    if (bestDy == 0)
+                    {
+                        bestDy = dy;
+                        bestH = h;
+                        bestSeg = curSeg;
+                        bestFace = face;
+                        if ((unsigned)(dy + 0x1ff) < 0x11ff)
+                        {
+                            found = 1;  /* esta misma */
+                            break;
+                        }
+                    }
+                    else if ((unsigned)(bestDy - dy + 0x40) > 0x80)
+                    {
+                        if (bestDy < 1)
+                            found = bestDy <= dy ? 1 : 2;
+                        else
+                            found = (dy < -0x200 || bestDy < dy) ? 2 : 1;
+                        break;
+                    }
+                }
+            }
+            left--;
+        } while (left >= 0 || more);
+        if (!found && bestDy != 0)
+            found = 2;
+        if (!found)
+            goto none;
+        if (found == 2)
+        {
+            curSeg = bestSeg;
+            face = bestFace;
+            h = bestH;
+        }
+        tp->seg = (uint8_t)curSeg;
+        tp->face = (uint8_t)face;
+        if (withCurve)
+        {
+            /* fila de la cara -> punto de TCRV (busqueda binaria en las filas de +0x2C) */
+            const TrackSegHdr* sh = t->segs[curSeg].hdr;
+            const uint8_t* rows = (const uint8_t*)sh + 0x2c;
+            unsigned hi = sh->numRows, mid = hi >> 1, lo = 0, prev = 0;
+            if (mid != 0)
+            {
+                do
+                {
+                    lo = mid;
+                    if (face < rows[mid])
+                    {
+                        lo = prev;
+                        hi = mid;
+                    }
+                    mid = (lo + hi) / 2;
+                    prev = lo;
+                } while (mid != lo);
+            }
+            int c = (int)lo + sh->curveStart;
+            if (t->numCurve > 0 && c >= t->numCurve)
+                c -= t->numCurve;
+            tp->curve = (int16_t)c;
+        }
+        if (calc)
+        {
+            Vec_Normalize(calc);
+            NormCache_Put(key, calc);
+        }
+        return h;
+    }
+none:
+    if (normal)
+    {
+        normal[0] = 0;
+        normal[1] = 0x10000;
+        normal[2] = 0;
     }
     return TRACK_NO_SURFACE;
 }
@@ -1385,7 +1503,7 @@ int Track_GroundHeight(TrackPos* tp, const int* pos, int mode)
     if (mode == 3 || !tp)
         return 0;
     int p[3] = { pos[0], -1, pos[2] };
-    int h = Track_FindSurface(tp, p, 1);
+    int h = Track_FindSurface(tp, p, NULL, 1);
     if (h == TRACK_NO_SURFACE)
         return 0;
     if (mode == -1 || mode == 1 || mode == 2)
@@ -1393,8 +1511,253 @@ int Track_GroundHeight(TrackPos* tp, const int* pos, int mode)
         p[1] = h + 0x8000;
         tp->seg = 0xff;
         tp->curve = -1;
-        int h2 = Track_FindSurface(tp, p, 1);
+        int h2 = Track_FindSurface(tp, p, NULL, 1);
         return mode == 1 ? (h + h2) / 2 : h2;
     }
     return h;
+}
+
+/* 80065ee8: tipo de superficie de la cara (tabla de 4 en TSEG +0x44, indice en los bits 6-7 del segundo byte
+ * de la cara en el bloque que sigue a las caras); 0xF sin cara. face: la cara (10 bytes) o NULL. */
+int Track_SurfaceType(const TrackPos* tp, const uint8_t** face)
+{
+    const Track* t = g_Track;
+    if (!t || tp->seg == 0xff || tp->seg >= t->numSegs)
+    {
+        if (face)
+            *face = NULL;
+        return 0xf;
+    }
+    const TrackSeg* s = &t->segs[tp->seg];
+    if (face)
+        *face = s->faces + tp->face * 10;
+    return ((const uint8_t*)s->hdr)[(s->rest[tp->face * 2 + 1] >> 6) + 0x44];
+}
+
+/* 80065610: punto de TCRV mas cercano (TCRV +6 de cada punto = indice ordenado por x, busqueda binaria por x y
+ * luego hacia los dos lados mientras la distancia en x no supere la mejor) */
+int Track_NearestCurvePoint(const int* pos)
+{
+    const Track* t = g_Track;
+    if (!t || !t->curve || t->numCurve < 2)
+        return 0;
+    const uint8_t* c = t->curve;
+    int n = t->numCurve;
+#define CX(i) ((int)NR_Read16(c + (i) * 10))
+#define CY(i) ((int)NR_Read16(c + (i) * 10 + 2))
+#define CZ(i) ((int)NR_Read16(c + (i) * 10 + 4))
+#define CS(i) ((int)(int16_t)NR_Read16(c + (i) * 10 + 6))
+    int px = pos[0] >> 5, py = pos[1] >> 5, pz = pos[2] >> 5;
+    int lo = 0, hi = n - 1, sum = n - 1, mid = 0;
+    if (n - 2 > 0)
+    {
+        do
+        {
+            mid = sum / 2;
+            if (px < CX(CS(mid)))
+            {
+                hi = mid;
+                mid = lo;
+            }
+            sum = mid + hi;
+            lo = mid;
+        } while (mid < hi - 1);
+    }
+    int best = CS(mid);
+    int dy = py >= 0 ? CY(best) - py : 0;
+    int dz = CZ(best) - pz;
+    int bestD = (CX(best) - px) * (CX(best) - px) + dy * dy + dz * dz;
+    int step = 1;
+    unsigned done = 0, k = (unsigned)mid + 1;
+    for (;;)
+    {
+        if (k < (unsigned)n)
+        {
+            int i = CS(k);
+            if (py >= 0)
+                dy = CY(i) - py;
+            int dx2 = (CX(i) - px) * (CX(i) - px);
+            int dz2 = CZ(i) - pz;
+            if (bestD <= dx2)
+                goto blocked;
+            dx2 += dy * dy + dz2 * dz2;
+            if (dx2 < bestD)
+            {
+                bestD = dx2;
+                best = i;
+            }
+            if (done == 0)
+                goto flip;
+            step = (step >> 31) * 2 + 1;
+        }
+        else
+        {
+        blocked:
+            done |= 1u << ((unsigned)step >> 31);
+        flip:
+            step = ~step + (step >> 31) * -2;
+        }
+        k += (unsigned)step;
+        if (done == 3)
+            return best;
+    }
+#undef CX
+#undef CY
+#undef CZ
+#undef CS
+}
+
+/* 80065844: el segmento pos0 -> pos1 (mundo) cruza un muro de la pista (aristas marcadas en el bloque que sigue a
+ * las caras: 2 bits por arista, 3 = muro alto, 1-2 = bordillo de 0x200 >> n). Devuelve 0 o 0x100 | tipo del muro
+ * (TSEG +0x48), con la normal horizontal del muro (16.16) y sus dos extremos (mundo). */
+int Track_RayWall(const int* p0, const int* p1, int* normal, int* edge)
+{
+    const Track* t = g_Track;
+    if (!t || !t->tigr)
+        return 0;
+    const uint8_t* g = t->tigr;
+    int w = g[8], hgt = g[9];
+    int nOffs = NR_Read16(g + 10), split = NR_Read16(g + 12);
+    const uint8_t* grid = g + 0x10 + nOffs * 2;
+    const uint8_t* blocks = grid + w * hgt;
+    int x0 = p0[0], z0 = p0[2], x1 = p1[0], z1 = p1[2];
+    if (x0 < 0 || (x0 >> 15) >= hgt || z0 < 0 || (z0 >> 15) >= w || x1 < 0 || (x1 >> 15) >= hgt || z1 < 0 ||
+        (z1 >> 15) >= w)
+        return 0;
+    int dcx = (x1 >> 13) - (x0 >> 13), dcz = (z1 >> 13) - (z0 >> 13);
+    int pass = 2;
+    int cx = x0, cz = z0;
+    const TrackSeg* s = NULL;
+    for (;;)
+    {
+        int cell = (cx >> 15) * w + (cz >> 15);
+        int ci = grid[cell];
+        if (ci != 0xff)
+        {
+            int oi = cell >= split ? ci + 0xff : ci;
+            const uint8_t* block = blocks + NR_Read16(g + 0x10 + oi * 2);
+            int start = block[((cx >> 11) & 0xc) + ((cz >> 13) & 3)];
+            if (start != 0xff)
+            {
+                const uint8_t* list = block + 0x10;
+                const uint8_t* p = list + start;
+                int left = -1, more = 1, curSeg = -1;
+                int l0x = 0, l0z = 0, l1x = 0, l1z = 0;
+                do
+                {
+                    int b = *p++;
+                    if (left < 0)
+                    {
+                        if (b & 0x80)
+                            more = 0;
+                        int segNum = list[(b >> 4) & 7];
+                        if (segNum != curSeg && segNum < t->numSegs)
+                        {
+                            s = &t->segs[segNum];
+                            l0x = (x0 >> 4) - s->hdr->origin[0];
+                            l1x = (x1 >> 4) - s->hdr->origin[0];
+                            l0z = (z0 >> 4) - s->hdr->origin[2];
+                            l1z = (z1 >> 4) - s->hdr->origin[2];
+                            curSeg = segNum;
+                        }
+                        left = b & 0xf;
+                        b = *p++;
+                    }
+                    if ((b & 0x80) && s)
+                    {
+                        int face = b & 0x7f;
+                        const uint8_t* f = s->faces + face * 10;
+                        int nv = f[2] == f[3] ? 3 : 4;
+                        unsigned prevV = (unsigned)nv - 1;
+                        for (unsigned e = 0; (int)e < nv; prevV = e, e++)
+                        {
+                            int kind = (s->rest[face * 2] >> ((prevV & 0xf) << 1)) & 3;
+                            if (!kind)
+                                continue;
+                            uint32_t va = s->verts[f[prevV]], vb = s->verts[f[e]];
+                            int ay = (int)(va & 0x3ff) * 4, az = VZ(va), ax = VX(va);
+                            int by = (int)(vb & 0x3ff) * 4, bz = VZ(vb), bx = VX(vb);
+                            /* el rayo cruza la arista y la arista cruza el rayo (OP de la GTE) */
+                            int m1 = Gte_OpMac1(l0z - az, bz - az, l0x - ax, bx - ax);
+                            int m2 = (int16_t)(bz - az) * (int16_t)(ax - l1x) - (int16_t)(az - l1z) * (int16_t)(bx - ax);
+                            /* los extremos del rayo al mismo lado de la arista, o los de la arista al mismo
+                             * lado del rayo: no hay cruce */
+                            int noHit;
+                            if (m1 != 0 && m2 != 0 && (m1 ^ m2) >= 0)
+                                noHit = 1;
+                            else
+                            {
+                                m1 = Gte_OpMac1(az - l0z, l1z - l0z, ax - l0x, l1x - l0x);
+                                m2 = (int16_t)(l1z - l0z) * (int16_t)(l0x - bx) - (int16_t)(l0z - bz) * (int16_t)(l1x - l0x);
+                                noHit = m1 != 0 && m2 != 0 && (m1 ^ m2) >= 0;
+                            }
+                            if (noHit)
+                                continue;
+                            if (kind != 3)
+                            {
+                                int d = ((by + ay) >> 1) - (((p0[1] + p1[1]) >> 5) - s->hdr->origin[1]);
+                                if (abs(d) > (0x200 >> kind))
+                                    continue;
+                            }
+                            if (normal)
+                            {
+                                normal[0] = bz - az;
+                                normal[1] = 0;
+                                normal[2] = ax - bx;
+                                Vec_Normalize(normal);
+                            }
+                            if (edge)
+                            {
+                                edge[0] = (s->hdr->origin[0] + ax) * 0x10;
+                                edge[3] = (s->hdr->origin[0] + bx) * 0x10;
+                                edge[1] = (s->hdr->origin[1] + ay) * 0x10;
+                                edge[4] = (s->hdr->origin[1] + by) * 0x10;
+                                edge[2] = (s->hdr->origin[2] + az) * 0x10;
+                                edge[5] = (s->hdr->origin[2] + bz) * 0x10;
+                            }
+                            return ((const uint8_t*)s->hdr)[((s->rest[face * 2 + 1] >> 4) & 3) + 0x48] | 0x100;
+                        }
+                    }
+                    left--;
+                } while (left >= 0 || more);
+            }
+        }
+        if (pass == 0)
+            return 0;
+        if (pass == 2)
+        {
+            if (dcx == 0)
+            {
+                if (dcz == 0)
+                    return 0;
+                pass = 0;
+                cx = x1;
+                cz = z1;
+                continue;
+            }
+            if (dcz == 0)
+            {
+                pass = 0;
+                cx = x1;
+                cz = z1;
+                continue;
+            }
+            pass = 1;
+            if ((dcx ^ dcz ^ ((x1 - x0) * (((z0 >> 13) + dcz) * 0x2000 - z0) -
+                              (z1 - z0) * (((x0 >> 13) + dcx) * 0x2000 - x0))) < 1)
+            {
+                cz = z0 + dcz;
+                cx = x0;
+            }
+            else
+            {
+                cz = z0;
+                cx = x0 + dcx;
+            }
+            continue;
+        }
+        pass = 0;
+        cx = x1;
+        cz = z1;
+    }
 }

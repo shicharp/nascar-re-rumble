@@ -162,13 +162,13 @@ static void Race_DrawHud(void)
 
 /* 800299a8 + 80026f28 (un jugador). Del bucle original estan: tiempo de carrera, texturas animadas,
  * camara de persecucion (8005f034), visibilidad y dibujo de la pista (Track_DrawView 800644c0 +
- * Race_DrawView 8006422c) y parte del HUD. Pendiente: fisica (80030cac / 80056c6c), IA, poderes, actores,
+ * Race_DrawView 8006422c), parte del HUD y la fisica (80030cac / 80056c6c). Pendiente: IA, poderes, actores,
  * sonido, pausa (START vuelve al front-end de momento) y pantalla partida. */
 void Race_MainLoop(void)
 {
     Font_SetDeferUpload(0);
     Font_FlushUploads();
-    g_RaceTime = 0;
+    g_RaceTime = g_PrevRaceTime = 0;
     Race_CreateCars();             /* 8003132c (desde Level_Run) */
     RaceCam_Init();
     while (g_GameState == GAMESTATE_RUNNING)
@@ -176,6 +176,7 @@ void Race_MainLoop(void)
         Frame_Wait();
         Gfx_BeginFrame(0, 0, 0);       /* el original no borra: el horizonte cubre el fondo */
         int dt = g_FrameDelta;
+        g_PrevRaceTime = g_RaceTime;
         g_RaceTime += dt;              /* Race_UpdateTime 800269c0 */
         Track_Animate(dt);             /* 80061e94 */
         Race_UpdateCars(dt);
@@ -196,8 +197,9 @@ void Race_MainLoop(void)
 
         Asset_DispatchAll();
         Gfx_Flip(GFX_FLIP_FULL);
-        if ((g_PadButtons[0] | g_PadButtons[1]) & (PADB_START | PADB_TRIANGLE))
+        if ((g_PadButtons[0] | g_PadButtons[1]) & PADB_START)
             g_GameState = 0xc;
     }
+    Race_FreeCars();
     Track_Free();
 }
