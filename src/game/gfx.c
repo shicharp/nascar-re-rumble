@@ -15,7 +15,8 @@ typedef struct
 {
     DISPENV  disp;
     DRAWENV  draw;
-    OT_TAG   ot[GFX_OT_LEN];   /* PsyCross: OT_TAG lleva puntero completo + pgxp (8 bytes en x86) */
+    OT_TAG   ot[2][GFX_OT_LEN];/* PsyCross: OT_TAG lleva puntero completo + pgxp (8 bytes en x86).
+                                * La segunda capa se usa tras Gfx_FlushPartial y se dibuja encima. */
     uint8_t* prims;
 } GfxBuffer;
 
@@ -24,6 +25,7 @@ static int       s_cur;
 static int       s_primBytes;
 static int       s_primUsed;
 static int       s_flipCount;
+static int       s_layer;          /* capa de OT en uso (1 tras Gfx_FlushPartial) */
 
 /* Primitivas del frame en orden de creacion. Se enlazan en Gfx_Flip de la ultima a la primera, de modo
  * que dentro de un mismo indice de OT se dibujan en el orden en que se crearon (como FUN_8001a1b4). */
@@ -43,6 +45,15 @@ void Gfx_Init(void)
 {
     ResetGraph(0);
     SetGraphDebug(0);
+#if USE_PGXP
+    /* El juego ordena por OT (algoritmo del pintor) y depende de ese orden, p. ej. el reflejo del garaje
+     * va debajo del coche; el z-buffer de PGXP lo romperia. Las primitivas 3D llevan las coordenadas de
+     * pantalla precisas de la GTE (sin el temblor de PS1). La correccion de perspectiva de PsyCross
+     * (reconstruye cada vertice en 3D) desplaza las texturas de los coches: de momento, texturas afines
+     * como en la consola. */
+    g_cfg_pgxpZBuffer = 0;
+    g_cfg_pgxpTextureCorrection = 0;
+#endif
 
     /* buffer 0 dibuja en y=0 y muestra y=256; buffer 1 al reves (como el original) */
     SetDefDrawEnv(&s_buf[0].draw, 0, 0, GFX_SCREEN_W, GFX_SCREEN_H);
@@ -82,7 +93,8 @@ void Gfx_BeginFrame(int r, int g, int b)
 {
     GfxBuffer* buf = &s_buf[s_cur];
     setRGB0(&buf->draw, r, g, b);
-    ClearOTagR((u_long*)buf->ot, GFX_OT_LEN);
+    ClearOTagR((u_long*)buf->ot[0], GFX_OT_LEN);
+    s_layer = 0;
     s_primUsed = 0;
     s_pendCount = 0;
 }
@@ -108,6 +120,32 @@ void Gfx_AddPrimDepth(int depth, void* prim)
         idx = s_depthBase[depth >> 12] + (depth >> s_depthShift[depth >> 12]);
     }
     Gfx_AddPrim(idx, prim);
+}
+
+static void LinkPendingPrims(GfxBuffer* buf);
+
+void Gfx_AddPrimDepthPgxp(int depth, void* prim, unsigned pgxpIndex)
+{
+    Gfx_AddPrimDepth(depth, prim);
+#if USE_PGXP
+    if (prim)
+        setpgxpindex(prim, pgxpIndex);
+#else
+    (void)pgxpIndex;
+#endif
+}
+
+/* La OT actual se cierra enlazando su final con el principio de una OT nueva: un solo DrawOTag dibuja
+ * primero todo lo anterior y luego lo nuevo (en PsyCross no se puede dibujar a mitad de frame) */
+void Gfx_FlushPartial(void)
+{
+    GfxBuffer* buf = &s_buf[s_cur];
+    if (s_layer > 0)
+        return;
+    ClearOTagR((u_long*)buf->ot[1], GFX_OT_LEN);
+    setaddr(&buf->ot[0][0], &buf->ot[1][GFX_OT_LEN - 1]);
+    LinkPendingPrims(buf);
+    s_layer = 1;
 }
 
 int Gfx_GetDrawBufferY(void)
@@ -151,7 +189,7 @@ static void LinkPendingPrims(GfxBuffer* buf)
 {
     for (int i = s_pendCount - 1; i >= 0; i--)
     {
-        OT_TAG* ot = &buf->ot[s_pendIdx[i]];
+        OT_TAG* ot = &buf->ot[s_layer][s_pendIdx[i]];
         setaddr(s_pendPrim[i], getaddr(ot));
         setaddr(ot, s_pendPrim[i]);
     }
@@ -169,7 +207,7 @@ void Gfx_Flip(int mode)
     PutDispEnv(&buf->disp);
     PutDrawEnv(&buf->draw);
     LinkPendingPrims(buf);
-    DrawOTag((u_long*)&buf->ot[GFX_OT_LEN - 1]);
+    DrawOTag((u_long*)&buf->ot[0][GFX_OT_LEN - 1]);
     FntFlush();          /* PsyCross dibuja el texto al momento: va dentro de la escena */
     PsyX_EndScene();     /* en PsyCross el juego cierra la escena y presenta el frame */
 

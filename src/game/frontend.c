@@ -147,6 +147,7 @@ void Frontend_Free(void)
         FreeMenu(fe->audioMenu, 5);
         FreeMenu(fe->loadSaveMenu, 3);
         FreeMenu(fe->showcaseMenu, 4);
+        Fe_FreeGarageObjects();
     }
     Pool_Free(g_Frontend);
     g_Frontend = NULL;
@@ -211,6 +212,8 @@ void Frontend_InitScreens(void)
         for (int d = 0; d < NUM_DRIVERS; d++)
             for (int k = 0; k < 3; k++)
                 fe->carInfo[d][c][k] = (short)(g_Drivers[d].team * 3 + c);
+
+    Fe_CreateGarageObjects();
 
     fe->firstFrame = 1;
     fe->valueDir = 0;

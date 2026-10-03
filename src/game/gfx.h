@@ -25,6 +25,12 @@ void  Gfx_BeginFrame(int clearR, int clearG, int clearB);
 void* Gfx_AllocPrim(int bytes);
 void  Gfx_AddPrim(int otIndex, void* prim);     /* indice directo en la OT */
 void  Gfx_AddPrimDepth(int depth, void* prim);  /* profundidad del juego (etiqueta & 0xFFFFFF) */
+/* Igual, pero con el indice PGXP del primer vertice del objeto (PsyCross busca hacia delante desde el
+ * indice - 8 el vertice exacto de cada esquina) */
+void  Gfx_AddPrimDepthPgxp(int depth, void* prim, unsigned pgxpIndex);
+/* Gfx_Flip(0) del original en el front-end: lo acumulado se dibuja antes y lo que se anada despues
+ * queda por encima de todo ello (una vez por frame) */
+void  Gfx_FlushPartial(void);
 void  Gfx_Flip(int mode);
 int   Gfx_GetDrawBufferY(void);                 /* y del buffer que se esta dibujando (0 o 256) */
 int   Gfx_GetDisplayBufferY(void);              /* y del buffer que se ve */

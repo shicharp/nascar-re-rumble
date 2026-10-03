@@ -50,6 +50,7 @@ int DebugViewer_Run(const char* file, int page)
 {
     Gfx_InitBuffers(200);
 
+    g_AssetViewerMode = 1;
     if (Stream_Open(file) < 0)
         return 1;
     while (Stream_Pump(16) > 0)

@@ -16,6 +16,12 @@
 #define ASSET_Lmdc NR_TAG('L', 'm', 'd', 'c')
 #define ASSET_Tmdc NR_TAG('T', 'm', 'd', 'c')
 #define ASSET_Gmdc NR_TAG('G', 'm', 'd', 'c')
+#define ASSET_Ctos NR_TAG('C', 't', 'o', 's')
+#define ASSET_rscB NR_TAG('r', 's', 'c', 'B')
+#define ASSET_rscE NR_TAG('r', 's', 'c', 'E')
+
+/* El visor de depuracion guarda las paginas Cpag en memoria en vez de subirlas a sus slots */
+extern int g_AssetViewerMode;
 
 /* Procesa todos los assets que haya en la cola del stream */
 void Asset_DispatchAll(void);

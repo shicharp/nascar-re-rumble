@@ -3,6 +3,8 @@
 #include "globals.h"
 #include "frontend.h"
 #include "font.h"
+#include "model.h"
+#include "texslot.h"
 
 #define MAX_TYPES 48
 
@@ -13,6 +15,7 @@ static struct
     int      bytes;
 } s_types[MAX_TYPES];
 static int s_numTypes;
+int g_AssetViewerMode;
 
 static void CountType(const NrAsset* a)
 {
@@ -30,6 +33,22 @@ static void CountType(const NrAsset* a)
     s_types[i].bytes += a->size;
 }
 
+/* 8006710c: pagina al slot id - 1; en el garaje las libreias (id >= 10000) van al slot 9 + hueco */
+static int Cpag_OnLoadedGame(NrAsset* a)
+{
+    int slot = a->id - 1;
+    if (a->id > 9999)
+    {
+        if (!g_IsFrontend)
+            return 0;   /* TODO carrera: slot 0xE + coche (DAT_800b0e47) */
+        if (Fe_IsFading() || !Fe_MarkReceiving())
+            return 0;
+        slot = g_FeLoadingSlot + 9;
+    }
+    Cpag_UploadToSlot(a->data, a->size, slot);
+    return 0;
+}
+
 /* 80024710. Devuelve 1 si el manejador se queda con el asset. */
 static int Asset_Dispatch(NrAsset* a)
 {
@@ -37,7 +56,16 @@ static int Asset_Dispatch(NrAsset* a)
     switch (a->type)
     {
     case ASSET_Cpag:
-        return Cpag_OnLoaded(a);   /* 8006710c */
+        return g_AssetViewerMode ? Cpag_OnLoaded(a) : Cpag_OnLoadedGame(a);
+    case ASSET_Cobj:
+        return Cobj_OnLoaded(a);   /* 80013374 */
+    case ASSET_Ctos:
+        return Stream_OnCtos(a);   /* 8002b810 */
+    case ASSET_rscB:
+        return 0;                  /* DAT_800b0db4 = id */
+    case ASSET_rscE:
+        Stream_SectionDone();      /* DAT_800b0db0 = -1 */
+        return 0;
     case ASSET_Cctr:
         /* cambia el estado del nivel: id 0 -> 2, id 1 -> 4 (en juego) */
         if (a->id == 0)
@@ -56,7 +84,7 @@ static int Asset_Dispatch(NrAsset* a)
     case ASSET_Tmdc:
     case ASSET_Gmdc:
         return Fe_OnMdc(a);
-    /* TODO: Cobj 80013374, Ctrk 80062680, Cact 8004942c, Cnet 8004c368, Cfnt 80044690,
+    /* TODO: Ctrk 80062680, Cact 8004942c, Cnet 8004c368,
      *       sonido 80022908, menus del front-end (Bmdc/Lmdc/Gmdc/Tmdc/McIc/TkFE)... */
     default:
         return 0;

@@ -15,6 +15,9 @@
 #include "frontend.h"
 #include "font.h"
 #include "game.h"
+#include "render.h"
+#include "texslot.h"
+#include "model.h"
 
 GameOptions g_Options;
 
@@ -101,6 +104,9 @@ void Frontend_Load(const char* path)
 {
     strcpy(g_LevelPath, path);
     Gfx_InitBuffers(0x478);
+    TexSlot_Init();                 /* FUN_80066fe0 */
+    Render_Init();                  /* FUN_800137d8 */
+    Render_SetPreset(3);            /* Camera_Create(3) + Camera_ApplyProjection: H = 360 */
     Stream_Open(g_LevelPath);       /* Stream_Open 8002baa8: en el front-end se abre el propio .trk */
     Font_Init();                    /* FUN_800446b8 */
     Frontend_InitCamera();
@@ -146,6 +152,7 @@ int Level_WaitLoaded(void)
         Gfx_Flip(GFX_FLIP_FULL);
     }
     g_GameInfo->nextMode = 1;
+    Stream_SetIdle();               /* el resto (secciones de coches, musica) se lee bajo demanda */
     NR_Log("Nivel cargado: %d bloques leidos\n", Stream_GetStats()->blocks);
     return 1;
 }
@@ -163,6 +170,7 @@ void Frontend_MainLoop(void)
         Gfx_BeginFrame(0, 0, 0);
         Frontend_Update();
         Frontend_DrawFade();
+        Stream_Pump(1);             /* el original lee por DMA en segundo plano */
         Asset_DispatchAll();        /* FUN_80028634: Asset_Dispatch + Gfx_Flip(1) */
         Gfx_Flip(GFX_FLIP_FULL);
     }
@@ -185,6 +193,7 @@ void Level_Unload(const char* name)
     Stream_Close();                 /* FUN_8002b7c8 / Stream_Close 8002ba0c */
     if (g_IsFrontend)
         Frontend_Free();            /* FUN_800241d4 */
+    Asset_ClearRegistry();
 }
 
 /* 80029be4 (sin la logica de reinicio de carrera) */

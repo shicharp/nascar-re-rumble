@@ -48,14 +48,14 @@ typedef struct
 {
     uint8_t  users[2];      /* +0x00 lo muestra el panel 0 / 1 */
     char     inUse;         /* +0x02 */
-    char     pad03;
+    char     receiving;     /* +0x03 es el hueco al que va la seccion que esta llegando */
     char     state;         /* +0x04 0 libre o cargado, 1 pedido, 2 cargando */
     uint8_t  driver;        /* +0x05 */
     uint8_t  car;           /* +0x06 */
     char     pad07;
     unsigned lastUsed;      /* +0x08 g_MenuFrame del ultimo uso */
-    void*    data;          /* +0x0C seccion cargada (+0x1C = id 10000 + (equipo+1)*100 + clase*10) */
-    void*    model;         /* +0x10 */
+    void*    data;          /* +0x0C NrAsset del Cobj cargado (id 10000 + (equipo+1)*100 + clase*10 + 1) */
+    void*    model;         /* +0x10 GfxObj */
 } CarSlot;
 
 /* Miniatura del carrusel de la pantalla 1200 */
@@ -241,6 +241,14 @@ int  Fe_DecodeGmdc(int index, int x, int y);                              /* 800
 void Fe_Screen1200(void);                                                 /* 80081a9c */
 void Fe_LoadAtlas(void);                                                  /* 80092f5c */
 void Fe_FreeAtlas(void);                                                  /* 80093050 */
+void Fe_CreateGarageObjects(void);                                        /* parte de 80079814 */
+void Fe_FreeGarageObjects(void);
+
+/* Coches del garaje que llegan por secciones (fe_select.c) */
+int  Fe_IsFading(void);                  /* DAT_800af388 */
+int  Fe_CarReceiving(void);              /* 80092938 */
+int  Fe_MarkReceiving(void);             /* 80092894 */
+int  Fe_OnCarModel(NrAsset* a, int id);  /* 80092998: 1 si se queda con el asset */
 
 /* Manejadores de assets del front-end */
 int  Fe_OnCrle(NrAsset* a);          /* 80092e08 */

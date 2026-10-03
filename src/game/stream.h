@@ -30,6 +30,7 @@ typedef struct NrAsset
     int      pool;      /* SHDR +0x14: modo de Pool_Alloc */
     char     section[17];
     uint8_t* data;
+    void*    obj;       /* solo en el port: lo que crea el manejador (p. ej. el ModelHdr de un Cobj) */
 } NrAsset;
 
 typedef struct
@@ -47,6 +48,15 @@ int  Stream_IsOpen(void);
 
 /* Lee y procesa hasta maxBlocks bloques. Devuelve los procesados (0 = fin de fichero). */
 int  Stream_Pump(int maxBlocks);
+
+/* Secciones (coches): la tabla llega en el asset Ctos ('SOTt': n x {desplazamiento, tamano, ?}, relativo
+ * al final de la cabecera, CTRL +0x14). Original: FUN_8002b810 (Ctos), Stream_StartSection 8002b69c;
+ * rscB/rscE marcan el principio y el fin de cada seccion (Asset_Dispatch). */
+int  Stream_OnCtos(NrAsset* a);
+int  Stream_StartSection(int section);   /* 0 si ya hay una en curso o no existe */
+void Stream_SectionDone(void);           /* rscE */
+/* Tras cargar el nivel el stream se queda parado hasta que se pide una seccion */
+void Stream_SetIdle(void);
 
 /* Saca el siguiente asset completo de la cola (o NULL) */
 NrAsset* Stream_PopAsset(void);

@@ -1,7 +1,7 @@
 /* Pantalla 1200: eleccion de piloto y coche (carrusel de miniaturas, clase, compañero de equipo y
- * rivales) y lo que necesita: atlas de miniaturas del Crle, coches del garaje y tabla de pilotos.
- * Pendiente: el coche 3D que gira (FUN_8008bd58) y el candado (FUN_8008de60) necesitan los modelos
- * Cobj y la carga de secciones del FE.TRK (FUN_80023e88); por ahora el panel del coche queda vacio. */
+ * rivales) y lo que necesita: atlas de miniaturas del Crle, tabla de pilotos y coches del garaje, que
+ * llegan por secciones del FE.TRK (libreia Cpag al slot 9 + hueco y modelo Cobj) y se dibujan en 3D.
+ * Pendiente: sombra del coche (3DSD) y reflejos de los cristales. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +15,10 @@
 #include "globals.h"
 #include "frontend.h"
 #include "fe_internal.h"
+#include "asset.h"
+#include "model.h"
+#include "render.h"
+#include "texslot.h"
 
 /* 800aa5ec: nombre, dorsal, equipo (coche), y dos valores de pilotaje */
 const DriverInfo g_Drivers[NUM_DRIVERS] = {
@@ -286,19 +290,36 @@ static int Fe_CarAvailable(int driver, int car)
     return g_Settings.unlocks[driver - 0x14] == 1;              /* DAT_800b7121 */
 }
 
-/* 80023e88: empieza a cargar por streaming la seccion del coche. TODO: secciones del FE.TRK
- * (FUN_8002b69c / Stream_SetSeek) y registro del modelo Cobj; hasta entonces nunca se cargan. */
+/* 80023e88: empieza a cargar por streaming la seccion del coche (una a la vez; rscE la cierra) */
 static int Car_StartLoad(int section)
 {
-    (void)section;
-    return 0;
+    return Stream_StartSection(section);
 }
 
-/* id de la seccion cargada (10000 + (equipo+1)*100 + clase*10) -> equipo*3 + clase */
+/* id del Cobj cargado (10000 + (equipo+1)*100 + clase*10 + 1) -> equipo*3 + clase */
 static int CarIdIndex(int id)
 {
     unsigned u = (unsigned)(id - 10000);
     return (int)(u / 10 - (u / 100) * 7 - 3);
+}
+
+/* el panel p deja de usar los huecos distintos de 'keep' (los libera si nadie mas los usa) */
+static void ReleaseOtherSlots(int p, int keep)
+{
+    FrontendState* fe = g_Frontend;
+    for (int i = 0; i < 3; i++)
+    {
+        CarSlot* s = &fe->carSlots[i];
+        if (i != keep && s->users[p] && (s->inUse || s->state))
+        {
+            s->users[p] = 0;
+            if (!s->users[0] && !s->users[1])
+            {
+                s->inUse = 0;
+                s->state = 0;
+            }
+        }
+    }
 }
 
 /* 800923cc: el panel p quiere mostrar (driver, car): reutiliza un coche ya cargado o pide la carga
@@ -313,7 +334,7 @@ static void Fe_RequestCar(int p, int driver, int car)
     for (int i = 0; i < 3; i++)
     {
         CarSlot* s = &fe->carSlots[i];
-        if (s->state == 0 && s->data && CarIdIndex((int)NR_Read32((const uint8_t*)s->data + 0x1c)) == want)
+        if (s->state == 0 && s->data && CarIdIndex(((NrAsset*)s->data)->id) == want)
         {
             found = i;
             break;
@@ -361,19 +382,7 @@ static void Fe_RequestCar(int p, int driver, int car)
         return;
     }
 
-    for (int i = 0; i < 3; i++)
-    {
-        CarSlot* s = &fe->carSlots[i];
-        if (i != found && s->users[p] && (s->inUse || s->state))
-        {
-            s->users[p] = 0;
-            if (!s->users[0] && !s->users[1])
-            {
-                s->inUse = 0;
-                s->state = 0;
-            }
-        }
-    }
+    ReleaseOtherSlots(p, found);
     CarSlot* s = &fe->carSlots[found];
     fe->carModel[p] = s->model;
     s->users[p] = 1;
@@ -381,6 +390,101 @@ static void Fe_RequestCar(int p, int driver, int car)
     s->lastUsed = g_MenuFrame;
     if (Fe_CarAvailable(fe->driver[p], fe->car[p]) == 1)
         fe->modelAnim[p] = fe->modelAnim[p] != -1 ? 1 : -2;
+}
+
+static int s_fadeBusy;   /* DAT_800af388 */
+
+int Fe_IsFading(void)
+{
+    return s_fadeBusy;
+}
+
+static int GarageScreen(void)
+{
+    short s = g_Frontend ? g_Frontend->screen : 0;
+    return s == 1200 || s == 1700 || s == 1800;
+}
+
+/* 80092938 */
+int Fe_CarReceiving(void)
+{
+    if (!GarageScreen())
+        return 0;
+    for (int i = 0; i < 3; i++)
+        if (g_Frontend->carSlots[i].receiving)
+            return 1;
+    return 0;
+}
+
+/* 80092894: al llegar la libreia, el hueco que esta cargando pasa a recibir la seccion */
+int Fe_MarkReceiving(void)
+{
+    int found = 0;
+    if (!GarageScreen())
+        return 0;
+    for (int i = 0; i < 3; i++)
+    {
+        CarSlot* s = &g_Frontend->carSlots[i];
+        if (s->state == 2 && !s->inUse && !found)
+        {
+            s->receiving = 1;
+            found = 1;
+        }
+        else
+            s->receiving = 0;
+    }
+    return found;
+}
+
+/* 80092998: el modelo del coche ha llegado; pasa a su hueco y a los paneles que lo esperaban */
+int Fe_OnCarModel(NrAsset* a, int id)
+{
+    FrontendState* fe = g_Frontend;
+    int found = -1;
+    if (!a || id < 30000)
+        return 0;
+    if (GarageScreen() && a->obj)
+    {
+        for (int k = 0; k < 3; k++)
+        {
+            CarSlot* s = &fe->carSlots[k];
+            if (!s->receiving)
+            {
+                if (s->state == 2)
+                    s->state = 0;
+                continue;
+            }
+            found = k;
+            if (s->data)
+                Asset_Free((NrAsset*)s->data);
+            s->data = a;
+            ModelHdr* m = (ModelHdr*)a->obj;
+            unsigned u = (unsigned)(a->id - 10000);
+            m->tag = (u / 100 - 1) << 4 | (u / 10 - (u / 100) * 10);   /* equipo << 4 | clase */
+            GfxObj* o = (GfxObj*)s->model;
+            Obj_Init(o, m);
+            o->flags |= 0x80;
+            for (int p = 0; p < g_Settings.numPlayers; p++)
+            {
+                if (!s->users[p])
+                    continue;
+                fe->carModel[p] = o;
+                ReleaseOtherSlots(p, k);
+                if (Fe_CarAvailable(fe->driver[p], fe->car[p]) == 1)
+                    fe->modelAnim[p] = fe->modelAnim[p] == -1 ? -2 : 1;
+            }
+            s->inUse = 1;
+            s->state = 0;
+            s->lastUsed = g_MenuFrame;
+            break;
+        }
+    }
+    if (fe->pendingLoad)
+    {
+        fe->pendingLoad = 0;
+        Fe_RequestCar(fe->pendingPlayer, fe->pendingDriver, fe->pendingCar);
+    }
+    return found >= 0;
 }
 
 /* 80090a88(1): vacia los huecos de coches */
@@ -392,11 +496,12 @@ static void Fe_ResetCars(void)
         CarSlot* s = &fe->carSlots[i];
         if (s->data)
         {
-            Pool_Free(s->data);
+            Asset_Free((NrAsset*)s->data);
             s->data = NULL;
         }
         s->state = 0;
         s->inUse = 0;
+        s->receiving = 0;
         s->users[0] = s->users[1] = 0;
     }
     for (int p = 0; p < 2; p++)
@@ -411,6 +516,7 @@ static void Fe_ResetCars(void)
 static void Fe_UpdateCars(void)
 {
     FrontendState* fe = g_Frontend;
+    s_fadeBusy = fe->fadeDone != 0;
     int loading = 0;
     for (int i = 0; i < 3; i++)
         if (fe->carSlots[i].state == 2 && !fe->carSlots[i].inUse)
@@ -422,8 +528,12 @@ static void Fe_UpdateCars(void)
             CarSlot* s = &fe->carSlots[i];
             if (s->state != 0 && !s->inUse)
             {
-                if (Car_StartLoad(fe->carInfo[s->driver][s->car][1]))   /* DAT_800af970 = i */
+                int prev = g_FeLoadingSlot;
+                g_FeLoadingSlot = i;
+                if (Car_StartLoad(fe->carInfo[s->driver][s->car][1]))
                     s->state = 2;
+                else
+                    g_FeLoadingSlot = prev;
                 break;
             }
         }
@@ -448,18 +558,235 @@ static void Fe_UpdateCars(void)
     }
 }
 
-/* 8008bd58: coche 3D girando en (x, y) del panel p. TODO: modelos Cobj + GTE. */
-static void Fe_DrawCarModel(int p, int x, int y, int dist, int reflection)
+/* ---------------------------------------------------------------- coche 3D */
+
+static GfxObj* NewGarageObject(int cobjId)
 {
-    (void)x; (void)y; (void)dist; (void)reflection;
-    if (!g_Frontend->carModel[p])
-        return;
+    NrAsset* a = Asset_Find(ASSET_Cobj, cobjId);
+    GfxObj* o = (GfxObj*)Pool_Alloc(sizeof(GfxObj), 2);
+    Obj_Init(o, a ? (ModelHdr*)a->obj : NULL);
+    return o;
 }
 
-/* 8008de60: modelo pequeño girando (candado de coche bloqueado). TODO: modelos Cobj. */
+/* parte de 80079814: ruedas (Cobj 0, 1, 2; cuatro de cada), huecos de coches y candados (Cobj 3, 4) */
+void Fe_CreateGarageObjects(void)
+{
+    FrontendState* fe = g_Frontend;
+    for (int k = 0; k < 4; k++)
+    {
+        fe->garageObjA[k] = NewGarageObject(0);
+        fe->garageObjB[k] = NewGarageObject(1);
+        fe->garageObjC[k] = NewGarageObject(2);
+    }
+    for (int i = 0; i < 3; i++)
+    {
+        CarSlot* s = &fe->carSlots[i];
+        memset(s, 0, sizeof(*s));
+        s->model = Pool_Alloc(sizeof(GfxObj), 2);
+        Obj_Init((GfxObj*)s->model, NULL);
+    }
+    fe->carModel[0] = fe->carModel[1] = NULL;
+    for (int i = 0; i < 2; i++)
+    {
+        GfxObj* o = NewGarageObject(3 + i);
+        o->flags |= 0x80;
+        fe->lockModel[i] = o;
+    }
+}
+
+void Fe_FreeGarageObjects(void)
+{
+    FrontendState* fe = g_Frontend;
+    if (!fe)
+        return;
+    for (int k = 0; k < 4; k++)
+    {
+        Pool_Free(fe->garageObjA[k]);
+        Pool_Free(fe->garageObjB[k]);
+        Pool_Free(fe->garageObjC[k]);
+        fe->garageObjA[k] = fe->garageObjB[k] = fe->garageObjC[k] = NULL;
+    }
+    for (int i = 0; i < 3; i++)
+    {
+        if (fe->carSlots[i].data)
+            Asset_Free((NrAsset*)fe->carSlots[i].data);
+        Pool_Free(fe->carSlots[i].model);
+        memset(&fe->carSlots[i], 0, sizeof(fe->carSlots[i]));
+    }
+    for (int i = 0; i < 2; i++)
+    {
+        Pool_Free(fe->lockModel[i]);
+        fe->lockModel[i] = NULL;
+        fe->carModel[i] = NULL;
+    }
+}
+
+/* 8008c9a4: foco en el suelo bajo el coche (abanico de 64 triangulos aditivos) */
+static void Fe_DrawFloorGlow(void)
+{
+    DR_TPAGE* tp = (DR_TPAGE*)Gfx_AllocPrim(sizeof(DR_TPAGE));
+    if (!tp)
+        return;
+    setDrawTPage(tp, 1, 1, getTPage(0, 1, 0, 0));   /* 0xE1000620: mezcla 1 (suma) */
+    Gfx_AddPrimDepth(0xa, tp);
+
+    static const int ident[9] = { 0x10000, 0, 0, 0, 0x10000, 0, 0, 0, 0x10000 };
+    static const int pos[3] = { 0, -0x109, 0x1e14 };
+    Render_LoadObjectMatrix16(ident, pos);
+    SVECTOR v = { 0, 0, 0, 0 };
+    int cx, cy, px, py;
+    Render_ProjectPoint(&v, &cx, &cy);
+    v.vz = 0x40;
+    Render_ProjectPoint(&v, &px, &py);
+    for (int i = 0; i < 0x41; i++)
+    {
+        int s, c, x, y;
+        Math_SinCos(i << 6, &s, &c);
+        v.vx = (short)(s * 3 >> 10);
+        v.vz = (short)(c * 3 >> 10);
+        Render_ProjectPoint(&v, &x, &y);
+        POLY_G3* p = (POLY_G3*)Gfx_AllocPrim(sizeof(POLY_G3));
+        if (!p)
+            return;
+        setPolyG3(p);
+        setSemiTrans(p, 1);
+        setRGB0(p, 0x5a, 0x5a, 0x64);
+        setRGB1(p, 0, 0, 0);
+        setRGB2(p, 0, 0, 0);
+        setXY3(p, cx, cy, px, py, x, y);
+        Gfx_AddPrimDepth(0xa, p);
+        px = x;
+        py = y;
+    }
+}
+
+static void NegateY(int* rot)
+{
+    rot[3] = -rot[3];
+    rot[4] = -rot[4];
+    rot[5] = -rot[5];
+}
+
+/* 8008bd58: coche del panel p girando, centrado en (x, y) de pantalla, a 'dist' de la camara. Con
+ * 'reflection' dibuja antes su reflejo invertido bajo el suelo y el foco, y lo vuelca (Gfx_Flip(0)). */
+static void Fe_DrawCarModel(int p, int x, int y, int dist, int reflection)
+{
+    FrontendState* fe = g_Frontend;
+    GfxObj* car = (GfxObj*)fe->carModel[p];
+    if (!car || !car->model)
+        return;
+
+    int lift = fe->modelOffset[p] / 0xdac;
+    if (lift > 8)
+        lift = 8;
+    if (lift < -8)
+        lift = -8;
+    SetGeomOffset(x, y - lift);
+    int floorY = 0;
+    if (!reflection)
+        car->flags &= ~0x10;
+
+    /* juego de ruedas: carrito de golf (equipo 0x35) con ruedas A/B; Elite C; el resto B */
+    uint32_t ident = car->model->tag;
+    void** front = fe->garageObjB;
+    void** rear = fe->garageObjB;
+    if ((ident >> 4) == 0x35 && (ident & 0xf) < 2)
+    {
+        front = fe->garageObjA;
+        rear = (ident & 0xf) == 0 ? fe->garageObjA : fe->garageObjB;
+    }
+    else if ((ident >> 4) != 0x35 && (ident & 0xf) == 2)
+        front = rear = fe->garageObjC;
+
+    car->shadowY = 0;
+    car->pos[0] = 0;
+    car->pos[1] = 0;
+    car->pos[2] = 0x1d4c;
+    int eye[3] = { 0, 0x9c4, -fe->modelOffset[p] };
+    Camera_LookAt(eye, car->pos);
+
+    for (;;)
+    {
+        int angle = fe->modelAngle & 0xfff;
+        Math_RotMatrix(angle, 0, 0, car->rot);
+        if (reflection)
+        {
+            int hp[3];
+            Obj_GetLocalPoint(car, 0, hp);
+            GfxObj* w0 = (GfxObj*)front[0];
+            int wheelBottom = w0 && w0->model ? *(int16_t*)(w0->model->bbox + 0x10) : 0;
+            NegateY(car->rot);
+            floorY = wheelBottom - hp[1] + 0x40;
+            car->flags &= ~0x10;
+        }
+        car->pos[0] = 0;
+        car->pos[1] = floorY * -2;
+        car->pos[2] = dist;
+
+        Render_ClearList();
+        for (int i = 0; i < 4; i++)
+        {
+            GfxObj* w = (GfxObj*)(i < 2 ? front : rear)[i];
+            if (!w)
+                continue;
+            Math_RotMatrix(angle + ((i & 1) ? 0x800 : 0), 0, 0, w->rot);
+            if (reflection)
+                NegateY(w->rot);
+            Obj_GetPoint(car, i, w->pos);
+            for (int a = 0; a < 3; a++)
+                w->pos[a] += (int)(((int64_t)w->rot[3 + a] * -0x40) >> 16);
+            Render_Add(w);
+        }
+        Render_Add(car);
+        Light* l = car->light;
+        l->bk[0] = l->bk[1] = l->bk[2] = reflection ? 0x40 : 0x600;
+        if (!reflection)
+            break;
+
+        static const int under[3] = { 0, -0x1000000, -0x800000 };
+        Light_SetSun(under, 0x40, 0x40, 0x40);
+        Render_DrawList(1);
+        reflection = 0;
+        SetGeomOffset(x, y);
+        Fe_DrawFloorGlow();
+        Gfx_FlushPartial();
+        SetGeomOffset(x, y - lift);
+        car->flags |= 0x10;
+        car->shadowY = (short)(-floorY >> 4);
+        floorY = 0;
+    }
+    static const int sun[3] = { 0x2000000, 0x1000000, 0x2000000 };
+    Light_SetSun(sun, 0x80, 0x80, 0x80);
+    Render_DrawList(0);
+    car->flags |= 0x10;
+    SetGeomOffset(160, 120);
+}
+
+/* 8008de60: modelo pequeño girando (3/4 = candados) en (x, y) de pantalla */
 static void Fe_DrawSpinningModel(int x, int y, int dist, int model, int speed)
 {
-    (void)x; (void)y; (void)dist; (void)model; (void)speed;
+    FrontendState* fe = g_Frontend;
+    GfxObj* o;
+    switch (model)
+    {
+    case 3: o = (GfxObj*)fe->lockModel[0]; break;
+    case 4: o = (GfxObj*)fe->lockModel[1]; break;
+    default: return;   /* 5-16: objetos del salon de la fama / showcase (fe+0xA48...) */
+    }
+    if (!o || !o->model)
+        return;
+    int a = (g_Ticks * speed) % 0x1000;
+    SetGeomOffset(x, y);
+    Math_RotMatrix(a, 0, 0, o->rot);
+    o->pos[0] = 0;
+    o->pos[1] = 0;
+    o->pos[2] = dist;
+    int eye[3] = { 0, 0x9c4, 500 };
+    Camera_LookAt(eye, o->pos);
+    Render_ClearList();
+    Render_Add(o);
+    Render_DrawList(0);
+    SetGeomOffset(160, 120);
 }
 
 /* ---------------------------------------------------------------- seleccion */

@@ -12,6 +12,10 @@ static NrAsset*    s_queueHead;    /* DAT_800b1130 */
 static NrAsset*    s_queueTail;
 static char        s_section[17];
 static StreamStats s_stats;
+static int         s_blocksLeft = -1;  /* -1 sin limite (carga del nivel), 0 parado */
+static int         s_sectionBase;      /* CTRL +0x14: tamano de la cabecera */
+static int         s_sectionBusy;      /* DAT_800b0db0 >= 0 */
+static NrAsset*    s_toc;              /* Ctos (DAT_800af768) */
 
 int Stream_Open(const char* name)
 {
@@ -20,6 +24,9 @@ int Stream_Open(const char* name)
     s_section[0] = 0;
     s_slot = File_OpenSearchPaths(name);
     s_offset = 0;
+    s_blocksLeft = -1;
+    s_sectionBase = 0;
+    s_sectionBusy = 0;
     if (s_slot < 0)
         NR_Log("Stream_Open: no se pudo abrir '%s' (%d)\n", name, s_slot);
     return s_slot;
@@ -35,6 +42,44 @@ void Stream_Close(void)
         Asset_Free(s_cur);
         s_cur = NULL;
     }
+    Asset_Free(s_toc);
+    s_toc = NULL;
+}
+
+/* FUN_8002b810 */
+int Stream_OnCtos(NrAsset* a)
+{
+    if (a->size < 16 || NR_Read32(a->data) != NR_TAG('t', 'T', 'O', 'S'))
+        return 0;
+    Asset_Free(s_toc);
+    s_toc = a;
+    NR_Log("Stream: tabla de secciones con %u entradas (base 0x%x)\n", NR_Read32(a->data + 12), s_sectionBase);
+    return 1;
+}
+
+/* 8002b69c */
+int Stream_StartSection(int section)
+{
+    if (s_slot < 0 || !s_toc || s_sectionBusy || s_blocksLeft != 0)
+        return 0;
+    uint32_t n = NR_Read32(s_toc->data + 12);
+    if (section < 0 || (uint32_t)section >= n || 16 + (section + 1) * 12 > s_toc->size)
+        return 0;
+    const uint8_t* e = s_toc->data + 16 + section * 12;
+    s_offset = s_sectionBase + (int)NR_Read32(e);
+    s_blocksLeft = (int)NR_Read32(e + 4) / STREAM_BLOCK_SIZE;
+    s_sectionBusy = 1;
+    return 1;
+}
+
+void Stream_SectionDone(void)
+{
+    s_sectionBusy = 0;
+}
+
+void Stream_SetIdle(void)
+{
+    s_blocksLeft = 0;
 }
 
 int Stream_IsOpen(void)
@@ -136,8 +181,13 @@ static void Stream_ProcessChunks(const uint8_t* block, int len)
         case TAG_VAGM:
             s_stats.vagChunks++;   /* TODO: audio (FUN_80022e50 / cola VAGM) */
             break;
+        case TAG_CTRL:
+            if (s_offset == 0 && off == 0 && size >= 0x18)
+                s_sectionBase = (int)NR_Read32(c + 0x14);   /* fin de la cabecera = inicio de las secciones */
+            s_stats.otherChunks++;
+            break;
         default:
-            s_stats.otherChunks++; /* CTRL, CANM */
+            s_stats.otherChunks++; /* CANM */
             break;
         }
         off += size;
@@ -147,7 +197,7 @@ static void Stream_ProcessChunks(const uint8_t* block, int len)
 int Stream_Pump(int maxBlocks)
 {
     int done = 0;
-    while (s_slot >= 0 && done < maxBlocks)
+    while (s_slot >= 0 && done < maxBlocks && s_blocksLeft != 0)
     {
         File_Seek(s_slot, s_offset);
         int n = File_ReadAsync(s_slot, s_block, STREAM_BLOCK_SIZE, NULL);
@@ -157,6 +207,8 @@ int Stream_Pump(int maxBlocks)
         s_offset += n;
         s_stats.blocks++;
         done++;
+        if (s_blocksLeft > 0)
+            s_blocksLeft--;
     }
     return done;
 }
