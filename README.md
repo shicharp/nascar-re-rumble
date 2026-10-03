@@ -40,8 +40,9 @@ audio (500), con cuadros de mensaje, la selección de piloto/coche (1200) con el
 secciones del FE.TRK y la elección de sede/pista (1300) con el trazado en 3D; al confirmar se monta la
 parrilla y se carga la carrera (GlblData.psx + un coche por sección + el .trk, con su pantalla de carga y barra
 de progreso). La pista se dibuja como el original (segmentos visibles, mips por distancia, subdivisión de las caras
-cercanas, horizonte/cielo de capas THOR, texturas animadas y halos de luz); el bucle de carrera aún no está portado: de momento la cámara recorre la línea central con los
-coches de la parrilla en la salida, X acelera y START vuelve al front-end). `--shot` guarda el frame N y sale; `--press "185:down,205:right"` simula
+cercanas, horizonte/cielo de capas THOR, texturas animadas y halos de luz); en carrera ya están la parrilla real, la colisión con el suelo, la cámara de persecución y la
+cuenta atrás; mientras se porta la física, el coche del jugador se conduce con un control provisional (X acelera,
+cuadrado frena) y START vuelve al front-end). `--shot` guarda el frame N y sale; `--press "185:down,205:right"` simula
 pulsaciones (para verificar sin intervención; botones: up, down, left, right, cross, circle, triangle, square,
 start, select, l1, r1, l2, r2).
 `--viewer` es el visor de páginas Cpag (flechas para cambiar de página).
@@ -57,6 +58,9 @@ start, select, l1, r1, l2, r2).
 | `src/game/fe_track.c` | pantalla 1300 (800838f8), trazado TkFE (8001893c, 80018ef0), 80090718, 80090860, 8008e13c, 8008c308, 8008b80c, montaje de la carrera Fe_StartRace 8008927c |
 | `src/game/race.c` | Race_Load 80024284, Race_NextCar 80023ef4, barra 80024f08, Ctrk 80062680, Cars_RegisterModels 800134f0, Race_MainLoop 800299a8 (provisional) |
 | `src/game/track.c` | pista Ctrk: Track_Parse 80062088 (+ 80067218), Track_DrawView 800644c0 (800637bc, 80063928, 80063a34, 800641b8), Track_DrawSegments 8006327c, vertices 80063470, caras 80062de0, subdivision 80062970 / 800626b8 / 80062888, horizonte 80064078 / 80064134 / 80063af4 / 80063c08 (+ 800673f8, 80062004), TTXA 80061dfc / 80061e94 |
+| `src/game/racecar.c` | coches de la carrera: salida 800317a0, parrilla 8003132c, cámara 8005d4c8 / 8005f034 / 8005e8b0 / 8005dc98 |
+| `src/game/cnet.c` | redes de trazadas Cnet 8004c368 / 8002cc50 / 8004bd74 |
+| `src/game/vecmath.c` | vectores 16.16 del juego (80019518-80019da4, 800184b0) |
 | `src/game/sprite.c` | halos/destellos 2D: lista DAT_800b5500, Sprite_DrawAll 80045268 (formas 800aafa4 / 800aab44 / 800aad34) |
 | `src/game/render.c` | render 3D: Render_DrawList 80015f4c (80015280, 800162d4, 80015b74), luz 800137d8/800153e4, objetos 800139fc/80013c20/800367d0, matrices 80017ad8, seno 800176c0, frustum 8001607c |
 | `src/game/model.c` | Cobj_OnLoaded 80013374, Model_Register 8001315c (80012c08, 80012de0, 80012f14), registro de assets 8001860c/80018788 |
