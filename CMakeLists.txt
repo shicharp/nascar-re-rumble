@@ -1,0 +1,58 @@
+cmake_minimum_required(VERSION 3.20)
+project(NascarRumble C CXX)
+
+# Port nativo de NASCAR Rumble (PS1, SLUS_010.68) sobre PsyCross.
+# De momento solo Win32 (x86): el codigo descompilado guarda punteros en enteros de 32 bits.
+if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
+    message(FATAL_ERROR "Compila en x86 (32 bits): usa build.bat, que carga vcvars32")
+endif()
+
+set(TP ${CMAKE_SOURCE_DIR}/third_party)
+set(SDL2_DIR_ROOT   ${TP}/SDL2-2.32.8)
+set(OPENAL_DIR_ROOT ${TP}/openal-soft-1.25.2-bin)
+
+# --- Dependencias precompiladas ---------------------------------------------
+add_library(SDL2::SDL2 SHARED IMPORTED)
+set_target_properties(SDL2::SDL2 PROPERTIES
+    IMPORTED_LOCATION             ${SDL2_DIR_ROOT}/lib/x86/SDL2.dll
+    IMPORTED_IMPLIB               ${SDL2_DIR_ROOT}/lib/x86/SDL2.lib
+    INTERFACE_INCLUDE_DIRECTORIES ${SDL2_DIR_ROOT}/include)
+
+add_library(OpenAL::OpenAL SHARED IMPORTED)
+set_target_properties(OpenAL::OpenAL PROPERTIES
+    IMPORTED_LOCATION             ${OPENAL_DIR_ROOT}/bin/Win32/soft_oal.dll
+    IMPORTED_IMPLIB               ${OPENAL_DIR_ROOT}/libs/Win32/OpenAL32.lib
+    INTERFACE_INCLUDE_DIRECTORIES ${OPENAL_DIR_ROOT}/include)
+
+# --- PsyCross (sin tocar su CMakeLists: espera dependencias compiladas desde fuente) ---
+set(PSYCROSS_DIR ${TP}/PsyCross)
+file(GLOB_RECURSE PSYCROSS_SRCS_C ${PSYCROSS_DIR}/src/*.c)   # en Windows incluye los .C en mayusculas
+file(GLOB_RECURSE PSYCROSS_SRCS_CPP ${PSYCROSS_DIR}/src/*.cpp)
+set_source_files_properties(${PSYCROSS_SRCS_C} PROPERTIES LANGUAGE C)
+set_source_files_properties(${PSYCROSS_SRCS_CPP} PROPERTIES LANGUAGE CXX)
+add_library(psycross STATIC ${PSYCROSS_SRCS_C} ${PSYCROSS_SRCS_CPP})
+target_include_directories(psycross PUBLIC ${PSYCROSS_DIR}/include ${PSYCROSS_DIR}/include/psx)
+target_include_directories(psycross PUBLIC ${SDL2_DIR_ROOT}/include ${SDL2_DIR_ROOT}/include/SDL2)
+target_compile_definitions(psycross PUBLIC RENDERER_OGL _CRT_SECURE_NO_WARNINGS NOMINMAX)
+target_link_libraries(psycross PUBLIC SDL2::SDL2 OpenAL::OpenAL opengl32)
+if(MSVC)
+    target_compile_options(psycross PRIVATE /W0)
+endif()
+
+# --- Juego ---------------------------------------------------------------------
+file(GLOB GAME_SRCS CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/*.c ${CMAKE_SOURCE_DIR}/src/game/*.c)
+# El juego se compila como C++ (igual que REDRIVER2): con PGXP las coordenadas de las primitivas
+# (VERTTYPE) son 'half' en C++ y convierten solas; en C habria que envolver cada una con _HF().
+set_source_files_properties(${GAME_SRCS} PROPERTIES LANGUAGE CXX)
+add_executable(nascar ${GAME_SRCS})
+target_include_directories(nascar PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(nascar PRIVATE psycross)
+if(MSVC)
+    target_compile_options(nascar PRIVATE /W3 /wd4244)   # C4244: int -> half en coordenadas PGXP
+    set_target_properties(nascar PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+endif()
+
+# Copia las DLL junto al ejecutable (OpenAL32.lib importa "OpenAL32.dll")
+add_custom_command(TARGET nascar POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${SDL2_DIR_ROOT}/lib/x86/SDL2.dll $<TARGET_FILE_DIR:nascar>
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${OPENAL_DIR_ROOT}/bin/Win32/soft_oal.dll $<TARGET_FILE_DIR:nascar>/OpenAL32.dll)

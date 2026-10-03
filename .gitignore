@@ -1,0 +1,7 @@
+build/
+third_party/*.zip
+third_party/SDL2-*/
+third_party/openal-soft-*/
+*.bmp
+*.log
+*.dmp
