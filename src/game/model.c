@@ -5,6 +5,7 @@
 #include "texslot.h"
 #include "frontend.h"
 #include "model.h"
+#include "race.h"
 
 static_assert(sizeof(void*) == 4, "los modelos guardan punteros de 32 bits (compilar en Win32)");
 
@@ -239,7 +240,10 @@ int Cobj_OnLoaded(NrAsset* a)
         }
         return 0;
     }
-    /* TODO carrera: id < 20000 se renumera segun el coche (DAT_800af6cc) y se registra */
+    /* carrera: los modelos de coche pasan a 10000 + hueco de la parrilla*10 + LOD (se registran con su
+     * libreia en Cars_RegisterModels al llegar la pista); 20001-20009 son comunes */
+    if (a->id < 20000)
+        a->id = a->id % 10 + g_CarLoadOrder[g_CarsLoaded] * 10 + 10000;
     Asset_Register(a);
     return 1;
 }

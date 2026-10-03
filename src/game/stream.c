@@ -1,7 +1,9 @@
+#include <stdio.h>
 #include <string.h>
 #include "mem.h"
 #include "file.h"
 #include "stream.h"
+#include "globals.h"
 
 static int         s_slot = -1;
 static int         s_offset;
@@ -16,13 +18,23 @@ static int         s_blocksLeft = -1;  /* -1 sin limite (carga del nivel), 0 par
 static int         s_sectionBase;      /* CTRL +0x14: tamano de la cabecera */
 static int         s_sectionBusy;      /* DAT_800b0db0 >= 0 */
 static NrAsset*    s_toc;              /* Ctos (DAT_800af768) */
+static char        s_levelPath[128];   /* DAT_800b11f0: el .trk (en carrera se abre antes GlblData.psx) */
+static int         s_reopenTrk;        /* DAT_800af778 == 3 */
+static int         s_phase;            /* solo en el port: 0 cabecera de GlblData, 1 coches, 2 pista */
+static int         s_fileSize;
 
 int Stream_Open(const char* name)
 {
     Stream_Close();
     memset(&s_stats, 0, sizeof(s_stats));
     s_section[0] = 0;
+    snprintf(s_levelPath, sizeof(s_levelPath), "%s", name);
+    if (!g_IsFrontend)
+        name = "GlblData.psx";   /* 8002baa8: la carrera empieza por la biblioteca de coches */
+    s_phase = 0;
+    s_reopenTrk = 0;
     s_slot = File_OpenSearchPaths(name);
+    s_fileSize = s_slot >= 0 ? File_GetSize(s_slot) : 0;
     s_offset = 0;
     s_blocksLeft = -1;
     s_sectionBase = 0;
@@ -58,7 +70,7 @@ int Stream_OnCtos(NrAsset* a)
 }
 
 /* 8002b69c */
-int Stream_StartSection(int section)
+int Stream_StartSection(int section, int last)
 {
     if (s_slot < 0 || !s_toc || s_sectionBusy || s_blocksLeft != 0)
         return 0;
@@ -69,6 +81,8 @@ int Stream_StartSection(int section)
     s_offset = s_sectionBase + (int)NR_Read32(e);
     s_blocksLeft = (int)NR_Read32(e + 4) / STREAM_BLOCK_SIZE;
     s_sectionBusy = 1;
+    s_reopenTrk = last;
+    s_phase = 1;
     return 1;
 }
 
@@ -80,6 +94,31 @@ void Stream_SectionDone(void)
 void Stream_SetIdle(void)
 {
     s_blocksLeft = 0;
+}
+
+/* 80029ea0: cierra GlblData.psx y abre el .trk desde el principio (su propia tabla de secciones) */
+static void Stream_ReopenTrk(void)
+{
+    File_Close(s_slot);
+    s_slot = File_OpenSearchPaths(s_levelPath);
+    s_fileSize = s_slot >= 0 ? File_GetSize(s_slot) : 0;
+    s_offset = 0;
+    s_blocksLeft = -1;
+    s_sectionBase = 0;
+    Asset_Free(s_toc);
+    s_toc = NULL;
+    s_phase = 2;
+    s_reopenTrk = 0;
+}
+
+int Stream_GetLoadProgress(int carsLoaded, int numCars)
+{
+    switch (s_phase)
+    {
+    case 0: return s_sectionBase ? (s_offset << 8) / s_sectionBase : 0;
+    case 1: return numCars ? (carsLoaded << 8) / numCars + 0x100 : 0x100;
+    default: return s_fileSize ? (int)(((int64_t)s_offset << 9) / s_fileSize) + 0x200 : 0x200;
+    }
 }
 
 int Stream_IsOpen(void)
@@ -183,7 +222,12 @@ static void Stream_ProcessChunks(const uint8_t* block, int len)
             break;
         case TAG_CTRL:
             if (s_offset == 0 && off == 0 && size >= 0x18)
-                s_sectionBase = (int)NR_Read32(c + 0x14);   /* fin de la cabecera = inicio de las secciones */
+            {
+                /* fin de la cabecera = inicio de las secciones; la carga inicial se para ahi */
+                s_sectionBase = (int)NR_Read32(c + 0x14);
+                if (s_blocksLeft < 0 && s_sectionBase >= STREAM_BLOCK_SIZE)
+                    s_blocksLeft = s_sectionBase / STREAM_BLOCK_SIZE;
+            }
             s_stats.otherChunks++;
             break;
         default:
@@ -209,6 +253,8 @@ int Stream_Pump(int maxBlocks)
         done++;
         if (s_blocksLeft > 0)
             s_blocksLeft--;
+        if (s_blocksLeft == 0 && s_reopenTrk)
+            Stream_ReopenTrk();
     }
     return done;
 }

@@ -5,6 +5,7 @@
 #include "font.h"
 #include "model.h"
 #include "texslot.h"
+#include "race.h"
 
 #define MAX_TYPES 48
 
@@ -40,10 +41,13 @@ static int Cpag_OnLoadedGame(NrAsset* a)
     if (a->id > 9999)
     {
         if (!g_IsFrontend)
-            return 0;   /* TODO carrera: slot 0xE + coche (DAT_800b0e47) */
-        if (Fe_IsFading() || !Fe_MarkReceiving())
-            return 0;
-        slot = g_FeLoadingSlot + 9;
+            slot = g_RaceGrid.car[g_CarLoadOrder[g_CarsLoaded]].playerNum + 0xe;   /* libreia del coche */
+        else
+        {
+            if (Fe_IsFading() || !Fe_MarkReceiving())
+                return 0;
+            slot = g_FeLoadingSlot + 9;
+        }
     }
     Cpag_UploadToSlot(a->data, a->size, slot);
     return 0;
@@ -73,7 +77,10 @@ static int Asset_Dispatch(NrAsset* a)
         return 0;                  /* DAT_800b0db4 = id */
     case ASSET_rscE:
         Stream_SectionDone();      /* DAT_800b0db0 = -1 */
+        g_CarsLoaded++;            /* DAT_800b0dbc */
         return 0;
+    case ASSET_Ctrk:
+        return Ctrk_OnLoaded(a);   /* 80062680 */
     case ASSET_Cctr:
         /* cambia el estado del nivel: id 0 -> 2, id 1 -> 4 (en juego) */
         if (a->id == 0)

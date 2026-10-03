@@ -44,4 +44,9 @@ void Font_DrawClipped(const char* s, int x, int y, int clipX0, int clipX1, unsig
 int  Font_DrawWrapped(int x0, int y0, int x1, int y1, const char* s, unsigned color);
 void Font_Measure(const char* s, int* w, int* h);
 
+/* Solo en el port: en la carga de la carrera las fuentes irian encima de la pantalla de carga (que aqui se
+ * redibuja desde VRAM cada frame); se suben al terminar */
+void Font_SetDeferUpload(int defer);
+void Font_FlushUploads(void);
+
 #endif

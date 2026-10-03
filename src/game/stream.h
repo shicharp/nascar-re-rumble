@@ -53,7 +53,10 @@ int  Stream_Pump(int maxBlocks);
  * al final de la cabecera, CTRL +0x14). Original: FUN_8002b810 (Ctos), Stream_StartSection 8002b69c;
  * rscB/rscE marcan el principio y el fin de cada seccion (Asset_Dispatch). */
 int  Stream_OnCtos(NrAsset* a);
-int  Stream_StartSection(int section);   /* 0 si ya hay una en curso o no existe */
+/* 'last': al terminar la seccion se reabre el .trk (en carrera, tras el ultimo coche; 8002ae2c) */
+int  Stream_StartSection(int section, int last);   /* 0 si ya hay una en curso o no existe */
+/* Progreso de la carga de la carrera, 0..0x400 (8002a6e4) */
+int  Stream_GetLoadProgress(int carsLoaded, int numCars);
 void Stream_SectionDone(void);           /* rscE */
 /* Tras cargar el nivel el stream se queda parado hasta que se pide una seccion */
 void Stream_SetIdle(void);

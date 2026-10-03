@@ -29,8 +29,8 @@ void TexSlot_Init(void)
     }
     s_tpage[9] = 0x8e;
     s_tpage[10] = 0x9e;
-    s_tpage[0x12] = s_tpage[0x10] | 0x80;
-    s_tpage[0x13] = s_tpage[0x11] | 0x80;
+    s_tpage[0x14] = s_tpage[0x12] | 0x80;   /* DAT_800b6440/42: mips de las paginas 8+ a 8 bits */
+    s_tpage[0x15] = s_tpage[0x13] | 0x80;
     if (g_IsFrontend)
     {
         s_tpage[0xb] = 0x9c;   /* tercer coche del garaje: 8 bits en (0x300, 256) */

@@ -15,6 +15,7 @@
 #include "frontend.h"
 #include "font.h"
 #include "game.h"
+#include "race.h"
 #include "render.h"
 #include "texslot.h"
 #include "model.h"
@@ -120,12 +121,10 @@ int Level_Load(const char* name)
     g_GameInfo->nextMode = 4;
     snprintf(path, sizeof(path), "%s%s", Level_GetDataDir(), name);
     if (g_IsFrontend)
-    {
         Frontend_Load(path);
-        return 1;
-    }
-    NR_Log("Level_Load: carrera '%s' sin portar (Race_Load 80024284)\n", path);
-    return 0;
+    else
+        Race_Load(path);
+    return 1;
 }
 
 /* 800252b0. El original no presenta frames mientras carga (la pantalla queda fija); con PsyCross
@@ -138,18 +137,27 @@ int Level_WaitLoaded(void)
     g_FrameDelta = 1;
     LoadScreen_Show();
 
+    int idle = 0;
     while (g_GameState != GAMESTATE_RUNNING)
     {
         Pad_ReadAll();
-        if (Stream_Pump(1) == 0)
+        int waitingCar = g_GameState == GAMESTATE_LOADED_PART && Race_NextCar();
+        if (Stream_Pump(1) == 0 && !waitingCar && ++idle > 60)
         {
             NR_Log("Level_WaitLoaded: fin del stream sin Cctr (estado %d)\n", g_GameState);
             return 0;
         }
         Asset_DispatchAll();
-        Gfx_BeginFrame(0, 0, 0);
-        Fe_DrawBackground(0);
-        Gfx_Flip(GFX_FLIP_FULL);
+        /* Las paginas de la pista (slots 0-12) pisan la pantalla de carga en VRAM: el original no la vuelve a
+         * dibujar; aqui se deja de presentar cuando empieza a llegar el .trk */
+        if (g_IsFrontend || Stream_GetLoadProgress(g_CarsLoaded, g_RaceGrid.count) < 0x200)
+        {
+            Gfx_BeginFrame(0, 0, 0);
+            Fe_DrawBackground(g_IsFrontend ? 0 : 0x800);   /* en carrera, detras de la barra */
+            if (!g_IsFrontend)
+                Race_DrawProgress();
+            Gfx_Flip(GFX_FLIP_FULL);
+        }
     }
     g_GameInfo->nextMode = 1;
     Stream_SetIdle();               /* el resto (secciones de coches, musica) se lee bajo demanda */
@@ -207,7 +215,7 @@ int Level_Run(const char* name, int isFrontend)
     if (g_IsFrontend)
         Frontend_MainLoop();
     else
-        NR_Log("Race_MainLoop 800299a8 sin portar\n");
+        Race_MainLoop();
     Level_Unload(name);
     return 0;
 }
@@ -231,10 +239,15 @@ int Game_Main(void)
         Movie_Play("Ea_logo.fsv", 4, 0, 0, 0x140, 0xf0);
         Gfx_FreeBuffers();
 
-        /* Bucle principal: front-end y carrera elegida. La carrera aun no existe en el port. */
-        Level_Run("Fe.trk", 1);
-        if (g_SelectedTrack[0])
+        /* Bucle principal: front-end y carrera elegida */
+        for (;;)
+        {
+            g_SelectedTrack[0] = 0;
+            Level_Run("Fe.trk", 1);
+            if (!g_SelectedTrack[0])
+                break;
             Level_Run(g_SelectedTrack, 0);
+        }
     }
     Game_Shutdown();
     return 0;

@@ -52,11 +52,19 @@ void Lsc_LoadToVram(const char* name, int show)
     }
 }
 
-/* 800921a0 (rama del front-end; en carrera elige Help%ld.lsc o la pantalla de la pista) */
+/* 800921a0: front-end "Feld.lsc"; carrera "<sede><pista>{a,b,c}.lsc" (letra al azar). Pendiente: las
+ * pantallas de ayuda HelpScrn\Help%ld.lsc antes de la primera carrera (DAT_800b7117). */
 const char* LoadScreen_GetName(void)
 {
     static char name[64];
-    snprintf(name, sizeof(name), "%sFeld.lsc", Level_GetDataDir());
+    if (g_IsFrontend)
+        snprintf(name, sizeof(name), "%sFeld.lsc", Level_GetDataDir());
+    else
+    {
+        int track = g_Settings.champType ? g_Settings.curTrack : g_Settings.track;
+        snprintf(name, sizeof(name), "%s%s%d%c.lsc", Level_GetDataDir(), Fe_VenueCode(g_Venue), track + 1,
+                 "abc"[g_Ticks % 3]);
+    }
     return name;
 }
 

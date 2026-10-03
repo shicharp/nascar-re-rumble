@@ -293,7 +293,7 @@ int Fe_CarAvailable(int driver, int car)
 /* 80023e88: empieza a cargar por streaming la seccion del coche (una a la vez; rscE la cierra) */
 static int Car_StartLoad(int section)
 {
-    return Stream_StartSection(section);
+    return Stream_StartSection(section, 0);
 }
 
 /* id del Cobj cargado (10000 + (equipo+1)*100 + clase*10 + 1) -> equipo*3 + clase */

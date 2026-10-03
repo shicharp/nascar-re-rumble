@@ -20,6 +20,8 @@ static uint16_t  s_clut;              /* DAT_800af840: CLUT del texto actual (0 
 static uint16_t  s_clutAlt;           /* DAT_800af842: paleta 1 (flags & 4) */
 static uint16_t  s_clutStd;           /* DAT_800af844: paleta 0 */
 static int       s_nextV;             /* DAT_800af846 */
+static int       s_deferUpload;       /* solo en el port: subir los bitmaps al terminar la carga */
+static int       s_numUploaded;
 static uint16_t  s_palettes[2][16];   /* DAT_800b54c0 / DAT_800b54e0 */
 
 /* 800aa570: colores para los codigos 10..31 (RGB555 con R en los bits altos) */
@@ -69,6 +71,7 @@ void Font_Init(void)
         s_tpage[i] = 0;
     }
     s_nextV = 1;
+    s_numUploaded = 0;
     s_clut = 0;
     s_cur = NULL;
     s_numPalettes = 0;
@@ -92,6 +95,19 @@ int Font_Select(int index)
     s_curIndex = index;
     Font_SelectClut();
     return 1;
+}
+
+void Font_SetDeferUpload(int defer)
+{
+    s_deferUpload = defer;
+}
+
+static void Font_Upload(int index);
+
+void Font_FlushUploads(void)
+{
+    while (s_numUploaded < s_numFonts)
+        Font_Upload(s_numUploaded++);
 }
 
 int Font_Count(void)
@@ -159,8 +175,9 @@ static void Font_Load(const uint8_t* d, int param)
     f->bpp = (f->bitmap[0] == 'D') ? 1 : 4;          /* 8004417c */
     f->rowBytes = (short)((((int16_t)NR_Read16(f->bitmap + 4) * f->bpp + 0x1f) & ~0x1f) >> 3);
 
-    Font_Upload(s_numFonts);
     s_numFonts++;
+    if (!s_deferUpload)
+        Font_FlushUploads();
     if (s_numFonts == 1)
         Font_Select(0);
 }

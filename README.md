@@ -38,7 +38,9 @@ software) → vídeos (omitidos) → `Level_Run("Fe.trk")` → pantalla de carga
 navegables: principal (100), tipo de carrera (200), opciones de carrera (300), opciones de juego (400) y
 audio (500), con cuadros de mensaje, la selección de piloto/coche (1200) con el coche 3D que llega por
 secciones del FE.TRK y la elección de sede/pista (1300) con el trazado en 3D; al confirmar se monta la
-parrilla y se sale hacia la carrera, que aún no está portada). `--shot` guarda el frame N y sale; `--press "185:down,205:right"` simula
+parrilla y se carga la carrera (GlblData.psx + un coche por sección + el .trk, con su pantalla de carga y barra
+de progreso). El bucle de carrera aún no está portado: de momento se ven los coches cargados y START vuelve al
+front-end). `--shot` guarda el frame N y sale; `--press "185:down,205:right"` simula
 pulsaciones (para verificar sin intervención; botones: up, down, left, right, cross, circle, triangle, square,
 start, select, l1, r1, l2, r2).
 `--viewer` es el visor de páginas Cpag (flechas para cambiar de página).
@@ -52,6 +54,7 @@ start, select, l1, r1, l2, r2).
 | `src/game/fe_menu.c` | widgets del front-end (8008e614, 80079784, 8008e51c, 8008e75c, 8008b338, 8008d064, 8008d5f4, 8008b6b4), mando (8008a7f4, 8008a994, 8008aa90, 8008a66c), menús (8007a684, 8007a780, 8008abf8, 8008ac5c) cuadro de mensaje (8008cb88) y pantallas 100 (8007b2ac), 200 (8007b7fc), 300 (8007f4a0), 400 (8007bf00), 500 (8007c540) |
 | `src/game/fe_select.c` | pantalla 1200 (80081a9c): tabla de pilotos 800aa5ec, atlas de miniaturas (80092f5c, 8008e2ec, RLE 8009307c), carrusel (8008b9d4, 8008bc34), coches del garaje (800923cc, 80090a88, 80090674), 8008aee4, 8008dc1c, 8008efec |
 | `src/game/fe_track.c` | pantalla 1300 (800838f8), trazado TkFE (8001893c, 80018ef0), 80090718, 80090860, 8008e13c, 8008c308, 8008b80c, montaje de la carrera Fe_StartRace 8008927c |
+| `src/game/race.c` | Race_Load 80024284, Race_NextCar 80023ef4, barra 80024f08, Ctrk 80062680, Cars_RegisterModels 800134f0, Race_MainLoop 800299a8 (provisional) |
 | `src/game/render.c` | render 3D: Render_DrawList 80015f4c (80015280, 800162d4, 80015b74), luz 800137d8/800153e4, objetos 800139fc/80013c20/800367d0, matrices 80017ad8, seno 800176c0, frustum 8001607c |
 | `src/game/model.c` | Cobj_OnLoaded 80013374, Model_Register 8001315c (80012c08, 80012de0, 80012f14), registro de assets 8001860c/80018788 |
 | `src/game/texslot.c` | slots de textura: 80066fe0, 800669d4, Cpag_UploadToSlot 80066d00, 80066c4c, CLUTs 8006674c/800668cc, 800666c8, 800674fc |
