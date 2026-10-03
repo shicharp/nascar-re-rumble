@@ -24,6 +24,13 @@ static int       s_cur;
 static int       s_primBytes;
 static int       s_primUsed;
 static int       s_flipCount;
+
+/* Primitivas del frame en orden de creacion. Se enlazan en Gfx_Flip de la ultima a la primera, de modo
+ * que dentro de un mismo indice de OT se dibujan en el orden en que se crearon (como FUN_8001a1b4). */
+#define GFX_MAX_PRIMS 8192
+static void*     s_pendPrim[GFX_MAX_PRIMS];
+static uint16_t  s_pendIdx[GFX_MAX_PRIMS];
+static int       s_pendCount;
 static const char* s_shotPath;
 static int       s_shotFrame = -1;
 
@@ -77,6 +84,7 @@ void Gfx_BeginFrame(int r, int g, int b)
     setRGB0(&buf->draw, r, g, b);
     ClearOTagR((u_long*)buf->ot, GFX_OT_LEN);
     s_primUsed = 0;
+    s_pendCount = 0;
 }
 
 void* Gfx_AllocPrim(int bytes)
@@ -112,6 +120,11 @@ int Gfx_GetDisplayBufferY(void)
     return s_buf[s_cur ^ 1].draw.clip.y;
 }
 
+int Gfx_GetFlipCount(void)
+{
+    return s_flipCount;
+}
+
 void Gfx_SetAutoShot(const char* path, int frame)
 {
     s_shotPath = path;
@@ -120,11 +133,29 @@ void Gfx_SetAutoShot(const char* path, int frame)
 
 void Gfx_AddPrim(int z, void* prim)
 {
+    if (!prim || s_pendCount == GFX_MAX_PRIMS)
+        return;
     if (z < 0)
         z = 0;
     if (z >= GFX_OT_LEN)
         z = GFX_OT_LEN - 1;
-    addPrim(&s_buf[s_cur].ot[z], prim);
+#if USE_PGXP
+    setpgxpindex(prim, PGXP_GetIndex(1));   /* el indice PGXP se toma al crear la primitiva */
+#endif
+    s_pendPrim[s_pendCount] = prim;
+    s_pendIdx[s_pendCount] = (uint16_t)z;
+    s_pendCount++;
+}
+
+static void LinkPendingPrims(GfxBuffer* buf)
+{
+    for (int i = s_pendCount - 1; i >= 0; i--)
+    {
+        OT_TAG* ot = &buf->ot[s_pendIdx[i]];
+        setaddr(s_pendPrim[i], getaddr(ot));
+        setaddr(ot, s_pendPrim[i]);
+    }
+    s_pendCount = 0;
 }
 
 /* 8001a24c. Pendiente: modos de pantalla partida y retrovisor (cambian area de dibujo y offset). */
@@ -137,13 +168,15 @@ void Gfx_Flip(int mode)
     VSync(0);
     PutDispEnv(&buf->disp);
     PutDrawEnv(&buf->draw);
+    LinkPendingPrims(buf);
     DrawOTag((u_long*)&buf->ot[GFX_OT_LEN - 1]);
     FntFlush();          /* PsyCross dibuja el texto al momento: va dentro de la escena */
     PsyX_EndScene();     /* en PsyCross el juego cierra la escena y presenta el frame */
 
     s_cur ^= 1;
 
-    if (s_shotPath && ++s_flipCount == s_shotFrame)
+    s_flipCount++;
+    if (s_shotPath && s_flipCount == s_shotFrame)
     {
         Gfx_SaveScreenshot(s_shotPath);
         NR_Log("Captura del frame %d guardada en %s\n", s_flipCount, s_shotPath);

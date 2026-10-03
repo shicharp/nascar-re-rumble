@@ -28,6 +28,7 @@ void  Gfx_AddPrimDepth(int depth, void* prim);  /* profundidad del juego (etique
 void  Gfx_Flip(int mode);
 int   Gfx_GetDrawBufferY(void);                 /* y del buffer que se esta dibujando (0 o 256) */
 int   Gfx_GetDisplayBufferY(void);              /* y del buffer que se ve */
+int   Gfx_GetFlipCount(void);                   /* frames presentados desde el arranque */
 
 /* Guarda el ultimo frame mostrado (buffer frontal de la ventana) como BMP de 24 bits */
 int   Gfx_SaveScreenshot(const char* path);

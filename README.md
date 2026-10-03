@@ -34,8 +34,10 @@ nascar.exe --viewer [fichero de stream] [--page N]
 
 Estado actual: arranque real del juego. `main` → `Game_Init` → pantalla legal (`Legal.lsc`, MDEC por
 software) → vídeos (omitidos) → `Level_Run("Fe.trk")` → pantalla de carga `Feld.lsc` mientras llega
-`FE.TRK` por streaming hasta el `Cctr` → `Frontend_MainLoop` (pantalla 2000 con fundido → pantalla 100,
-aún sin portar). `--shot` guarda el frame N y sale (para verificar sin intervención).
+`FE.TRK` por streaming hasta el `Cctr` → `Frontend_MainLoop` (pantalla 2000 con fundido → **menú
+principal** navegable: opciones, ajustes, descripción, barra de ayuda; las pantallas a las que lleva
+aún no están portadas). `--shot` guarda el frame N y sale; `--press "185:down,205:right"` simula
+pulsaciones (para verificar sin intervención).
 `--viewer` es el visor de páginas Cpag (flechas para cambiar de página).
 
 ## Estructura
@@ -44,6 +46,8 @@ aún sin portar). `--shot` guarda el frame N y sale (para verificar sin interven
 |---|---|
 | `src/game/game.c` | main 800792a8, Game_Init 80079470, Legal_Show 80090d98, Level_Run 80029be4, Level_Load 80024684, Frontend_Load 80024080, Level_WaitLoaded 800252b0, Frontend_MainLoop 8002865c, Level_Unload 80025448, Frame_Wait 800285e4 |
 | `src/game/frontend.c` | Frontend_Update 8007a994 (pantallas + fundidos), pantalla 2000 80089240, Fe_GetString 80090984, Fe_DrawVramRect 8008c86c, Fe_DrawBackground 8008b79c, Crle 80092e08, TxtR 80092dec |
+| `src/game/fe_menu.c` | widgets del front-end (8008e614, 80079784, 8008e51c, 8008e75c, 8008b338, 8008d064, 8008d5f4, 8008b6b4), mando (8008a7f4, 8008a994, 8008aa90, 8008a66c), menús (8007a684, 8007a780, 8008abf8, 8008ac5c) y pantalla 100 (8007b2ac) |
+| `src/game/font.c` | fuentes Cfnt: 800446b8, 80043f88, 800441a4, 800443cc, 8004463c, 800447b8, 80044944, 80044a44, 80044d24, 80045140 |
 | `src/game/lsc.c` | Lsc_LoadToVram 80090ef8, LoadScreen_Show 80024c58, FUN_800921a0 |
 | `src/game/mdec.c` | FUN_80095d70 + FUN_8009905c + hardware MDEC (BS v2 por software) |
 | `src/game/pad.c` | Pad_GetButtons 8001dac0, FUN_8005fc54 |

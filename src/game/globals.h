@@ -40,7 +40,13 @@ extern char      g_LevelPath[128];  /* DAT_800b0d70 */
 extern char      g_SelectedTrack[16]; /* DAT_800ab7a0: pista elegida en el front-end */
 extern int       g_BootState;       /* DAT_800b7068: 0 primer arranque, 1 ya inicializado, 2 tras memcard */
 
-/* Contador de vblanks (DAT_800af714 / DAT_800af738 los lleva el callback de VSync en el original) */
-int Timer_GetVBlank(void);
+/* Tiempo. El callback de VSync del original (~8001dcd4) suma 5 por vblank (unidades de 1/300 s):
+ * DAT_800af714 siempre y DAT_800af738 solo en los estados 4 y 13 (tiempo de juego, se para en pausa).
+ * Frame_Wait copia DAT_800af738 en DAT_800af748. */
+extern int g_Ticks;       /* DAT_800af714 */
+extern int g_GameTime;    /* DAT_800af738 */
+extern int g_FrameTime;   /* DAT_800af748 */
+void Timer_Update(void);  /* hace el trabajo del callback de VSync a partir del reloj de PsyCross */
+int  Timer_GetVBlank(void);
 
 #endif

@@ -22,8 +22,13 @@
 #define PADB_SQUARE   (1u << 31)
 
 void     Pad_Init(void);
+int      Pad_GetType(int port);   /* FUN_8001d840: 0 sin mando, 4 digital, 7 analogico, 2 neGcon */
 uint32_t Pad_GetButtons(int port);
 void     Pad_ReadAll(void);
+
+/* Pruebas: "frame:boton,frame:boton..." (up, down, left, right, cross, triangle, start...).
+ * Cada pulsacion simulada dura 3 frames en el mando 1. */
+void     Pad_SetScript(const char* script);
 
 extern uint32_t g_PadButtons[2];   /* DAT_800af700 */
 

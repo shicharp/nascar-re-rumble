@@ -13,6 +13,7 @@
 #include "lsc.h"
 #include "globals.h"
 #include "frontend.h"
+#include "font.h"
 #include "game.h"
 
 GameOptions g_Options;
@@ -51,9 +52,11 @@ void Legal_Show(int skippable)
 {
     (void)skippable;
     Lsc_LoadToVram("CW\\Opening\\Legal.lsc", 1);
-    int end = Timer_GetVBlank() + (g_Options.skipLegal ? 30 : 1500);
-    while (Timer_GetVBlank() < end)
+    Timer_Update();
+    int end = g_Ticks + (g_Options.skipLegal ? 150 : 1500);   /* 1500 ticks = 5 s */
+    while (g_Ticks < end)
     {
+        Timer_Update();
         Pad_ReadAll();
         if ((g_PadButtons[0] | g_PadButtons[1]) & (PADB_START | PADB_CROSS))
             break;
@@ -63,20 +66,21 @@ void Legal_Show(int skippable)
     }
 }
 
-/* 800285e4: espera al siguiente vblank y calcula el delta del frame (maximo 30) */
+/* 800285e4: espera a que avance el tiempo de juego y calcula el delta del frame (maximo 30 ticks) */
 void Frame_Wait(void)
 {
-    int now, delta;
+    int delta;
     do
     {
         Pad_ReadAll();
-        now = Timer_GetVBlank();
-        delta = now - s_lastFrameTime;
+        Timer_Update();
+        g_FrameTime = g_GameTime;
+        delta = g_GameTime - s_lastFrameTime;
     } while (delta < 1);
     if (delta > 30)
         delta = 30;
     g_FrameDelta = delta;
-    s_lastFrameTime = now;
+    s_lastFrameTime = g_GameTime;
 }
 
 /* 8009233c */
@@ -98,6 +102,7 @@ void Frontend_Load(const char* path)
     strcpy(g_LevelPath, path);
     Gfx_InitBuffers(0x478);
     Stream_Open(g_LevelPath);       /* Stream_Open 8002baa8: en el front-end se abre el propio .trk */
+    Font_Init();                    /* FUN_800446b8 */
     Frontend_InitCamera();
 }
 
@@ -121,7 +126,9 @@ int Level_Load(const char* name)
  * hay que seguir presentando, asi que se redibuja la pantalla de carga en cada vuelta. */
 int Level_WaitLoaded(void)
 {
-    s_lastFrameTime = Timer_GetVBlank();
+    Timer_Update();
+    s_lastFrameTime = g_GameTime;
+    g_FrameTime = 0;
     g_FrameDelta = 1;
     LoadScreen_Show();
 

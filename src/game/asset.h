@@ -11,6 +11,11 @@
 #define ASSET_Cctr NR_TAG('C', 'c', 't', 'r')
 #define ASSET_Crle NR_TAG('C', 'r', 'l', 'e')
 #define ASSET_TxtR NR_TAG('T', 'x', 't', 'R')
+#define ASSET_Cfnt NR_TAG('C', 'f', 'n', 't')
+#define ASSET_Bmdc NR_TAG('B', 'm', 'd', 'c')
+#define ASSET_Lmdc NR_TAG('L', 'm', 'd', 'c')
+#define ASSET_Tmdc NR_TAG('T', 'm', 'd', 'c')
+#define ASSET_Gmdc NR_TAG('G', 'm', 'd', 'c')
 
 /* Procesa todos los assets que haya en la cola del stream */
 void Asset_DispatchAll(void);

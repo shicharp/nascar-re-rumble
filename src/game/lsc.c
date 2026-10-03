@@ -33,7 +33,7 @@ static int LoadLscFile(const char* name)
         return 0;
     const unsigned char* d = (const unsigned char*)buf;
     int second = (int)NR_Read32(d);
-    int ok = Lsc_DecodeToVram(d + 8, second, LSC_VRAM_X, 0) &&
+    int ok = Lsc_DecodeToVram(d + 8, size - 8, LSC_VRAM_X, 0) &&
              Lsc_DecodeToVram(d + second + 8, size - second - 8, LSC_VRAM_X, 0x100);
     Pool_Free(buf);
     return ok;
