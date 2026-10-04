@@ -13,6 +13,8 @@
 #include "carphys.h"
 #include "ai.h"
 #include "collide.h"
+#include "hud.h"
+#include "globals.h"
 
 RaceCar g_Cars[RACE_MAX_CARS];
 int     g_NumCars;
@@ -83,6 +85,8 @@ static void Human_InitCtrl(uint8_t* ctrl)
     *(int*)(ctrl + 0x5c) = 0;
     *(int*)(ctrl + 0x60) = 0;
     *(int*)(ctrl + 0x68) = -1;
+    *(int*)(ctrl + 4) = -1;                                      /* 8005fca4: tiempo en contra direccion */
+    ctrl[0x58] = (uint8_t)(g_GameInfo->isRestart ? 0 : Hud_GetSetting(ctrl[0x59]));   /* nivel del marcador */
 }
 
 /* 8003132c: parrilla en dos columnas (+-0xA00 a los lados, 13 * 0x200 hacia atras por coche) a partir de la
@@ -194,6 +198,7 @@ void Race_UpdateCars(int dt)
             continue;
         Human_ReadPad(c, c->ctrl[0x59]);
         Human_Control(c);
+        Human_Buttons(c);
     }
     Ai_UpdateLaps();
     Ai_UpdateAll(dt);
@@ -242,6 +247,25 @@ typedef struct
 
 static RaceCamView s_views[2];
 static int         s_viewMode[2];   /* DAT_800af8c0 */
+
+RaceCar* RaceCam_GetTarget(int view)
+{
+    return s_views[view & 1].target;
+}
+
+/* 8005ed10 (parte): siguiente vista de persecucion (la de dentro del coche, tipo 2, pendiente) */
+void RaceCam_CycleView(int view, int dir)
+{
+    int m = s_viewMode[view & 1];
+    for (int i = 0; i < 4; i++)
+    {
+        m = (m + dir + 4) % 4;
+        if (s_presets[m].type == 3)
+            break;
+    }
+    s_viewMode[view & 1] = m;
+    memset(s_views[view & 1].vel, 0, sizeof(s_views[view & 1].vel));
+}
 
 int RaceCam_GetSegment(int view)
 {

@@ -13,5 +13,6 @@ void Ai_UpdateAll(int dt);               /* ruta, objetivo, conduccion y mandos 
 void Ai_UpdateLaps(void);                /* Car_UpdateLap de la IA y de los humanos */
 void Car_UpdateLap(uint8_t* phys, int curve);   /* 8003014c */
 void Race_UpdatePositions(int dt);       /* 8002fc9c */
+int  Car_TrackDeltaPublic(uint8_t* p1, uint8_t* p2);   /* 8002f094: puntos de TCRV de ventaja de p1 */
 
 #endif

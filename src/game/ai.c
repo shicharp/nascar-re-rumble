@@ -492,7 +492,7 @@ static void Ai_UpdateTarget(RaceCar* e, int dt)
 }
 
 /* 8002f094: distancia por la pista (en puntos de TCRV) entre dos coches; > 0 si el primero va delante */
-static int Car_TrackDelta(uint8_t* p1, uint8_t* p2)
+int Car_TrackDeltaPublic(uint8_t* p1, uint8_t* p2)
 {
     if (!p1 || !p2 || !g_Track)
         return 0;
@@ -515,7 +515,7 @@ static int Ai_RubberBand(RaceCar* e)
     for (int h = 0; h < 2; h++)
         if (g_Humans[h])
         {
-            int v = Car_TrackDelta(Ai_Phys(e), g_Humans[h]->phys);
+            int v = Car_TrackDeltaPublic(Ai_Phys(e), g_Humans[h]->phys);
             if (!found || Abs_(v) < Abs_(best))
             {
                 best = v;
@@ -826,6 +826,12 @@ void Car_UpdateLap(uint8_t* c, int curve)
             int t = g_RaceTime - I32(c, 0x32c);
             if (I32(c, 0x334) == 0 || t < I32(c, 0x334))
                 I32(c, 0x334) = t;
+            int slot = ((RaceCar*)ENT(c))->id - 1000;
+            int rec = (t + 1) / 3;
+            if (rec > 0xffff)
+                rec = 0xffff;
+            if (slot >= 0 && slot < 6 && (g_CarRecords[slot].b == 0 || rec < g_CarRecords[slot].b))
+                g_CarRecords[slot].b = rec;   /* mejor vuelta (DAT_800b12b4 + id * 0x18) */
             I32(c, 0x328)++;
             if (g_Settings.laps <= I32(c, 0x328))
                 I32(c, 0x330) = g_RaceTime - 900;   /* meta (fin de carrera 8002b920 / 80074574: pendiente) */

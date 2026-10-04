@@ -21,6 +21,7 @@
 #include "sprite.h"
 #include "cnet.h"
 #include "racecar.h"
+#include "hud.h"
 
 uint8_t g_CarLoadOrder[8];
 int     g_CarsLoaded;
@@ -139,34 +140,10 @@ int Ctrk_OnLoaded(NrAsset* a)
     return 1;
 }
 
-/* 80043520 (parte): cuenta atras "3", "2", "1", "GO!!!" (cada 300 tics, fuente 3) y vueltas (fuente 0).
- * Pendiente: posicion, tiempos, iconos de poderes y mensajes. */
+/* 80043520: Hud_Draw (hud.c) */
 static void Race_DrawHud(void)
 {
-    if (g_RaceTime < 0x4b0)
-    {
-        static const char* const txt[4] = { "3", "2", "1", "GO!!!" };
-        static const int col[4] = { 5, 9, 6, 6 };
-        int k = g_RaceTime < 300 ? 0 : g_RaceTime < 600 ? 1 : g_RaceTime < 900 ? 2 : 3;
-        Font_Select(3);
-        int w, h;
-        Font_Measure(txt[k], &w, &h);
-        Font_DrawString(txt[k], 0xa0 - w / 2, 0x2a, col[k]);
-    }
-    Font_Select(0);
-    char line[32];
-    const uint8_t* ph = g_Humans[0] ? g_Humans[0]->phys : NULL;
-    int lap = ph ? *(const int*)(ph + 0x328) + 1 : 1;   /* vueltas de la fisica (+0x328) */
-    if (lap > g_Settings.laps)
-        lap = g_Settings.laps;
-    snprintf(line, sizeof(line), "lap %d/%d  ", lap, g_Settings.laps);
-    Font_DrawString(line, 10, 0x16, 8);
-    if (ph && ph[0x31a] != 0xff)
-    {
-        snprintf(line, sizeof(line), "pos %d/%d  ", ph[0x31a] + 1, g_NumCars);   /* posicion (+0x31A) */
-        Font_DrawString(line, 10, 0x26, 8);
-    }
-    Font_Select(1);
+    Hud_Draw(0);
 }
 
 /* 800299a8 + 80026f28 (un jugador). Del bucle original estan: tiempo de carrera, texturas animadas,
@@ -180,6 +157,7 @@ void Race_MainLoop(void)
     g_RaceTime = g_PrevRaceTime = 0;
     Race_CreateCars();             /* 8003132c (desde Level_Run) */
     RaceCam_Init();
+    Hud_Init();
     while (g_GameState == GAMESTATE_RUNNING)
     {
         Frame_Wait();
@@ -189,6 +167,7 @@ void Race_MainLoop(void)
         g_RaceTime += dt;              /* Race_UpdateTime 800269c0 */
         Track_Animate(dt);             /* 80061e94 */
         Race_UpdateCars(dt);
+        Hud_Update(dt);                /* 80042330 */
         RaceCam_Update(0, dt);         /* 8005f034 */
 
         Sprite_Clear();                /* Race_DrawView 8006422c */

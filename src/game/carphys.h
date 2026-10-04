@@ -19,5 +19,6 @@ void     Physics_PlaceWheelsAll(int view);                              /* 8004f
 /* Mando: 8005fc54 + 8001cf74 + 8005f928 (bits de accion en ctrl + 8) y el control del coche humano 8004cae8 */
 void     Human_ReadPad(RaceCar* e, int port);
 void     Human_Control(RaceCar* e);
+void     Human_Buttons(RaceCar* e);     /* 8005f708: SELECT (corto camara, largo marcador), L1/L2 en automatico */
 
 #endif

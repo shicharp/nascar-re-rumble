@@ -2,6 +2,7 @@
 #include "pad.h"
 #include "carphys.h"
 #include "carphys_int.h"
+#include "hud.h"
 
 /* ---------------------------------------------------------------- controles del coche */
 
@@ -348,4 +349,31 @@ void Human_Control(RaceCar* e)
     Pad_Edge(U32(ctrl, 8), B_(ctrl) + 0x2c);
     if (I32(ctrl, 0x30) == 0 && g_RaceTime > 900 && !(U16(c, 0x33a) & 0x82))
         Car_Reset(e, 1);
+}
+
+/* 8005f708 */
+void Human_Buttons(RaceCar* e)
+{
+    uint8_t* ctrl = e->ctrl;
+    uint8_t* c = PTR(ctrl, 0);
+    uint32_t a = U32(ctrl, 8);
+    if (I32(c, 0x428) != 0)
+    {
+        Pad_Edge(a, ctrl + 0x18);
+        if (I32(ctrl, 0x1c) == 0)
+            RaceCam_CycleView(ctrl[0x59], 1);
+        Pad_Edge(a, ctrl + 0x20);
+        if (I32(ctrl, 0x24) == 0)
+            Hud_CycleLevel(e, 1);
+    }
+    Pad_Edge(a, ctrl + 0x10);
+    if (I32(ctrl, 0x14) == 0)
+        I32(ctrl, 0x54) = g_RaceTime;
+    else if (I32(ctrl, 0x14) == 1)
+    {
+        if (g_RaceTime - I32(ctrl, 0x54) < 300)
+            RaceCam_CycleView(ctrl[0x59], 1);
+        else
+            Hud_CycleLevel(e, 1);
+    }
 }
