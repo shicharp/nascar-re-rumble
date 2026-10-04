@@ -1,3 +1,5 @@
+#include "pause.h"
+#include "frontend.h"
 #include <stdio.h>
 #include <string.h>
 #include "libgte.h"
@@ -207,16 +209,28 @@ void Level_Unload(const char* name)
 /* 80029be4 (sin la logica de reinicio de carrera) */
 int Level_Run(const char* name, int isFrontend)
 {
-    g_IsFrontend = isFrontend;
-    if (!Level_Load(name))
-        return 0;
-    if (!Level_WaitLoaded())
-        return 0;
-    if (g_IsFrontend)
-        Frontend_MainLoop();
-    else
-        Race_MainLoop();
-    Level_Unload(name);
+    for (;;)
+    {
+        g_RaceRestart = 0;
+        g_IsFrontend = isFrontend;
+        if (!Level_Load(name))
+            return 0;
+        if (!Level_WaitLoaded())
+            return 0;
+        if (g_IsFrontend)
+            Frontend_MainLoop();
+        else
+            Race_MainLoop();
+        Level_Unload(name);
+        if (!g_RaceRestart)
+            break;
+        /* "Restart Race": borra la posicion final y el tiempo de cada registro y vuelve a cargar */
+        for (int i = 0; i < g_RaceGrid.count && i < 6; i++)
+        {
+            g_CarRecords[i].a = 0;
+            g_CarRecords[i].startPos = 0;
+        }
+    }
     return 0;
 }
 

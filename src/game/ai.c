@@ -20,6 +20,7 @@
 #include "carphys.h"
 #include "carphys_int.h"
 #include "ai.h"
+#include "pause.h"
 
 static inline int Min_(int a, int b) { return a < b ? a : b; }
 
@@ -834,7 +835,23 @@ void Car_UpdateLap(uint8_t* c, int curve)
                 g_CarRecords[slot].b = rec;   /* mejor vuelta (DAT_800b12b4 + id * 0x18) */
             I32(c, 0x328)++;
             if (g_Settings.laps <= I32(c, 0x328))
-                I32(c, 0x330) = g_RaceTime - 900;   /* meta (fin de carrera 8002b920 / 80074574: pendiente) */
+            {
+                /* meta: con un humano, 5 tics y resultados; sin humanos, al terminar el coche que se sigue
+                 * (mensajes 8002b920 y camara 80074574: pendientes) */
+                RaceCar* e = (RaceCar*)ENT(c);
+                if (g_RaceEndTimer < 1)
+                {
+                    if (e->type == 1)
+                    {
+                        RaceCar* other = g_Humans[0] == e ? g_Humans[1] : g_Humans[0];
+                        if (g_NumHumans < 2 || (other && I32(other->phys, 0x330) != 0))
+                            g_RaceEndTimer = 5;
+                    }
+                    else if (g_NumHumans == 0 && e == RaceCam_GetTarget(0))
+                        g_RaceEndTimer = 0xe10;
+                }
+                I32(c, 0x330) = g_RaceTime - 900;
+            }
             d -= len;
             I32(c, 0x32c) = g_RaceTime;
         }

@@ -11,6 +11,7 @@ enum
     GAMESTATE_LOADING = 1,
     GAMESTATE_LOADED_PART = 2,
     GAMESTATE_RUNNING = 4,
+    GAMESTATE_RESULTS = 0xd,    /* resultados al terminar la carrera */
 };
 
 /* Struct global de 0xAC bytes reservado en Game_Init (DAT_800af744) */

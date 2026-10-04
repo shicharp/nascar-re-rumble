@@ -248,6 +248,11 @@ typedef struct
 static RaceCamView s_views[2];
 static int         s_viewMode[2];   /* DAT_800af8c0 */
 
+int RaceCam_GetViewMode(int view)
+{
+    return s_viewMode[view & 1];
+}
+
 RaceCar* RaceCam_GetTarget(int view)
 {
     return s_views[view & 1].target;

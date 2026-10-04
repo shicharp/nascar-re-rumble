@@ -44,7 +44,8 @@ cercanas, horizonte/cielo de capas THOR, texturas animadas y halos de luz); en c
 cuenta atrás y la física original de los coches (X acelera, cuadrado frena, círculo freno de mano, cruceta gira,
 L1/L2 cambio manual, triángulo vuelve a la pista), la IA que corre por la red de trazadas, los choques entre
 coches, las vueltas y las posiciones, y el marcador (mapa, cuentarrevoluciones, tiempos; SELECT largo cambia de
-nivel, corto de camara); START vuelve al front-end). `--shot` guarda el frame N y sale; `--press "185:down,205:right"` simula
+nivel, corto de camara), la pausa con START (camara, marcador, audio, reiniciar, salir) y los resultados al
+terminar; "Exit Race" vuelve al front-end). `--shot` guarda el frame N y sale; `--press "185:down,205:right"` simula
 pulsaciones (para verificar sin intervención; botones: up, down, left, right, cross, circle, triangle, square,
 start, select, l1, r1, l2, r2).
 `--viewer` es el visor de páginas Cpag (flechas para cambiar de página).
@@ -65,6 +66,7 @@ start, select, l1, r1, l2, r2).
 | `src/game/ai.c` | IA: Ai_UpdatePath 80030928, Ai_UpdateTarget 8002de7c, Ai_DriveAll 8002f4ac, Ai_ChooseNext 80030504, AiCar_Create 8002cfbc; vueltas 8003014c y posiciones 8002fc9c |
 | `src/game/collide.c` | choques entre coches: 80061808 / 800613b4 / 80060f88, Car_CollidePair 8005c05c (80059f0c, 8005a534, 8005ba30) |
 | `src/game/hud.c` | marcador: Race_DrawHud 80043520, mapa 8004274c, cuentarrevoluciones 800430e4 / 80042330, mensajes 800429d0, diferencia 8002cd84 |
+| `src/game/pause.c` | pausa y fin de carrera: Race_UpdateState 80027e90, Pause_Menu 80025ad4 (8002552c, 80025a60), resultados 8002896c, 800266f0 |
 | `src/game/exe.c` | lectura de tablas de datos del propio SLUS_010.68 (Exe_Ptr) |
 | `src/game/cnet.c` | redes de trazadas Cnet 8004c368 / 8002cc50 / 8004bd74 |
 | `src/game/vecmath.c` | vectores 16.16 del juego (80019518-80019da4, 800184b0) |

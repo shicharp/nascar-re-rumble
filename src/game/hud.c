@@ -28,7 +28,7 @@ static uint8_t s_hudSetting[2] = { 1, 1 };   /* DAT_800b7112 */
 static int     s_needle = 0x5a0;              /* DAT_800af280: angulo de la aguja */
 static int     s_needleVel;                   /* DAT_800af284 */
 
-static uint16_t Team_Color(int team)
+uint16_t Hud_TeamColor(int team)
 {
     return Exe_U16(0x800aab38u + (uint32_t)team * 2);
 }
@@ -105,7 +105,7 @@ static void Hud_Sprite(const uint8_t* region, int u, int v, int w, int h, int se
 }
 
 /* 8001ab58: rectangulo de color 15 bits; coordenadas en medios pixeles */
-static void Hud_Rect(unsigned color, int x2, int y2, int w2, int h2, int semi)
+void Hud_Rect15(unsigned color, int x2, int y2, int w2, int h2, int semi)
 {
     if (semi)
     {
@@ -157,8 +157,8 @@ static void Hud_Map(int view, int* w, int* h, int* y)
         RaceCar* e = (RaceCar*)ENT(g_CarPhys[i]);
         int px = (((e->obj.pos[2] * 3) >> 16) + 6) * 2;
         int py = (((e->obj.pos[0] * 3) >> 16) + *y - 2) * 2;
-        Hud_Rect(e == target ? 0x7fff : 1, px - 2, py - 2, 0xc, 0xc, 1);
-        Hud_Rect(Team_Color(e->team), px, py, 8, 8, 0);
+        Hud_Rect15(e == target ? 0x7fff : 1, px - 2, py - 2, 0xc, 0xc, 1);
+        Hud_Rect15(Hud_TeamColor(e->team), px, py, 8, 8, 0);
     }
 }
 
@@ -197,7 +197,7 @@ static void Fmt_Time(char* out, size_t n, int t)
 
 /* 8002cd84: diferencia en tiempo (decimas * 30) con otro coche segun la distancia por la pista y la
  * velocidad media del coche */
-static int Hud_Gap(uint8_t* me, uint8_t* other)
+int Hud_GapTime(uint8_t* me, uint8_t* other)
 {
     int d = Abs_(Car_TrackDeltaPublic(me, other));
     int k = d << 2;
@@ -307,7 +307,7 @@ void Hud_Draw(int view)
     if (mate >= 0)
     {
         snprintf(s, sizeof(s), "%d/%d", mate + 1, g_NumCars);
-        Font_DrawString(s, mapW + 0xd, mapY + mapH - 0x14, Team_Color(t->team) | 0x8000);
+        Font_DrawString(s, mapW + 0xd, mapY + mapH - 0x14, Hud_TeamColor(t->team) | 0x8000);
     }
     Font_Select(1);
     if (level)
@@ -349,7 +349,7 @@ void Hud_Draw(int view)
         return;
     uint8_t* other = ahead ? ahead : behind;
     RaceCar* oe = (RaceCar*)ENT(other);
-    int gap = Hud_Gap(c, other);
+    int gap = Hud_GapTime(c, other);
     const GridCar* g = &g_RaceGrid.car[oe->id - 1000];
     const char* name = oe->type == 1 ? g_Settings.playerName[g->player & 1] : g_Drivers[g->driver].name;
     Font_Select(0);

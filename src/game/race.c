@@ -1,5 +1,6 @@
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "libgte.h"
 #include "libgpu.h"
@@ -22,6 +23,7 @@
 #include "cnet.h"
 #include "racecar.h"
 #include "hud.h"
+#include "pause.h"
 
 uint8_t g_CarLoadOrder[8];
 int     g_CarsLoaded;
@@ -158,17 +160,29 @@ void Race_MainLoop(void)
     Race_CreateCars();             /* 8003132c (desde Level_Run) */
     RaceCam_Init();
     Hud_Init();
-    while (g_GameState == GAMESTATE_RUNNING)
+    Pause_Init();
+    const char* laps = getenv("NR_LAPS");   /* solo en el port (depuracion): numero de vueltas */
+    if (laps && atoi(laps) > 0)
+        g_Settings.laps = (uint8_t)atoi(laps);
+    while (g_GameState == GAMESTATE_RUNNING || g_GameState == GAMESTATE_RESULTS)
     {
         Frame_Wait();
         Gfx_BeginFrame(0, 0, 0);       /* el original no borra: el horizonte cubre el fondo */
         int dt = g_FrameDelta;
-        g_PrevRaceTime = g_RaceTime;
-        g_RaceTime += dt;              /* Race_UpdateTime 800269c0 */
-        Track_Animate(dt);             /* 80061e94 */
-        Race_UpdateCars(dt);
-        Hud_Update(dt);                /* 80042330 */
-        RaceCam_Update(0, dt);         /* 8005f034 */
+        if (!g_RacePaused)
+        {
+            g_PrevRaceTime = g_RaceTime;
+            g_RaceTime += dt;          /* Race_UpdateTime 800269c0 */
+            Track_Animate(dt);         /* 80061e94 */
+            Race_UpdateCars(dt);
+            Hud_Update(dt);            /* 80042330 */
+            RaceCam_Update(0, dt);     /* 8005f034 */
+        }
+        else if (g_PauseCamPreview > 0)
+        {
+            g_PauseCamPreview = g_PauseCamPreview < dt ? 0 : g_PauseCamPreview - dt;
+            RaceCam_Update(0, dt);
+        }
 
         Sprite_Clear();                /* Race_DrawView 8006422c */
         int seg = RaceCam_GetSegment(0);
@@ -182,11 +196,14 @@ void Race_MainLoop(void)
         Render_DrawList(0);
         Sprite_DrawAll();              /* 80045268 */
         Race_DrawHud();
+        if (g_GameState == GAMESTATE_RESULTS)
+            Race_Results(dt);          /* 8002896c */
+        else if (g_RacePaused)
+            Pause_Menu();              /* 80025ad4 */
 
         Asset_DispatchAll();
         Gfx_Flip(GFX_FLIP_FULL);
-        if ((g_PadButtons[0] | g_PadButtons[1]) & PADB_START)
-            g_GameState = 0xc;
+        Race_UpdateState(dt);          /* 80027e90 */
     }
     Race_FreeCars();
     Track_Free();
