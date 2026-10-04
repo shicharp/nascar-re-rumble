@@ -155,8 +155,17 @@ static void Race_DrawHud(void)
     }
     Font_Select(0);
     char line[32];
-    snprintf(line, sizeof(line), "lap %d/%d  ", 1, g_Settings.laps);
+    const uint8_t* ph = g_Humans[0] ? g_Humans[0]->phys : NULL;
+    int lap = ph ? *(const int*)(ph + 0x328) + 1 : 1;   /* vueltas de la fisica (+0x328) */
+    if (lap > g_Settings.laps)
+        lap = g_Settings.laps;
+    snprintf(line, sizeof(line), "lap %d/%d  ", lap, g_Settings.laps);
     Font_DrawString(line, 10, 0x16, 8);
+    if (ph && ph[0x31a] != 0xff)
+    {
+        snprintf(line, sizeof(line), "pos %d/%d  ", ph[0x31a] + 1, g_NumCars);   /* posicion (+0x31A) */
+        Font_DrawString(line, 10, 0x26, 8);
+    }
     Font_Select(1);
 }
 

@@ -11,6 +11,7 @@
 #include "frontend.h"
 #include "racecar.h"
 #include "carphys.h"
+#include "ai.h"
 
 RaceCar g_Cars[RACE_MAX_CARS];
 int     g_NumCars;
@@ -151,10 +152,14 @@ void Race_CreateCars(void)
             c->ctrl[0x59] = (uint8_t)p;
             Human_InitCtrl(c->ctrl);
         }
+        else
+            Ai_InitCar(c);
         uint8_t* phys = Car_CreatePhys(c, wheels, &g_RaceGrid.car[i]);
         *(uint8_t**)(c->ctrl + (human ? 0 : 0x40)) = phys;
         c->phys2 = phys;
         g_CarPhys[i] = phys;
+        if (!human)
+            Ai_InitPhys(c);
     }
 }
 
@@ -171,12 +176,16 @@ void Race_FreeCars(void)
     g_Humans[0] = g_Humans[1] = NULL;
     g_NumHumans = 0;
     g_NumCars = 0;
+    Ai_Reset();
 }
 
-/* Parte de Race_UpdateSim 80030cac: mando de los humanos (8005ffbc -> 8004cae8) y fisica (80056c6c).
- * Pendiente: vueltas (Car_UpdateLap), poderes, IA (Ai_UpdatePath / Ai_UpdateTarget) y choques (8002f4ac). */
+/* Race_UpdateSim 80030cac: posiciones (8002fc9c), mando de los humanos (8005ffbc -> 8004cae8), vueltas
+ * (8003014c), IA (80030928, 8002de7c, 8002f4ac) y fisica (80056c6c). Pendiente: poderes (Car_UpdatePowerUps). */
 void Race_UpdateCars(int dt)
 {
+    if (g_NumCars <= 0)
+        return;
+    Race_UpdatePositions(dt);
     for (int i = 0; i < g_NumHumans; i++)
     {
         RaceCar* c = g_Humans[i];
@@ -185,8 +194,9 @@ void Race_UpdateCars(int dt)
         Human_ReadPad(c, c->ctrl[0x59]);
         Human_Control(c);
     }
-    if (g_NumCars > 0)
-        Physics_StepAll(dt);
+    Ai_UpdateLaps();
+    Ai_UpdateAll(dt);
+    Physics_StepAll(dt);
 }
 
 void Race_AddCarsToDrawList(void)
@@ -263,6 +273,10 @@ void RaceCam_Init(void)
         }
     if (!s_views[0].target && g_NumCars > 0)
         s_views[0].target = &g_Cars[0];
+    /* solo en el port (depuracion): NR_CAMCAR=n sigue al coche del hueco n */
+    const char* cam = getenv("NR_CAMCAR");
+    if (cam && atoi(cam) >= 0 && atoi(cam) < g_NumCars)
+        s_views[0].target = &g_Cars[atoi(cam)];
 }
 
 /* 8005e8b0: detras del coche segun el eje del preset, a 'dist' en el plano y 'height' por encima */

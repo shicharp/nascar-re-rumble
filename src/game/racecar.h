@@ -4,8 +4,8 @@
  * Original: HumanCar_Handler 80060190 / HumanCar_Create 8005fca4, AiCar_Handler 80030f84 / AiCar_Create
  * 8002cfbc, Race_CreateCars 8003132c, salida tACT tipo 0x55 Race_SetStart 800317a0, camaras RaceCam_Init
  * 8005d4c8 / RaceCam_Update 8005f034 (RaceCam_Desired 8005e8b0, RaceCam_Spring 8005dc98), presets 800ab408.
- * Fisica en carphys*.c (Physics_StepAll 80056c6c). Pendiente: la IA (Ai_UpdatePath 80030928, Ai_UpdateTarget
- * 8002de7c), choques entre coches (8002f4ac) y paredes de la camara (RaceCam_AvoidWalls 8005d6b8). */
+ * Fisica en carphys*.c (Physics_StepAll 80056c6c), IA, vueltas y posiciones en ai.c. Pendiente: choques entre
+ * coches, poderes y paredes de la camara (RaceCam_AvoidWalls 8005d6b8). */
 #ifndef NR_RACECAR_H
 #define NR_RACECAR_H
 
