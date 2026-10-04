@@ -25,6 +25,10 @@
 #include "hud.h"
 
 static uint8_t s_hudSetting[2] = { 1, 1 };   /* DAT_800b7112 */
+
+/* pantalla ancha: lo de la izquierda y la derecha del marcador se pega a los bordes */
+#define HUD_L(x) ((x) - g_WideMargin)
+#define HUD_R(x) ((x) + g_WideMargin)
 static int     s_needle = 0x5a0;              /* DAT_800af280: angulo de la aguja */
 static int     s_needleVel;                   /* DAT_800af284 */
 
@@ -141,7 +145,7 @@ static void Hud_Map(int view, int* w, int* h, int* y)
         if (*w < 0x80 && *h < 0x80)
         {
             *y = 0xdc - *h;
-            Hud_Sprite(r, 0, 0, *w, *h, 1, 8, *y);
+            Hud_Sprite(r, 0, 0, *w, *h, 1, HUD_L(8), *y);
             drawn = 1;
         }
     }
@@ -155,7 +159,7 @@ static void Hud_Map(int view, int* w, int* h, int* y)
     for (int i = 0; i < g_NumCars; i++)
     {
         RaceCar* e = (RaceCar*)ENT(g_CarPhys[i]);
-        int px = (((e->obj.pos[2] * 3) >> 16) + 6) * 2;
+        int px = (((e->obj.pos[2] * 3) >> 16) + 6 - g_WideMargin) * 2;
         int py = (((e->obj.pos[0] * 3) >> 16) + *y - 2) * 2;
         Hud_Rect15(e == target ? 0x7fff : 1, px - 2, py - 2, 0xc, 0xc, 1);
         Hud_Rect15(Hud_TeamColor(e->team), px, py, 8, 8, 0);
@@ -169,7 +173,7 @@ static void Hud_Gauge(uint8_t* c, int y)
     const uint8_t* r = Cpag_FindRegion(8, 0x80, 0);
     if (!r)
         return;
-    Hud_Sprite(r, 0x80, 0, 0x40, 0x40, 1, 0xf3, y - 0x21);
+    Hud_Sprite(r, 0x80, 0, 0x40, 0x40, 1, HUD_R(0xf3), y - 0x21);
     int sn, cs;
     Math_SinCos(s_needle, &sn, &cs);
     LINE_F2* l = (LINE_F2*)Gfx_AllocPrim(sizeof(LINE_F2));
@@ -177,7 +181,7 @@ static void Hud_Gauge(uint8_t* c, int y)
     {
         setLineF2(l);
         setRGB0(l, 0xf8, 0x20, 0x20);
-        setXY2(l, 0x114, y, 0x114 + (int16_t)((uint32_t)(cs * 0x1a) >> 16), y + (int16_t)((uint32_t)(sn * 0x1a) >> 16));
+        setXY2(l, HUD_R(0x114), y, HUD_R(0x114) + (int16_t)((uint32_t)(cs * 0x1a) >> 16), y + (int16_t)((uint32_t)(sn * 0x1a) >> 16));
         Gfx_AddPrimDepth(0, l);
     }
     Font_Select(2);
@@ -185,9 +189,9 @@ static void Hud_Gauge(uint8_t* c, int y)
     int g = I8(c, 0x3f4);
     s[0] = g == 0 ? 'R' : g < 0 ? 'N' : (char)('0' + g);
     s[1] = 0;
-    Font_DrawString(s, 0x101, y + 0x10, 8);
+    Font_DrawString(s, HUD_R(0x101), y + 0x10, 8);
     snprintf(s, sizeof(s), "%03d", e->speed);
-    Font_DrawString(s, e->speed > 99 ? 0x113 : 0x112, y + 0xf, 8);
+    Font_DrawString(s, HUD_R(e->speed > 99 ? 0x113 : 0x112), y + 0xf, 8);
 }
 
 static void Fmt_Time(char* out, size_t n, int t)
@@ -300,45 +304,45 @@ void Hud_Draw(int view)
     Font_Select(5);
     s[0] = (char)('1' + pos);
     s[1] = 0;
-    Font_DrawString(s, mapW + 0xb, (mapY + mapH) - (off + 0x1b), 8);
+    Font_DrawString(s, HUD_L(mapW + 0xb), (mapY + mapH) - (off + 0x1b), 8);
     Font_Select(0);
     snprintf(s, sizeof(s), "/%d", g_NumCars);
-    Font_DrawString(s, mapW + 0x19, (mapY + mapH) - (off + 0x14), 8);
+    Font_DrawString(s, HUD_L(mapW + 0x19), (mapY + mapH) - (off + 0x14), 8);
     if (mate >= 0)
     {
         snprintf(s, sizeof(s), "%d/%d", mate + 1, g_NumCars);
-        Font_DrawString(s, mapW + 0xd, mapY + mapH - 0x14, Hud_TeamColor(t->team) | 0x8000);
+        Font_DrawString(s, HUD_L(mapW + 0xd), mapY + mapH - 0x14, Hud_TeamColor(t->team) | 0x8000);
     }
     Font_Select(1);
     if (level)
         Hud_Gauge(c, mapY + mapH - 0x1f);
     Font_Select(0);
     snprintf(s, sizeof(s), "lap %d/%d  ", I32(c, 0x328) + 1, g_Settings.laps);
-    Font_DrawString(s, 10, ty, 8);
+    Font_DrawString(s, HUD_L(10), ty, 8);
     if (level > 1)
     {
-        Font_DrawString("lap:", 0xce, ty, 8);
+        Font_DrawString("lap:", HUD_R(0xce), ty, 8);
         int lt = g_RaceTime - I32(c, 0x32c);
         if (lt < 0)
             lt = 0;
         Fmt_Time(s, sizeof(s), lt);
-        Font_DrawString(s, 0xf6, ty, 8);
+        Font_DrawString(s, HUD_R(0xf6), ty, 8);
         int slot = t->id - 1000;
         int best = slot >= 0 && slot < 6 ? g_CarRecords[slot].b * 3 : 0;
         if (t->type == 1 && I32(c, 0x328) + 1 >= g_Settings.laps)
             best = 0;
         if (best > 0)
         {
-            Font_DrawString("best:", 0xce, ty + 10, 8);
+            Font_DrawString("best:", HUD_R(0xce), ty + 10, 8);
             Fmt_Time(s, sizeof(s), best);
         }
         else
         {
-            Font_DrawString("total:", 0xce, ty + 10, 8);
+            Font_DrawString("total:", HUD_R(0xce), ty + 10, 8);
             int tt = g_RaceTime - 900;
             Fmt_Time(s, sizeof(s), tt < 0 ? 0 : tt);
         }
-        Font_DrawString(s, 0xf6, ty + 10, 8);
+        Font_DrawString(s, HUD_R(0xf6), ty + 10, 8);
     }
     Font_Select(1);
     if (g_RaceTime < 0x4b1 || level != 2)
@@ -357,6 +361,6 @@ void Hud_Draw(int view)
         snprintf(s, sizeof(s), "%c%02d.%01d %s", ahead ? '-' : '+', gap / 300, gap / 0x1e - (gap / 300) * 10, name);
     else
         snprintf(s, sizeof(s), "(Far) %s", name);
-    Font_DrawString(s, mapW + 10, mapY + mapH - 10, ahead ? 8 : 6);
+    Font_DrawString(s, HUD_L(mapW + 10), mapY + mapH - 10, ahead ? 8 : 6);
     Font_Select(1);
 }

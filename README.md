@@ -62,9 +62,14 @@ Mando compatible con SDL (Xbox, DualShock, etc.) o teclado (configuracion por de
 | Circulo | V | Freno de mano |
 | Triangulo | Z | Volver a la pista / atras |
 | L1 / L2 | Mayus izq. / Ctrl izq. | Subir / bajar marcha (manual); en automatico, marcador / camara |
-| R1 / R2 | Mayus der. / Ctrl der. | |
+| R1 | Mayus der. | Retrovisor (mantener) |
+| R2 | Ctrl der. | Usar poder (pendiente: poderes) |
+| Arriba | Flecha arriba | Bocina (pendiente: sonido) |
 | START | Intro | Pausa |
 | SELECT | Espacio | Corto: camara; largo: nivel del marcador |
+
+Pantalla completa con **Alt derecho + Intro**. La imagen se ensancha al aspecto de la ventana (16:9, etc.)
+mostrando mas escenario a los lados; el marcador se ancla a los bordes.
 
 ## Estructura
 

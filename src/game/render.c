@@ -7,6 +7,7 @@
 #include "gfx.h"
 #include "gte.h"
 #include "render.h"
+#include "PsyX/PsyX_public.h"
 
 Camera3D g_Camera;
 Light    g_DefaultLight;
@@ -170,6 +171,20 @@ static void Gte_LoadColumns(const int* m)
                m[2] >> 4, m[5] >> 4, m[8] >> 4);
 }
 
+int g_WideFix = 256;
+int g_WideMargin;
+
+void Render_UpdateWide(void)
+{
+#if USE_PGXP
+    RECT16 r;
+    PsyX_GetPSXWidescreenMappedViewport(&r);
+    int w = r.w - r.x;   /* ancho visible en pixeles PSX */
+    g_WideFix = w > 320 ? (w << 8) / 320 : 256;
+    g_WideMargin = w > 320 ? (w - 320) / 2 : 0;
+#endif
+}
+
 const RenderProj* Render_GetProjection(void)
 {
     return &s_frustum;
@@ -233,6 +248,22 @@ void Render_SetPreset(int preset)
     s_frustum.lod[1] = s_presets[preset].lod[1];
     SetGeomOffset(160, 120);
     SetGeomScreen(s_presets[preset].h);
+}
+
+/* 80016a50 con el retrovisor (camara +7): H * 56 / 160 y centro en el del rectangulo del retrovisor
+ * (el original usa (56, 21) con el desplazamiento de dibujo en (0x68, 10); aqui se proyecta ya en su sitio) */
+void Render_SetMirrorProjection(int on)
+{
+    if (on)
+    {
+        SetGeomOffset(0x68 + 56, 10 + 21);
+        SetGeomScreen(s_frustum.h * 0x38 / 0xa0);
+    }
+    else
+    {
+        SetGeomOffset(160, 120);
+        SetGeomScreen(s_frustum.h);
+    }
 }
 
 /* 80016bfc + 80017a68 (en coma flotante): base derecha/arriba/adelante mirando de eye a target */
@@ -378,7 +409,7 @@ static int Camera_SphereInFrustum(const int16_t* c, int r)
 {
     if (c[2] * 0x10 + r <= 0x20)
         return 1;
-    int ax = c[0] * 0x10;
+    int ax = Wide_X(c[0] * 0x10);
     if (ax < 0)
         ax = -ax;
     int z8 = c[2] * 0x80;
@@ -430,7 +461,7 @@ static int Render_PrepareObject(GfxObj* o)
             s_preciseX[i] = g_FP_SXYZ2.x;
             s_preciseY[i] = g_FP_SXYZ2.y;
 #endif
-            clip = (uint8_t)(((sxy & 0xffff) < 2 * 160u) << 6 | ((sxy >> 16) < 2 * 120u) << 7);
+            clip = (uint8_t)(Wide_OnScreenX((int16_t)sxy) << 6 | ((sxy >> 16) < 2 * 120u) << 7);
         }
         s_clip[i] = clip;
     }

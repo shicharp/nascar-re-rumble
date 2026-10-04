@@ -148,6 +148,71 @@ static void Race_DrawHud(void)
     Hud_Draw(0);
 }
 
+/* Race_Frame1P 80026f28 (parte): retrovisor con R1 mantenido (un jugador, despues de la salida y sin haber
+ * terminado). Camara en el coche + 0x200 de altura con su matriz y el eje Z invertido (imagen de espejo, por
+ * eso se dibuja con las caras invertidas), proyeccion del retrovisor y rectangulo 0x70 x 0x2A en (0x68, 10)
+ * (Gfx_Flip(2)) con un marco negro. En el port va en una segunda capa de la OT recortada con DR_AREA. */
+static void Race_DrawMirror(void)
+{
+    RaceCar* h = g_Humans[0];
+    if (g_NumHumans != 1 || !h || !h->phys || !h->ctrl || g_RaceTime <= 0x4af || g_RacePaused)
+        return;
+    if (*(const int*)(h->phys + 0x330) != 0 || !(*(const uint32_t*)(h->ctrl + 8) & 0x800000))
+        return;
+    Camera3D saved = g_Camera;
+    const int* r = h->obj.rot;
+    for (int k = 0; k < 3; k++)
+    {
+        g_Camera.view[3 * k + 0] = r[k];
+        g_Camera.view[3 * k + 1] = r[3 + k];
+        g_Camera.view[3 * k + 2] = -r[6 + k];
+    }
+    g_Camera.pos[0] = h->obj.pos[0];
+    g_Camera.pos[1] = h->obj.pos[1] + 0x200;
+    g_Camera.pos[2] = h->obj.pos[2];
+
+    Gfx_FlushPartial();
+    int y0 = Gfx_GetDrawBufferY();
+    DR_AREA* area = (DR_AREA*)Gfx_AllocPrim(sizeof(DR_AREA));
+    TILE* bg = (TILE*)Gfx_AllocPrim(sizeof(TILE));
+    if (!area || !bg)
+    {
+        g_Camera = saved;
+        return;
+    }
+    RECT16 rc = { 0x68, (short)(y0 + 10), 0x70, 0x2a };
+    SetDrawArea(area, &rc);
+    Gfx_AddPrim(GFX_OT_LEN - 1, area);
+    setTile(bg);
+    setRGB0(bg, 0, 0, 0);
+    setXY0(bg, 0x68, 10);
+    setWH(bg, 0x70, 0x2a);
+    Gfx_AddPrim(GFX_OT_LEN - 1, bg);
+
+    Render_SetMirrorProjection(1);
+    int seg = h->tpos.seg != 0xff ? h->tpos.seg : Track_FindSegment(g_Camera.pos);
+    Track_DrawView(0, seg, 1);
+    Track_DrawHorizon(0, 1);
+    Track_DrawSegments(0, 1);
+    Render_ClearList();
+    Race_AddCarsToDrawList();
+    Render_DrawList(1);
+    Render_SetMirrorProjection(0);
+
+    DR_AREA* full = (DR_AREA*)Gfx_AllocPrim(sizeof(DR_AREA));
+    if (full)
+    {
+        RECT16 rf = { 0, (short)y0, GFX_SCREEN_W, GFX_SCREEN_H };
+        SetDrawArea(full, &rf);
+        Gfx_AddPrim(0, full);
+    }
+    Hud_Rect15(0, 0x68 * 2, 10 * 2, 0xe0, 2, 0);
+    Hud_Rect15(0, 0x68 * 2, (10 + 0x29) * 2, 0xe0, 2, 0);
+    Hud_Rect15(0, 0x68 * 2, (10 + 1) * 2, 2, 0x50, 0);
+    Hud_Rect15(0, (0x68 + 0x6f) * 2, (10 + 1) * 2, 2, 0x50, 0);
+    g_Camera = saved;
+}
+
 /* 800299a8 + 80026f28 (un jugador). Del bucle original estan: tiempo de carrera, texturas animadas,
  * camara de persecucion (8005f034), visibilidad y dibujo de la pista (Track_DrawView 800644c0 +
  * Race_DrawView 8006422c), parte del HUD y la fisica (80030cac / 80056c6c). Pendiente: IA, poderes, actores,
@@ -196,6 +261,7 @@ void Race_MainLoop(void)
         Render_DrawList(0);
         Sprite_DrawAll();              /* 80045268 */
         Race_DrawHud();
+        Race_DrawMirror();
         if (g_GameState == GAMESTATE_RESULTS)
             Race_Results(dt);          /* 8002896c */
         else if (g_RacePaused)

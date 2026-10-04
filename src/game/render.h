@@ -74,6 +74,16 @@ extern Light    g_DefaultLight;
 void Render_Init(void);                                         /* FUN_800137d8 */
 void Render_SetPreset(int preset);                              /* parte de Camera_ApplyProjection */
 const RenderProj* Render_GetProjection(void);
+
+/* Pantalla ancha (Hor+, solo en el port): PsyCross ensancha la proyeccion 2D al aspecto de la ventana y deja
+ * el 320x240 de la PS1 en el centro. g_WideFix = ensanche horizontal en 8.8 (256 = 4:3) y g_WideMargin = pixeles
+ * PSX que se ven a cada lado; los tests de visibilidad horizontales del juego se ensanchan con ellos. */
+extern int g_WideFix;
+extern int g_WideMargin;
+void Render_UpdateWide(void);
+void Render_SetMirrorProjection(int on);   /* Camera_ApplyProjection con el retrovisor */
+static inline int Wide_X(int ax) { return (int)(((long long)ax << 8) / g_WideFix); }
+static inline int Wide_OnScreenX(int sx) { return (unsigned)(sx + g_WideMargin) < (unsigned)(2 * 160 + 2 * g_WideMargin); }
 void Render_LoadCameraRotation(void);                           /* 8001032c */
 void Math_SinCos(int angle, int* s, int* c);                    /* 800176c0: 4096 = vuelta, 16.16 */
 void Math_RotMatrix(int ay, int ax, int az, int* m);            /* 80017ad8 */

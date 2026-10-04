@@ -443,7 +443,7 @@ static int Track_SphereInFrustum(const int16_t* c, int r)
     if (c[2] * 0x10 + r <= 0x600)
         return 0;
     const RenderProj* pr = Render_GetProjection();
-    int ax = c[0] * 0x10;
+    int ax = Wide_X(c[0] * 0x10);
     if (ax < 0)
         ax = -ax;
     int z8 = c[2] * 0x80;
@@ -553,7 +553,8 @@ static uint16_t NearFlags(TVert* v, int x, int y, int z)
     }
     v->sz = (int16_t)sz;
     uint16_t f = 0;
-    int ex = (ir1 << pr->sx1) + (ir1 << pr->sx0);
+    int ir1w = Wide_X(ir1);
+    int ex = (ir1w << pr->sx1) + (ir1w << pr->sx0);
     int ey = (ir2 << pr->sy1) + (ir2 << pr->sy0);
     int z8 = sz * 8;
     if (z8 < ex)
@@ -612,7 +613,7 @@ static void Track_TransformSegVerts(const TrackSeg* s, int nearMode)
                 f = 1;
                 v->sxy = sxy;
                 StorePrecise(v);
-                if ((unsigned)(int16_t)sxy < 2u * GFX_SCREEN_W / 2)
+                if (Wide_OnScreenX((int16_t)sxy))
                     f = 0x41;
                 if ((unsigned)((int32_t)sxy >> 16) < 2u * GFX_SCREEN_H / 2)
                     f |= 0x80;

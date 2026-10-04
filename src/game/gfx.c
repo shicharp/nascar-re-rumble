@@ -10,6 +10,7 @@
 #include "nr.h"
 #include "mem.h"
 #include "gfx.h"
+#include "render.h"
 
 typedef struct
 {
@@ -91,6 +92,7 @@ void Gfx_FreeBuffers(void)
 
 void Gfx_BeginFrame(int r, int g, int b)
 {
+    Render_UpdateWide();
     GfxBuffer* buf = &s_buf[s_cur];
     setRGB0(&buf->draw, r, g, b);
     ClearOTagR((u_long*)buf->ot[0], GFX_OT_LEN);
