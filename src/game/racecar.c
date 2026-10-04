@@ -12,6 +12,7 @@
 #include "racecar.h"
 #include "carphys.h"
 #include "ai.h"
+#include "collide.h"
 
 RaceCar g_Cars[RACE_MAX_CARS];
 int     g_NumCars;
@@ -197,6 +198,7 @@ void Race_UpdateCars(int dt)
     Ai_UpdateLaps();
     Ai_UpdateAll(dt);
     Physics_StepAll(dt);
+    Race_CollideCars();            /* 800268c0 (tras dibujar en el original) */
 }
 
 void Race_AddCarsToDrawList(void)
