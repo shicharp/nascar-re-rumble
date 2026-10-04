@@ -487,6 +487,24 @@ static int NClip(uint32_t a, uint32_t b, uint32_t c)
     return x0 * y1 + x1 * y2 + x2 * y0 - x0 * y2 - x1 * y0 - x2 * y1;
 }
 
+#if USE_PGXP
+/* NCLIP con las coordenadas precisas con las que se dibuja (ver track.c): evita huecos en las caras casi de
+ * canto a resolucion mayor que la de la PS1 */
+static int NClipP(int a, int b, int c)
+{
+    float x0 = s_preciseX[a], y0 = s_preciseY[a], x1 = s_preciseX[b], y1 = s_preciseY[b];
+    float x2 = s_preciseX[c], y2 = s_preciseY[c];
+    float n = x0 * y1 + x1 * y2 + x2 * y0 - x0 * y2 - x1 * y0 - x2 * y1;
+    float an = n < 0 ? -n : n;
+    if (0.1f < an && an < 1.0f)
+        n += n < 0 ? -1.0f : 1.0f;
+    return (int)n;
+}
+#define NCLIPI(a, b, c) NClipP(a, b, c)
+#else
+#define NCLIPI(a, b, c) NClip(s_scrXY[a], s_scrXY[b], s_scrXY[c])
+#endif
+
 /* Con PGXP las primitivas llevan la proyeccion en coma flotante de la GTE (half con decimales) */
 #if USE_PGXP
 static VERTTYPE s_hx[4], s_hy[4];
@@ -523,14 +541,14 @@ static void Render_EmitPrims(const GfxObj* o, int mirror)
             continue;
         uint32_t p0 = s_scrXY[i0], p1 = s_scrXY[i1], p2 = s_scrXY[i2], p3 = s_scrXY[i3];
         int quad = i2 != i3;
-        int nc = NClip(p0, p1, p3);
+        int nc = NCLIPI(i0, i1, i3);
         if (mirror)
             nc = -nc;
         if (nc < 1)
         {
             if (!quad)
                 continue;
-            int nc2 = NClip(p2, p1, p3);
+            int nc2 = NCLIPI(i2, i1, i3);
             if (mirror)
                 nc2 = -nc2;
             if (nc2 >= 0)

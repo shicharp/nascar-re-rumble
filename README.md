@@ -50,6 +50,22 @@ pulsaciones (para verificar sin intervención; botones: up, down, left, right, c
 start, select, l1, r1, l2, r2).
 `--viewer` es el visor de páginas Cpag (flechas para cambiar de página).
 
+## Controles
+
+Mando compatible con SDL (Xbox, DualShock, etc.) o teclado (configuracion por defecto de PsyCross):
+
+| PlayStation | Teclado | En carrera |
+|---|---|---|
+| Cruceta | Flechas | Direccion |
+| X | C | Acelerar / elegir |
+| Cuadrado | X | Frenar |
+| Circulo | V | Freno de mano |
+| Triangulo | Z | Volver a la pista / atras |
+| L1 / L2 | Mayus izq. / Ctrl izq. | Subir / bajar marcha (manual); en automatico, marcador / camara |
+| R1 / R2 | Mayus der. / Ctrl der. | |
+| START | Intro | Pausa |
+| SELECT | Espacio | Corto: camara; largo: nivel del marcador |
+
 ## Estructura
 
 | Fichero | Original (SLUS_010.68) |

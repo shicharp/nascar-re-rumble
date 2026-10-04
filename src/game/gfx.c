@@ -214,6 +214,16 @@ void Gfx_Flip(int mode)
     s_cur ^= 1;
 
     s_flipCount++;
+    /* NR_SHOTSEQ=n: tambien guarda los n frames anteriores (nombre.bmp -> nombre_k.bmp) */
+    static int s_seq = -1;
+    if (s_seq < 0)
+        s_seq = getenv("NR_SHOTSEQ") ? atoi(getenv("NR_SHOTSEQ")) : 0;
+    if (s_shotPath && s_seq > 0 && s_flipCount < s_shotFrame && s_flipCount >= s_shotFrame - s_seq)
+    {
+        char p[512];
+        snprintf(p, sizeof(p), "%.*s_%d.bmp", (int)(strlen(s_shotPath) - 4), s_shotPath, s_shotFrame - s_flipCount);
+        Gfx_SaveScreenshot(p);
+    }
     if (s_shotPath && s_flipCount == s_shotFrame)
     {
         Gfx_SaveScreenshot(s_shotPath);

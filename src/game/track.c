@@ -658,6 +658,23 @@ static int NClip(uint32_t a, uint32_t b, uint32_t c)
     return x0 * y1 + x1 * y2 + x2 * y0 - x0 * y2 - x1 * y0 - x2 * y1;
 }
 
+#if USE_PGXP
+/* NCLIP con las coordenadas precisas con las que se dibuja (como el NCLIP de PsyCross con PGXP). Con las
+ * enteras, las caras lejanas casi de canto dan 0 y se descartan: en la PS1 no se notaba porque miden menos de
+ * un pixel, pero a mas resolucion dejan rayas del fondo en la pista y el horizonte. */
+static int NClipF(float x0, float y0, float x1, float y1, float x2, float y2)
+{
+    float n = x0 * y1 + x1 * y2 + x2 * y0 - x0 * y2 - x1 * y0 - x2 * y1;
+    float an = n < 0 ? -n : n;
+    if (0.1f < an && an < 1.0f)
+        n += n < 0 ? -1.0f : 1.0f;
+    return (int)n;
+}
+#define NCLIPV(a, b, c) NClipF((a)->px, (a)->py, (b)->px, (b)->py, (c)->px, (c)->py)
+#else
+#define NCLIPV(a, b, c) NClip((a)->sxy, (b)->sxy, (c)->sxy)
+#endif
+
 /* 80062888: GT4 de la subdivision (a, b, d, c en la primitiva) */
 static void Track_EmitSubQuad(const TVert* a, const TVert* b, const TVert* c, const TVert* d)
 {
@@ -756,12 +773,12 @@ static int Track_Subdivide(TVert* p1, TVert* p2, TVert* p3, TVert* p4, int level
             return 0;
         }
     }
-    int nc = NClip(p1->sxy, p2->sxy, p4->sxy);
+    int nc = NCLIPV(p1, p2, p4);
     if (s_subMirror)
         nc = -nc;
     if (nc < 1)
     {
-        nc = NClip(p3->sxy, p2->sxy, p4->sxy);
+        nc = NCLIPV(p3, p2, p4);
         if (s_subMirror)
             nc = -nc;
         if (nc >= 0)
@@ -823,14 +840,14 @@ static void Track_DrawSegFaces(const TrackSeg* s, int nearMode, int lod, int mir
         else if (all & 0xf00)
             continue;
 
-        int nc = NClip(a->sxy, b->sxy, d->sxy);
+        int nc = NCLIPV(a, b, d);
         if (mirror)
             nc = -nc;
         if (nc < 1)
         {
             if (tri)
                 continue;
-            nc = NClip(c->sxy, b->sxy, d->sxy);
+            nc = NCLIPV(c, b, d);
             if (mirror)
                 nc = -nc;
             if (nc >= 0)
@@ -1040,7 +1057,7 @@ static void Track_DrawFaceList(const TrackHorizon* h, int mirror)
             continue;
         if (a->flags & b->flags & c->flags & d->flags & 0x1e)
             continue;
-        int nc = NClip(a->sxy, b->sxy, d->sxy);
+        int nc = NCLIPV(a, b, d);
         if (mirror)
             nc = -nc;
         if (nc < 1)

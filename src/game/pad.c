@@ -1,5 +1,6 @@
 #include "libetc.h"
 #include "libpad.h"
+#include "PsyX/PsyX_public.h"
 #include <stdlib.h>
 #include <string.h>
 #include "gfx.h"
@@ -80,6 +81,10 @@ uint32_t Pad_GetButtons(int port)
 /* 8005fc54 */
 void Pad_ReadAll(void)
 {
+    /* PsyCross solo copia el teclado y los mandos SDL al buffer del mando en PsyX_UpdateInput, que no se
+     * llama por si solo fuera de su modo de depuracion. Teclado por defecto: flechas, C = cruz, X = cuadrado,
+     * V = circulo, Z = triangulo, Intro = START, espacio = SELECT, Mayus / Ctrl izq. = L1 / L2, der. = R1 / R2. */
+    PsyX_UpdateInput();
     for (int i = 0; i < 2; i++)
         g_PadButtons[i] = Pad_GetButtons(i);
 }

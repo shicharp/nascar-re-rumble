@@ -61,6 +61,51 @@ int Cact_OnLoaded(NrAsset* a)
     return 1;
 }
 
+static ModelHdr* Cobj_Model(int id)
+{
+    NrAsset* a = Asset_Find(ASSET_Cobj, id);
+    return a ? (ModelHdr*)a->obj : NULL;
+}
+
+/* modelos de las ruedas en el controlador: humano +0x2AC (delante y detras, detalle 0 y 1) y +0x2BC (giro
+ * rapido, delante y detras); IA +0x290 / +0x2A0 */
+static ModelHdr** Car_WheelModels(RaceCar* c, int blur)
+{
+    int off = c->type == 1 ? (blur ? 0x2bc : 0x2ac) : (blur ? 0x2a0 : 0x290);
+    return (ModelHdr**)(c->ctrl + off);
+}
+
+/* 8002cae0: ruedas segun la clase del coche (Rookie / Pro 20002, Elite 20003; el carrito de golf, piloto
+ * 0x35, 20001); +3 = menos detalle, +6 = borrosa al girar deprisa */
+static void Car_LoadWheels(RaceCar* c, const GridCar* g, GfxObj* wheels)
+{
+    int front, rear, cls = g->car;
+    if (g->driver == 0x35)
+    {
+        if (cls == 0)
+            front = rear = 0x4e21;
+        else
+        {
+            rear = 0x4e22;
+            front = cls == 1 ? 0x4e21 : 0x4e22;
+        }
+    }
+    else
+        front = rear = cls < 2 ? 0x4e22 : 0x4e23;
+    ModelHdr** m = Car_WheelModels(c, 0);
+    ModelHdr** b = Car_WheelModels(c, 1);
+    m[0] = Cobj_Model(front);
+    m[1] = Cobj_Model(front + 3);
+    b[0] = Cobj_Model(front + 6);
+    m[2] = Cobj_Model(rear);
+    m[3] = Cobj_Model(rear + 3);
+    b[1] = Cobj_Model(rear + 6);
+    Obj_Init(&wheels[1], m[0]);
+    Obj_Init(&wheels[0], m[0]);
+    Obj_Init(&wheels[2], m[2]);
+    Obj_Init(&wheels[3], m[2]);
+}
+
 /* Ruedas del coche: dentro del controlador (humano +0x6C, IA +0x44) */
 static GfxObj* Car_Wheels(RaceCar* c)
 {
@@ -146,9 +191,7 @@ void Race_CreateCars(void)
         int human = c->type == 1;
         c->ctrl = (uint8_t*)calloc(1, human ? 0x2c4 : 0x2a8);
         GfxObj* wheels = Car_Wheels(c);
-        NrAsset* w = Asset_Find(ASSET_Cobj, 20001 + g_RaceGrid.car[i].car * 3);
-        for (int k = 0; k < 4; k++)
-            Obj_Init(&wheels[k], w ? (ModelHdr*)w->obj : NULL);
+        Car_LoadWheels(c, &g_RaceGrid.car[i], wheels);
         if (human)
         {
             int p = c->player < 2 && !g_Humans[c->player] ? c->player : (g_Humans[0] ? 1 : 0);
@@ -215,9 +258,23 @@ void Race_AddCarsToDrawList(void)
         if (!c->obj.model)
             continue;
         GfxObj* wheels = Car_Wheels(c);
+        /* 80060190 / 80030f84: ruedas borrosas si giran deprisa (+0x2E8 delante, +0x2EC detras); el nivel de
+         * detalle (80013db0) queda en 0 */
+        ModelHdr** m = Car_WheelModels(c, 0);
+        ModelHdr** b = Car_WheelModels(c, 1);
         for (int k = 0; wheels && k < 4; k++)
+        {
+            int rear = k >> 1;
+            int spin = c->phys ? *(int*)(c->phys + 0x2e8 + rear * 4) : 0;
+            ModelHdr* want = (spin > 0x40 || spin < -0x40) && b[rear] ? b[rear] : m[rear * 2];
+            if (want && wheels[k].model != want)
+            {
+                wheels[k].model = want;
+                wheels[k].radius = *(int16_t*)(want->bbox + 0x14);
+            }
             if (wheels[k].model)
                 Render_Add(&wheels[k]);
+        }
         Render_Add(&c->obj);
     }
 }
