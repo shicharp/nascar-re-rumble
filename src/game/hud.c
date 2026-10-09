@@ -254,7 +254,8 @@ static void Hud_PowerIcon(int icon, int slot, int ticks, int dx, int y)
     }
 }
 
-/* 800429d0 (parte): CONTRA DIRECCION si se va hacia atras por la pista mas de 300 tics */
+/* 800429d0 (parte): aviso para usar el poder, aviso de clima y CONTRA DIRECCION si se va hacia atras por la pista
+ * mas de 300 tics */
 static void Hud_Messages(int view, int y, int level)
 {
     RaceCar* h = g_Humans[view];
@@ -263,6 +264,8 @@ static void Hud_Messages(int view, int y, int level)
     uint8_t* ctrl = h->ctrl;
     uint8_t* c = h->phys;
     int off = level == 2 || g_GameInfo->isRestart ? 0x13 : 0;
+    /* con el retrovisor (R1, ctrl +0x40 == 3) los mensajes bajan por debajo de el */
+    int mir = !g_SplitScreen && I32(c, 0x330) == 0 && I32(ctrl, 0x40) == 3 ? (off ? 0xc : 0x1f) : 0;
     Font_Select(4);
     /* sin usar el poder 18000 tics (1 minuto): "To Use" alternando con "Press R2" (DAT_800af714 & 0x100, contador
      * de vblanks; aqui el tiempo de carrera / 5). Con la asignacion de botones por defecto el poder va en R2. */
@@ -271,6 +274,17 @@ static void Hud_Messages(int view, int y, int level)
         int blink = (g_RaceTime / 5) & 0x100;
         Font_DrawString(blink ? "Press" : "To", HUD_L(0x1e), y + 0xd, blink ? 9 : 1);
         Font_DrawString(blink ? "R2" : "Use", HUD_L(0x1e), y + 0x17, blink ? 9 : 1);
+    }
+    /* clima que se acerca por detras (ctrl +0x60, lo rellena 800323f0); al parpadear, si va deprisa, "Reduce Speed" */
+    int alert = Power_AlertKind(h);
+    if (alert >= 0 && I32(c, 0x330) == 0)
+    {
+        static const char* const names[3] = { "Storm Alert!", "Twister Alert!", "Freeze Alert!" };
+        int blink = (g_RaceTime / 5) & 0x100;
+        const char* s = blink && h->speed >= 0x50 ? "Reduce Speed" : names[alert > 1 ? 2 : alert];
+        int w, hh;
+        Font_Measure(s, &w, &hh);
+        Font_DrawString(s, 0xa0 - w / 2, y + off + mir, blink ? 9 : 1);
     }
     if (I32(c, 0x330) == 0 && g_Track && g_Track->numCurve > 0 && h->tpos.curve >= 0)
     {
@@ -293,7 +307,7 @@ static void Hud_Messages(int view, int y, int level)
         {
             int w, hh;
             Font_Measure("WRONG WAY", &w, &hh);
-            Font_DrawString("WRONG WAY", 0xa0 - w / 2, y + off + 10, 9);
+            Font_DrawString("WRONG WAY", 0xa0 - w / 2, y + off + mir + 10, 9);
         }
     }
     Font_Select(1);

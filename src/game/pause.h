@@ -12,5 +12,6 @@ void Race_UpdateState(int dt);   /* 80027e90 */
 void Pause_Menu(void);           /* 80025ad4 */
 void Race_Results(int dt);       /* 8002896c */
 void Race_Finalize(void);        /* 800266f0 */
+int  Pause_ResultsTime(void);     /* DAT_800af70c: tics en los resultados (-1 antes) */
 
 #endif

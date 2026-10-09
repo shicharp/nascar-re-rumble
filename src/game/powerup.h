@@ -6,15 +6,17 @@
  * Campos de la fisica del coche: +0x338 poder en la mano (-1 ninguno), +0x339 numero de efectos activos,
  * +0x33A mascara de activos, +0x33C espera de la IA para usarlo, +0x33E caducidad del misterioso, +0x340 + i * 4
  * {tipo, 0, u16 tics} x 4.
- * Poderes (por lo que hacen; los bits de +0x33A los lee la fisica): 0 y 4 proyectiles (80033468; con el
- * misterioso caen sobre uno mismo: 0 acelerador -75 %, 4 -25 % y ruedas planas), 1 helada (sin direccion),
- * 5 tormenta y 7 tornado (80033274, entidades de clima), 2 escudo (anula los malos), 3 turbo (otra tabla de
- * marchas), 6 ruedas grandes, 9 embestida (invulnerable, +25 %), 10 onda expansiva, 8 misterioso (uno al
- * azar al usarlo). */
+ * Poderes (por lo que hacen; los bits de +0x33A los lee la fisica): 0 y 4 objetos que se sueltan en la pista
+ * (entidad 0xD 80033468: al que los pisa, 0 acelerador -75 %, 4 -25 % y ruedas planas; con el misterioso caen
+ * sobre uno mismo), 1 helada (sin direccion), 5 tormenta y 7 tornado (entidad 8 80033274: van por la red de
+ * trazadas, persiguen al rival que pillan cerca y le dan el efecto; el tornado lanza por los aires), 2 escudo
+ * (anula los malos), 3 turbo (otra tabla de marchas), 6 ruedas grandes, 9 embestida (invulnerable, +25 %),
+ * 10 onda expansiva, 8 misterioso (uno al azar al usarlo). */
 #ifndef NR_POWERUP_H
 #define NR_POWERUP_H
 
 #include <stdint.h>
+#include "racecar.h"
 
 struct Actor;
 
@@ -27,5 +29,7 @@ void Pickup_Reset(void);                                 /* modelos globales DAT
 int  Power_Duration(int type);                           /* 800aa90c */
 int  Car_AddEffect(uint8_t* c, int type, int ticks);     /* 8002f268 */
 void Car_UpdatePowerUps(uint8_t* c, int dt, int use);    /* 8002ec00 */
+void Power_ClearAlerts(void);                            /* Race_Frame1P: ctrl +0x60 = 0 de cada humano */
+int  Power_AlertKind(const RaceCar* human);              /* clima que se le acerca (0, 1, 2) o -1 */
 
 #endif

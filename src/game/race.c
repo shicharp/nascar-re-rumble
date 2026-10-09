@@ -25,6 +25,7 @@
 #include "hud.h"
 #include "pause.h"
 #include "actor.h"
+#include "powerup.h"
 
 uint8_t g_CarLoadOrder[8];
 int     g_CarsLoaded;
@@ -249,8 +250,10 @@ void Race_MainLoop(void)
             g_PrevRaceTime = g_RaceTime;
             g_RaceTime += dt;          /* Race_UpdateTime 800269c0 */
             Track_Animate(dt);         /* 80061e94 */
+            Power_ClearAlerts();       /* Race_Frame1P: aviso de clima */
             Actors_Update(dt);         /* 80048dec(6) */
             Race_UpdateCars(dt);
+            Actors_PostUpdate();       /* 80048e84 */
             Hud_Update(dt);            /* 80042330 */
             RaceCam_Update(0, dt);     /* 8005f034 */
         }

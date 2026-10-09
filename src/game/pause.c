@@ -391,6 +391,11 @@ static const char* Car_Name(RaceCar* e)
     return e->type == 1 ? g_Settings.playerName[g->player & 1] : g_Drivers[g->driver].name;
 }
 
+int Pause_ResultsTime(void)
+{
+    return s_resTime;
+}
+
 /* 8002896c: resultados (estado 0xD) con Restart Race / Show Replay / Exit Race */
 void Race_Results(int dt)
 {

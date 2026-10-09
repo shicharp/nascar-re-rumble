@@ -317,6 +317,12 @@ int Actor_DefaultHandler(int msg, Actor* a, intptr_t p1, intptr_t p2)
     case 0xf:
         return Math_Atan2(a->vel[0], a->vel[2]) & 0xfff;
     case 4:
+        /* 8002c594: muere una vez (0x1000000 la protege; el sonido de la clase 800354d4 queda pendiente) */
+        if (a->flags2c & 0x1000000)
+            return 0;
+        a->flags2c |= 0x1000010;
+        Actor_Destroy(a);
+        return 1;
     case 5:
     case 6:
     case 7:
@@ -539,6 +545,15 @@ void Actors_Update(int dt)
         if (a->handle > 0)
             a->handler(6, a, dt, 0);
     Actors_Reap();
+}
+
+/* 80048e84 (tras la simulacion): las que tienen la vida en negativo reciben el mensaje 4 (morir). Se liberan
+ * en el siguiente Actors_Update, asi lo que las apunta (el aviso de clima del marcador) sigue valido este frame. */
+void Actors_PostUpdate(void)
+{
+    for (Actor* a = g_Actors; a; a = a->next)
+        if (a->handle > 0 && a->hp < 0)
+            a->handler(4, a, 0, 0);
 }
 
 /* 80061a0c + 80061b28: las de un segmento visible (o con 0x10000) se dibujan con el mensaje 3 (max 0xC0) */

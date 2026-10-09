@@ -1,6 +1,6 @@
 /* Poderes: cajas de la pista y efectos sobre los coches. Ver powerup.h.
- * Pendiente: sonidos y comentarios (8003558c, 8007734c, 8002b920), la llama del turbo (8003da74), los
- * proyectiles (80033468) y las entidades de clima (80033274). */
+ * Pendiente: sonidos y comentarios (8003558c, 8007734c, 8002b920), la llama del turbo (8003da74) y los efectos
+ * visuales del clima (nube y rayos de la tormenta 80070e58 / 8006dc10). */
 #include <stdlib.h>
 #include <string.h>
 #include "nr.h"
@@ -12,6 +12,8 @@
 #include "carphys_int.h"
 #include "ai.h"
 #include "actor.h"
+#include "cnet.h"
+#include "pause.h"
 #include "powerup.h"
 
 /* modelos que trae la aRSL de las cajas: proyectiles de los poderes 0 y 4, y el tornado */
@@ -400,6 +402,8 @@ int Car_AddEffect(uint8_t* c, int type, int ticks)
                     FX_TICKS(c, j) = 1;
             }
     }
+    if (Power_LogOn())
+        NR_Log("[poder] t=%d coche %d recibe el efecto %d (%d tics)\n", g_RaceTime, e->id - 1000, type, ticks);
     U16(c, 0x33a) |= (uint16_t)(1u << type);
     if (U16(c, 0x33a) & 8)
         Car_TurboOn(c);
@@ -411,9 +415,402 @@ int Car_AddEffect(uint8_t* c, int type, int ticks)
     return FX_TICKS(c, n);
 }
 
+/* ---------------------------------------------------------------- objetos que se sueltan (entidad 0xD) */
+
+/* Campos (0xEC bytes): +0xE0 poder (0 o 4), +0xE2 tics en que no afecta al que lo solto, +0xE4 su handle,
+ * +0xE8 altura / 16 sobre el suelo, +0xEA velocidad vertical */
+#define DR_KIND(a)  A8(a, 0xe0)
+#define DR_SAFE(a)  A16(a, 0xe2)
+#define DR_OWNER(a) A32(a, 0xe4)
+#define DR_H(a)     A16(a, 0xe8)
+#define DR_VY(a)    A16(a, 0xea)
+
+/* 80033374: cae desde 0x40 sobre el suelo donde estaba el coche */
+static int Drop_Create(Actor* a, const ActorDef* d)
+{
+    Actor_DefaultHandler(2, a, (intptr_t)d, 0);
+    const uint8_t* t = d->def;
+    int pos[3];
+    memcpy(pos, a->obj.pos, sizeof(pos));
+    Obj_Init(&a->obj, *(ModelHdr* const*)(t + 0x24));   /* (el Obj_Init del port borra tambien la posicion) */
+    memcpy(a->obj.pos, pos, sizeof(pos));
+    a->flags2c |= 0x800100;
+    DR_KIND(a) = t[0x2c];
+    int g = Track_GroundHeight(&a->tpos, a->obj.pos, 0);
+    DR_VY(a) = 0x20;
+    DR_SAFE(a) = 0x5dc;
+    DR_H(a) = 4;
+    a->obj.pos[1] = g + 0x40;
+    DR_OWNER(a) = *(const int32_t*)(t + 0x28);
+    Actor_UpdateCenter(a);
+    return 0;
+}
+
+/* 80033468 */
+static int Drop_Handler(int msg, Actor* a, intptr_t p1, intptr_t p2)
+{
+    switch (msg)
+    {
+    case 1:
+        return 0xec;
+    case 2:
+        return Drop_Create(a, (const ActorDef*)p1);
+    case 6:
+        if (DR_SAFE(a) > 0)
+            DR_SAFE(a) = (int16_t)(DR_SAFE(a) - (int)p1);
+        if (DR_H(a) >= 1)
+        {
+            int vy = DR_VY(a) - ((int)p1 >> 1), h = DR_H(a) + vy;
+            DR_H(a) = (int16_t)(h < 0 ? 0 : h);
+            DR_VY(a) = (int16_t)vy;
+            a->obj.pos[1] = Track_GroundHeight(&a->tpos, a->obj.pos, 0) + DR_H(a) * 0x10;
+            Actor_UpdateCenter(a);
+        }
+        return Actor_DefaultHandler(msg, a, p1, p2);
+    case 9:
+    case 0xe:
+        return 0;
+    case 10:
+    {
+        const RaceCar* e = (const RaceCar*)p1;
+        return e && (DR_SAFE(a) < 1 || e->handle != DR_OWNER(a)) && (e->type == 1 || e->type == 0x11);
+    }
+    case 0xb:
+    {
+        RaceCar* e = (RaceCar*)p1;
+        if (!e || (e->type != 1 && e->type != 0x11) || !e->phys)
+            return 0;
+        uint8_t* c = e->phys;
+        if (!(U16(c, 0x33a) & 4))
+            Car_AddEffect(c, DR_KIND(a), Power_Duration(DR_KIND(a)));
+        a->hp = -1;
+        Fx_Push(DR_KIND(a) == 0 ? 0x1f : 0x1e, e->obj.pos, -1);
+        return Actor_DefaultHandler(msg, a, p1, p2);
+    }
+    default:
+        return Actor_DefaultHandler(msg, a, p1, p2);
+    }
+}
+
+/* Parametros de creacion como los tACT falsos del original (en la pila): id del coche | 0x8000, tipo,
+ * posicion, vida 1, equipo, modelo +0x24 y datos propios desde +0x28 */
+static void Power_FakeDef(uint8_t* t, const RaceCar* e, int type)
+{
+    memset(t, 0, 0x34);
+    *(uint32_t*)t = (uint32_t)e->id | 0x8000;
+    t[4] = (uint8_t)type;
+    memcpy(t + 8, e->obj.pos, 12);
+    *(int16_t*)(t + 0x18) = 1;
+    *(int16_t*)(t + 0x1a) = 1;
+    t[0x1c] = e->team;
+    t[0x1d] = e->unk23;
+}
+
+/* 8002e94c: suelta el objeto del poder 0 o 4 donde esta el coche */
+static void Power_Drop(uint8_t* c, int kind)
+{
+    RaceCar* e = (RaceCar*)ENT(c);
+    uint8_t t[0x34];
+    Power_FakeDef(t, e, 0xd);
+    *(ModelHdr**)(t + 0x24) = s_projModel[kind == 0 ? 0 : 1];
+    *(int32_t*)(t + 0x28) = e->handle;
+    t[0x2c] = (uint8_t)kind;
+    ActorDef d = { Drop_Handler, NULL, t, NULL };
+    Actor* a = Actor_Create(&d);
+    if (a)
+        a->def = NULL;
+    if (a && Power_LogOn())
+        NR_Log("[poder] t=%d objeto %d en (%d, %d, %d) curva %d, modelo %p, radio %d\n", g_RaceTime, kind, a->obj.pos[0],
+               a->obj.pos[1], a->obj.pos[2], a->tpos.curve, (void*)a->obj.model, a->obj.radius);
+}
+
+/* ---------------------------------------------------------------- clima (entidad 8) */
+
+/* Campos (0x10C bytes): +0xE0 coche que lo lanzo, +0xE4 coche al que persigue o en el que esta, +0xE8 efecto de
+ * particulas (en el port, 1 mientras dura la nube de la tormenta), +0xEC red Cnet, +0xF0 tipo (0 tormenta,
+ * 1 tornado, 2 helada), +0xF1 1 pegado al coche, 2 persiguiendolo, +0xF2 tics (espera al salir, vida del
+ * tornado o lo que le queda al efecto), +0xF6 nodo hacia el que va, +0xF8 recorrido del tramo (<< 8), +0xFC su
+ * longitud, +0x100 inicio del tramo (0x600 por encima de la red). */
+#define WX_OWNER(a)  (*(RaceCar**)((uint8_t*)(a) + 0xe0))
+#define WX_TARGET(a) (*(RaceCar**)((uint8_t*)(a) + 0xe4))
+#define WX_FX(a)     A32(a, 0xe8)
+#define WX_NET(a)    (*(const uint8_t**)((uint8_t*)(a) + 0xec))
+#define WX_KIND(a)   A8(a, 0xf0)
+#define WX_STATE(a)  A8(a, 0xf1)
+#define WX_TICKS(a)  A16(a, 0xf2)
+#define WX_NODE(a)   AU16(a, 0xf6)
+#define WX_PROG(a)   A32(a, 0xf8)
+#define WX_LEN(a)    A32(a, 0xfc)
+#define WX_START(a)  ((int*)((uint8_t*)(a) + 0x100))
+
+static_assert(sizeof(RaceCar*) == 4, "los punteros se guardan en huecos de 32 bits (port Win32)");
+
+/* 8003219c */
+static int Weather_Create(Actor* a, const ActorDef* d)
+{
+    Actor_DefaultHandler(2, a, (intptr_t)d, 0);
+    const uint8_t* t = d->def;
+    Obj_Init(&a->obj, *(ModelHdr* const*)(t + 0x24));
+    a->flags2c |= 4;
+    WX_KIND(a) = t[0x28];
+    WX_STATE(a) = 0;
+    WX_TICKS(a) = WX_KIND(a) == 1 ? 0x2904 : 0x96;
+    WX_TARGET(a) = NULL;
+    WX_OWNER(a) = *(RaceCar* const*)(t + 0x30);
+    if (WX_KIND(a) == 1)
+        Actor_UpdateCenter(a);
+    const RaceCar* o = WX_OWNER(a);
+    WX_NET(a) = g_NumNets > 0 ? g_Nets[0] : NULL;   /* DAT_800af7d4: la red de la salida */
+    int* st = WX_START(a);
+    st[0] = a->obj.pos[0] = o->obj.pos[0];
+    st[1] = a->obj.pos[1] = o->obj.pos[1] + 0x600;
+    st[2] = a->obj.pos[2] = o->obj.pos[2];
+    memcpy(a->obj.unk34, a->obj.pos, sizeof(a->obj.unk34));
+    WX_NODE(a) = 0;
+    WX_LEN(a) = 1;
+    if (WX_NET(a))
+    {
+        int n = Cnet_Next(WX_NET(a), Cnet_FindNearest(WX_NET(a), a->obj.pos, 1)), p[3];
+        WX_NODE(a) = (uint16_t)(n < 0 ? 0 : n);
+        Cnet_NodePos(WX_NET(a), WX_NODE(a), p);
+        int v[3] = { p[0] - st[0], p[1] - (st[1] - 0x600), p[2] - st[2] };
+        WX_LEN(a) = Vec_ApproxLen3(v);
+    }
+    WX_PROG(a) = 0;
+    if (WX_KIND(a) == 1)
+        a->flags2c |= 0x10000;   /* siempre visible; sonido 8007734c(0x404) y contador DAT_800af7bc pendientes */
+    /* helada: sonido 0x417 (pendiente); tormenta: nube de particulas 80070e58 (pendiente: solo su vida) */
+    WX_FX(a) = WX_KIND(a) == 0 ? 1 : 0;
+    return 0;
+}
+
+/* 800323f0 */
+static void Weather_Update(Actor* a, int dt)
+{
+    int r = Pause_ResultsTime();
+    if (r > 0x5dc)
+        a->hp = -1;
+    /* aviso al humano que va hasta 0x32 puntos de TCRV por delante (Race_Frame1P lo borra cada frame) */
+    int len = g_Track ? g_Track->numCurve : 0;
+    if (!(WX_STATE(a) & 3) && len > 0)
+        for (int h = 0; h < g_NumHumans; h++)
+        {
+            RaceCar* e = g_Humans[h];
+            if (!e || e == WX_OWNER(a))
+                continue;
+            int d = e->tpos.curve - a->tpos.curve;
+            if (d < -(len >> 1))
+                d += len;
+            else if ((len >> 1) < d)
+                d -= len;
+            if ((unsigned)(d + 2) < 0x34 && (I32(e->ctrl, 0x60) == 0 || I32(e->ctrl, 0x64) < d))
+            {
+                I32(e->ctrl, 0x60) = (int32_t)(uintptr_t)a;
+                I32(e->ctrl, 0x64) = d;
+            }
+        }
+    if (WX_TICKS(a) >= 0)
+        WX_TICKS(a) = (int16_t)(WX_TICKS(a) - dt);
+    int kind = WX_KIND(a);
+    if (!(WX_STATE(a) & 1) && (kind == 1 || WX_TICKS(a) < 0))
+        for (int i = 0; i < g_NumCars; i++)
+        {
+            uint8_t* c = g_CarPhys[i];
+            if (!c)
+                continue;
+            RaceCar* e = (RaceCar*)ENT(c);
+            if (!(WX_STATE(a) & 2))
+            {
+                if (e == WX_OWNER(a) || (e->team == a->team && kind != 1) || (U16(c, 0x33a) & 4) || e->speed <= 0x45)
+                    continue;
+            }
+            else if (WX_TARGET(a) != e)
+                continue;
+            int v[2] = { a->obj.pos[0] - e->obj.pos[0], a->obj.pos[2] - e->obj.pos[2] };
+            int d = Vec_ApproxLen2(v);
+            if (d >= 0x4800)
+                continue;
+            if (kind == 1)
+            {
+                if (!(U16(c, 0x33a) & 0x80))
+                    Car_AddEffect(c, 7, Power_Duration(7));
+                continue;
+            }
+            if (d < 0xa00)
+            {
+                /* le alcanza: tormenta -> efecto 5, helada -> 1 (y desaparece); se pega al coche */
+                if (kind == 2)
+                    Fx_Push(0x1a, e->obj.pos, -1);
+                WX_STATE(a) = (uint8_t)((WX_STATE(a) & 0xfd) | 1);
+                int eff = kind == 0 ? 5 : 1;
+                WX_TICKS(a) = (int16_t)Car_AddEffect(c, eff, Power_Duration(eff));
+                WX_TARGET(a) = e;
+                if (kind == 2)
+                    a->hp = -1;
+                memcpy(a->obj.pos, e->obj.pos, sizeof(a->obj.pos));
+                Track_FindSurface(&a->tpos, a->obj.pos, NULL, 1);
+                a->obj.shadowY = e->obj.shadowY;
+                /* sonidos 800352f8(0x24 / 0x2F / 0x30) y 8007734c(0x40D): pendientes */
+                break;
+            }
+            if (!(WX_STATE(a) & 2))
+            {
+                WX_STATE(a) |= 2;
+                WX_TARGET(a) = e;
+            }
+        }
+    if (!(WX_STATE(a) & 2))
+    {
+        if (!(WX_STATE(a) & 1))
+        {
+            /* avanza por la red a 0x100 por tic, interpolando en el tramo actual */
+            const uint8_t* net = WX_NET(a);
+            int* st = WX_START(a);
+            int p[3] = { st[0], st[1] - 0x600, st[2] };
+            if (net)
+            {
+                Cnet_NodePos(net, WX_NODE(a), p);
+                WX_PROG(a) += dt * 0x100;
+                while (WX_LEN(a) <= WX_PROG(a))
+                {
+                    WX_PROG(a) -= WX_LEN(a);
+                    int nx = Cnet_Next(net, WX_NODE(a));
+                    WX_NODE(a) = (uint16_t)(nx < 0 ? WX_NODE(a) : nx);
+                    st[0] = p[0];
+                    st[1] = p[1] + 0x600;
+                    st[2] = p[2];
+                    Cnet_NodePos(net, WX_NODE(a), p);
+                    int v[3] = { p[0] - st[0], p[1] - (st[1] - 0x600), p[2] - st[2] };
+                    WX_LEN(a) = Vec_ApproxLen3(v);
+                    if (WX_LEN(a) <= 0)
+                    {
+                        WX_LEN(a) = 1;
+                        break;
+                    }
+                }
+            }
+            int half = WX_LEN(a) >> 1;
+            uint32_t f = half ? (uint32_t)(((uint64_t)(uint32_t)WX_PROG(a) * (0x80000000u / (uint32_t)half)) >> 16) : 0;
+            int dv[3] = { p[0] - st[0], p[1] - (st[1] - 0x600), p[2] - st[2] };
+            for (int k = 0; k < 3; k++)
+            {
+                a->obj.pos[k] = st[k] + (int)(((int64_t)dv[k] * (int32_t)f) >> 16);
+                a->vel[k] = dv[k];
+            }
+            Vec_Normalize(a->vel);
+        }
+        else if (WX_TARGET(a))
+            memcpy(a->obj.pos, WX_TARGET(a)->obj.pos, sizeof(a->obj.pos));
+    }
+    else if (WX_TARGET(a))
+    {
+        /* lo persigue a 0x100 por tic */
+        const RaceCar* t = WX_TARGET(a);
+        int v[3] = { t->obj.pos[0] - a->obj.pos[0], t->obj.pos[1] - (a->obj.pos[1] - 0x600), t->obj.pos[2] - a->obj.pos[2] };
+        int l = Vec_ApproxLen3(v);
+        Vec_Scale(l < 2 ? 0 : (int)(0x80000000u / (uint32_t)(l >> 1)), v);
+        for (int k = 0; k < 3; k++)
+        {
+            a->obj.pos[k] += (v[k] * dt) >> 8;
+            a->vel[k] = v[k];
+        }
+        Vec_Normalize(a->vel);
+    }
+    if (kind == 0)
+    {
+        /* tormenta: rayos contra los muros 8005b1ac / 8006dc10 y marcas en las ruedas de la victima: pendientes */
+        if (WX_FX(a))
+        {
+            if (WX_STATE(a) & 1)
+            {
+                RaceCar* t = WX_TARGET(a);
+                if (t)
+                    a->obj.shadowY = t->obj.shadowY;
+                if (t && t->phys && !(U16(t->phys, 0x33a) & 0x20))
+                    WX_TICKS(a) = 0;
+                if ((WX_TICKS(a) < 0x12d || WX_TICKS(a) - dt > 300) && WX_TICKS(a) < 1)
+                    WX_FX(a) = 0;   /* 80071de4 (y 80071dd4 = se desvanece en los ultimos 300 tics) */
+            }
+        }
+        if (!WX_FX(a))
+            a->hp = -1;
+    }
+    if (kind == 1)
+    {
+        Actor_UpdateCenter(a);
+        if (WX_TICKS(a) < 1)
+            a->hp = -1;
+    }
+    else
+        memcpy(a->obj.unk34, a->obj.pos, sizeof(a->obj.unk34));
+    Track_FindSurface(&a->tpos, a->obj.pos, NULL, 1);
+}
+
+/* 80033274 */
+static int Weather_Handler(int msg, Actor* a, intptr_t p1, intptr_t p2)
+{
+    switch (msg)
+    {
+    case 1:
+        return 0x10c;
+    case 2:
+        return Weather_Create(a, (const ActorDef*)p1);
+    case 5:
+        WX_FX(a) = 0;   /* 80071de4; el tornado descuenta DAT_800af7bc (pendiente) */
+        break;
+    case 6:
+        Weather_Update(a, (int)p1);
+        break;
+    case 9:
+    case 0xe:
+        return 0;
+    default:
+        break;
+    }
+    return Actor_DefaultHandler(msg, a, p1, p2);
+}
+
+/* 8002e808: 5 tormenta (tipo 0), 7 tornado (1, con su modelo) y 1 helada (2) salen del coche */
+static void Power_Weather(uint8_t* c, int power)
+{
+    RaceCar* e = (RaceCar*)ENT(c);
+    int kind = power == 5 ? 0 : power == 7 ? 1 : power == 1 ? 2 : -1;
+    if (kind < 0)
+        return;
+    uint8_t t[0x34];
+    Power_FakeDef(t, e, 8);
+    t[0x21] = power == 5 ? 0x17 : power == 1 ? 0xc : 10;
+    *(ModelHdr**)(t + 0x24) = kind == 1 ? s_twisterModel : NULL;
+    t[0x28] = (uint8_t)kind;
+    *(RaceCar**)(t + 0x30) = e;
+    ActorDef d = { Weather_Handler, NULL, t, NULL };
+    Actor* a = Actor_Create(&d);
+    if (a)
+        a->def = NULL;
+}
+
+/* Race_Frame1P 80026f28: el aviso de clima de cada humano se borra al empezar el frame */
+void Power_ClearAlerts(void)
+{
+    for (int h = 0; h < g_NumHumans; h++)
+        if (g_Humans[h] && g_Humans[h]->ctrl)
+            I32(g_Humans[h]->ctrl, 0x60) = 0;
+}
+
+/* Para el marcador (800429d0): tipo de clima del aviso del humano (0 tormenta, 1 tornado, 2 helada) o -1 si no
+ * hay o lo lanzo el mismo */
+int Power_AlertKind(const RaceCar* human)
+{
+    if (!human || !human->ctrl)
+        return -1;
+    const Actor* a = (const Actor*)(uintptr_t)I32(human->ctrl, 0x60);
+    if (!a || WX_OWNER(a) == human)
+        return -1;
+    return WX_KIND(a);
+}
+
 /* 8002ec00: caducidad del misterioso, uso del poder (IA: cuando se acaba su espera; humano: R2 mantenido) y
- * cuenta atras de los efectos activos. Los proyectiles (80033468) y el clima (80033274) quedan pendientes: de
- * momento se gastan sin efecto. */
+ * cuenta atras de los efectos activos */
 void Car_UpdatePowerUps(uint8_t* c, int dt, int use)
 {
     RaceCar* e = (RaceCar*)ENT(c);
@@ -471,12 +868,16 @@ void Car_UpdatePowerUps(uint8_t* c, int dt, int use)
             case 4:
                 fx = s == 0 ? 0x21 : 0x20;
                 if (fromMystery < 0)
-                    effect = 0;   /* 8002e94c: proyectil (pendiente) */
+                {
+                    Power_Drop(c, s);   /* 8002e94c */
+                    effect = 0;
+                }
                 break;
             case 1:
             case 5:
             case 7:
-                effect = -1;      /* 8002e808: clima (pendiente) */
+                Power_Weather(c, s);    /* 8002e808 */
+                effect = -1;
                 break;
             case 2:  fx = 0x14; break;
             case 6:  fx = 0x19; break;

@@ -7,7 +7,8 @@
  * 8003c95c / 8003c8ac / 8003cb08 y Obj_SetFrame 80013aa4.
  * La entidad conserva la disposicion del original (cabecera de 0xE0 bytes comun con los coches; despues, los
  * datos de cada tipo) porque el codigo portado accede a ella por desplazamientos.
- * Tipos creados: 0x0B objetos de la pista (8003421c) y 0x16 cajas de poder (80031854). Pendientes: 0x05
+ * Tipos creados: 0x0B objetos de la pista (8003421c) y 0x16 cajas de poder (80031854); los poderes crean
+ * 0xD (objetos que se sueltan) y 8 (clima) en powerup.c. Pendientes: 0x05
  * (80034e6c, objetos animados con guion), 0x06 (80034198), 0x0E disparadores (80034894), 0x54 (80072208),
  * los generadores Csac (800605f0), los guiones (80048f78, 80067890) y la fisica de los objetos sueltos
  * (Body_Step 8005610c, clases de objeto DAT_800b1b38). */
@@ -105,6 +106,7 @@ int  Cact_OnLoaded(NrAsset* a);                         /* 8004942c */
 void Actors_LogSummary(void);
 void Actors_Free(void);                                 /* 80048d5c */
 void Actors_Update(int dt);                             /* 80048dec(6, dt) */
+void Actors_PostUpdate(void);                           /* 80048e84: mensaje 4 a las de vida < 0 */
 void Actors_AddToDrawList(int view);                    /* 80061a0c + 80061b28 */
 void Actors_CollideCars(void);                          /* coches contra actores en 80061808 */
 
