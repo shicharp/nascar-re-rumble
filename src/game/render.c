@@ -401,7 +401,10 @@ void Render_ClearList(void)
 void Render_Add(GfxObj* o)
 {
     if (s_listCount < (int)(sizeof(s_list) / sizeof(s_list[0])))
+    {
         s_list[s_listCount++] = o;
+        o->flags &= ~2;   /* se vuelve a marcar en Render_DrawList si esta cerca */
+    }
 }
 
 /* 8001607c: 0 fuera, 1 detras de la camara, 2 visible */
@@ -692,6 +695,8 @@ void Render_DrawList(int mirror)
             continue;
         Gte_LoadColumns(g_Camera.view);
         Gte_RotateVectors(d, o->viewRot, 4);
+        if (!mirror)
+            o->flags |= 2;   /* 80015280: cerca de la camara de la vista 0 (1 << 1); lo miran los efectos */
 
         Gte_LoadColumns(o->viewRot);
         Gte_SetTrans(o->viewPos[0], -o->viewPos[1], o->viewPos[2]);

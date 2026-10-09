@@ -12,6 +12,7 @@
 #include "collide.h"
 #include "powerup.h"
 #include "actor.h"
+#include "fx.h"
 
 Actor* g_Actors;            /* DAT_800af87c */
 static Actor* s_tail;       /* DAT_800af880 */
@@ -293,7 +294,7 @@ static void Actor_InitCommon(Actor* a, const ActorDef* d)
     memcpy(a->obj.unk34, t + 8, sizeof(a->obj.unk34));
     memset(a->vel, 0, sizeof(a->vel));
     a->speed = 0;
-    /* 80038ff8: sonidos del objeto (pendiente) */
+    Fx_ObjCreated(a);   /* 80038ff8: efecto de la clase de objeto (+3; ninguno en GlblData) */
 }
 
 /* 8002c894 (sin los cuerpos sueltos, los danos 8002c594 ni los guiones) */
@@ -321,6 +322,8 @@ int Actor_DefaultHandler(int msg, Actor* a, intptr_t p1, intptr_t p2)
         if (a->flags2c & 0x1000000)
             return 0;
         a->flags2c |= 0x1000010;
+        if (a->objClass)
+            Fx_ObjDie(a->objClass, a);   /* 800354d4: restos / chispas de la clase de objeto */
         Actor_Destroy(a);
         return 1;
     case 5:
@@ -389,6 +392,12 @@ static void Actors_Reap(void)
 }
 
 /* 80048d5c */
+/* Numero de entidad nuevo (DAT_800af870): los coches tambien son entidades en el original */
+int Ent_NewHandle(void)
+{
+    return ++s_nextHandle;
+}
+
 void Actors_Free(void)
 {
     for (Actor* a = g_Actors; a; a = a->next)

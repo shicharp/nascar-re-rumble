@@ -17,6 +17,7 @@
 #include "carphys_int.h"
 #include "snd.h"
 #include "collide.h"
+#include "fx.h"
 
 /* semiextensiones de la caja del modelo (3DBB +0xE / +0x10 / +0x12) */
 static void Car_Half(RaceCar* e, int* h)
@@ -426,6 +427,13 @@ static int Car_CollidePair(uint8_t* c1, uint8_t* c2)
                 U16(c, 0x198) &= 0xffdf;
                 IA(c, 0xfe) |= 0x4043;
             }
+            /* roce: chispas (2) en uno y destello (3) en el otro, 3 de cada 4 veces */
+            if (Rand_B() & 0xc)
+            {
+                int a = (Rand_B() & 1) ? 3 : 2;
+                Fx_QueueImpact(c1, 1, pt1, e1->speed, a);   /* 8007734c */
+                Fx_QueueImpact(c2, 1, pt2, e2->speed, a == 2 ? 3 : 2);
+            }
         }
     }
     int human = e1->type == 1 || e2->type == 1, sec = -1;
@@ -436,6 +444,8 @@ static int Car_CollidePair(uint8_t* c1, uint8_t* c2)
         Fx_Push(0xd, e1->obj.pos, 100);   /* sonido del golpe (cola DAT_800b52f0) */
         IA(c1, 0xfe) |= 0x4003;
         IA(c2, 0xfe) |= 0x4003;
+        Fx_QueueImpact(c1, 1, pt1, e1->speed, 4);
+        Fx_QueueImpact(c2, 1, pt2, e2->speed, 4);
     }
     if (e1->speed > 2 && e2->speed > 2)
     {
@@ -445,6 +455,8 @@ static int Car_CollidePair(uint8_t* c1, uint8_t* c2)
     if (speed > 0x10)
     {
         Car_BigHit(speed, c1, c2, pt1, pt2, t1, t2);
+        Fx_QueueImpact(c1, 1, pt1, e1->speed, 5);
+        Fx_QueueImpact(c2, 1, pt2, e2->speed, 5);
         if (human)
             sec = Speech_Pick(4, 10);
     }

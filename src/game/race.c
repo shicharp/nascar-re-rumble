@@ -28,6 +28,7 @@
 #include "powerup.h"
 #include "snd.h"
 #include "vecmath.h"
+#include "fx.h"
 
 uint8_t g_CarLoadOrder[8];
 int     g_CarsLoaded;
@@ -39,6 +40,7 @@ void Race_Load(const char* path)
     g_CarsLoaded = 0;              /* FUN_80023e70 */
     Actors_Free();                 /* 80048d5c */
     Engine_ResetTypes();           /* 8003cfd0: tipos de motor antes de que lleguen los Ceng */
+    Fx_Reset();                    /* 80038d54 */
     Track_Free();
     Cnet_Reset();                  /* FUN_8002cf7c */
     g_HaveStart = 0;
@@ -250,6 +252,7 @@ void Race_MainLoop(void)
     Font_FlushUploads();
     g_RaceTime = g_PrevRaceTime = 0;
     Race_CreateCars();             /* 8003132c (desde Level_Run) */
+    Fx_PostLoad();                 /* 8003913c (Level_Run) + 80075808 (Level_WaitLoaded) */
     Actors_LogSummary();
     RaceCam_Init();
     Hud_Init();
@@ -285,6 +288,7 @@ void Race_MainLoop(void)
             Actors_Update(dt);         /* 80048dec(6) */
             Race_UpdateCars(dt);
             Actors_PostUpdate();       /* 80048e84 */
+            Fx_Update(dt);             /* 80038b50 */
             Hud_Update(dt);            /* 80042330 */
             RaceCam_Update(0, dt);     /* 8005f034 */
         }
@@ -305,6 +309,7 @@ void Race_MainLoop(void)
         Race_AddCarsToDrawList();
         Actors_AddToDrawList(0);       /* 80061a0c + Actors_DrawView 80061b28 */
         Render_DrawList(0);
+        Fx_Draw(0);                    /* 80038ccc */
         Sprite_DrawAll();              /* 80045268 */
         Race_DrawHud();
         Race_DrawMirror();
@@ -322,6 +327,7 @@ void Race_MainLoop(void)
         Race_UpdateState(dt);          /* 80027e90 */
     }
     Snd_StopRace();                    /* 8003d04c */
+    Fx_FreeAll(2);                     /* 80038e28 (8002456c) */
     Race_FreeCars();
     Actors_Free();
     Track_Free();

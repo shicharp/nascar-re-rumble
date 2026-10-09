@@ -10,6 +10,7 @@
 #include "racecar.h"
 #include "actor.h"
 #include "snd.h"
+#include "fx.h"
 
 #define MAX_TYPES 48
 
@@ -94,6 +95,8 @@ static int Asset_Dispatch(NrAsset* a)
     case NR_TAG('C', 'v', 'k', 'b'):
     case NR_TAG('C', 'e', 'n', 'g'):
         return Snd_OnAsset(a);     /* 80022908 */
+    case NR_TAG('C', 's', 'f', 'x'):
+        return Fx_OnCsfx(a);       /* 80035adc */
     case ASSET_Cctr:
         /* cambia el estado del nivel: id 0 -> 2, id 1 -> 4 (en juego) */
         if (a->id == 0)

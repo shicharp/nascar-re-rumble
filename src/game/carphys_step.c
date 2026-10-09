@@ -8,6 +8,7 @@
 #include "carphys.h"
 #include "carphys_int.h"
 #include "snd.h"
+#include "fx.h"
 
 void Car_RotateMatrix(int* m, const int* w);
 void Car_BoxCorners(uint8_t* c);
@@ -648,7 +649,30 @@ void Physics_StepAll(int dt)
             else
             {
                 int imp = -Div_(minComp[i] << 9, sdt);
-                IA(c, 0x1a9) = imp;   /* (golpe al aterrizar > 0x2000: chispas y sonido pendientes) */
+                IA(c, 0x1a9) = imp;
+                if (imp > 0x2000)
+                {
+                    /* golpe al aterrizar: chispas en la rueda que mas se hunde (en el marco del coche, hacia
+                     * fuera y arriba), sonido 0xF y, si es fuerte, tierra o hierba con la velocidad tangente */
+                    int dk = deepest[i];
+                    int rel[3], loc[3];
+                    for (int k = 0; k < 3; k++)
+                        rel[k] = I32(c, 0x644 + dk * 0xc + k * 4) - e->obj.pos[k];
+                    loc[0] = Vec_Dot16(e->obj.rot, rel);
+                    loc[1] = Vec_Dot16(e->obj.rot + 3, rel);
+                    loc[2] = Vec_Dot16(e->obj.rot + 6, rel);
+                    loc[0] += loc[0] < 0 ? 0x100 : -0x100;
+                    loc[1] += 0x80;
+                    Fx_QueueImpact(c, 1, loc, IA(c, 0x1a9), 6);   /* 8007734c */
+                    Fx_Push(0xf, e->obj.pos, 100);
+                    if (U8(c, 0x181) != 7 && IA(c, 0x1a9) > 20000 && IA(c, 0x3a) <= 0x9782b)
+                    {
+                        int d = Vec_Dot16(VEC(c, 0x18c), VEC(c, 0x160)), tv[3];
+                        for (int k = 0; k < 3; k++)
+                            tv[k] = I32(c, 0x18c + k * 4) - M16(d, I32(c, 0x160 + k * 4));
+                        Fx_QueueImpactVel(c, 1, VEC(c, 0x644 + dk * 0xc), tv, 10);   /* 800773d4 */
+                    }
+                }
                 if (IA(c, 0x57) < 0x8001)
                 {
                     if (IA(c, 0x1a9) > 0xc00)
@@ -685,6 +709,8 @@ void Physics_StepAll(int dt)
         sdt = rest;
         rest = 0;
     }
+    for (int i = 0; i < n; i++)
+        Car_ExhaustFx(g_CarPhys[i], dt);   /* 80077c60 */
     for (int i = 0; i < n; i++)
     {
         uint8_t* c = g_CarPhys[i];

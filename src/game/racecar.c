@@ -156,6 +156,7 @@ void Race_CreateCars(void)
         c->player = (int8_t)g_RaceGrid.car[i].player;
         c->type = c->player < 0 ? 0x11 : 1;
         c->team = g_RaceGrid.car[i].team;
+        c->handle = Ent_NewHandle();   /* (los efectos pegados al coche lo usan para saber si sigue vivo) */
         int back = g_NumCars == 2 ? 0 : (i * 13) << 9;
         int ox = Fix_Mul16(dir[2], 0xa00), oz = Fix_Mul16(dir[0], 0xa00);
         if (!(i & 1))

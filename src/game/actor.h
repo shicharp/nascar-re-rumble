@@ -106,6 +106,7 @@ void   Actor_UpdateCenter(Actor* a);                    /* 80015928 + 80016784: 
 int  Cact_OnLoaded(NrAsset* a);                         /* 8004942c */
 void Actors_LogSummary(void);
 void Actors_Free(void);                                 /* 80048d5c */
+int  Ent_NewHandle(void);                               /* ++DAT_800af870 */
 void Actors_Update(int dt);                             /* 80048dec(6, dt) */
 void Actors_PostUpdate(void);                           /* 80048e84: mensaje 4 a las de vida < 0 */
 void Actors_AddToDrawList(int view);                    /* 80061a0c + 80061b28 */

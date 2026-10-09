@@ -48,11 +48,14 @@ nivel, corto de camara), la pausa con START (camara, marcador, audio, reiniciar,
 terminar; "Exit Race" vuelve al front-end). Actores de la pista: objetos (conos, vallas, carteles), objetos que giran y cajas de poder que reaparecen;
 los coches recogen un poder segun su puesto y lo usan (la IA sola, el jugador con R2), con sus efectos (escudo,
 turbo, ruedas grandes, embestida, onda expansiva, objetos que se sueltan en la pista, tormenta, helada y
-tornado que persiguen a los rivales) e iconos y avisos en el marcador. `--shot` guarda el frame N y sale; `--press "185:down,205:right"` simula
+tornado que persiguen a los rivales) e iconos y avisos en el marcador. Sonido: efectos, motores, bocina, musica
+de la sede y comentarista. Efectos visuales: chispas, destellos y trozos de los choques, humo del escape y
+anillos de humo del tornado (el resto de tipos de efecto, las marcas de las ruedas y la tormenta, pendientes). `--shot` guarda el frame N y sale; `--press "185:down,205:right"` simula
 pulsaciones (para verificar sin intervención; botones: up, down, left, right, cross, circle, triangle, square,
 start, select, l1, r1, l2, r2).
 Variables de depuracion: `NR_LAPS=n` vueltas, `NR_CAMCAR=n` camara en el coche n, `NR_POWER=n` poder n en la
-mano del jugador al salir, `NR_POWERLOG=1` cajas recogidas y poderes usados en el log.
+mano del jugador al salir, `NR_POWERLOG=1` cajas recogidas y poderes usados en el log, `NR_SNDLOG=1` sonidos,
+`NR_FXLOG=1` efectos creados, `NR_FXTEST=clase[,golpe]` crea un efecto en el coche del jugador cada segundo.
 `--viewer` es el visor de páginas Cpag (flechas para cambiar de página).
 
 ## Controles

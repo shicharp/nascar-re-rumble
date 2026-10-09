@@ -4,6 +4,7 @@
 #include "vecmath.h"
 #include "carphys.h"
 #include "carphys_int.h"
+#include "fx.h"
 
 static int Vec_Len16b(const int* v)
 {
@@ -103,7 +104,17 @@ void Car_Collide(uint8_t* c, uint8_t* rec, int dt, int ground, int self)
     int velT[3] = { vel[0] - velN[0], vel[1] - velN[1], vel[2] - velN[2] };   /* local_140 */
     int velTl = Vec_Len16b(velT);
     if (ground && U8(c, 0x181) == 7 && I16(c, 0x184) == 0 && (Abs_(velTl) > 3000 || Abs_(vn) > 3000))
-        I16(c, 0x184) = 600;   /* agua: chispas y sonido (800773d4, cola de efectos): pendientes */
+    {
+        /* agua: salpicadura con la velocidad tangente (en el mundo, a la mitad) y sonido 0x7D */
+        int wv[3], wp[3];
+        Mat_MulT(rot, velT, wv);
+        Mat_MulTAdd(rot, VEC(rec, 4), wp);
+        for (int k = 0; k < 3; k++)
+            wv[k] >>= 1;
+        Fx_QueueImpactVel(c, self != 0, wp, wv, 10);   /* 800773d4 */
+        Fx_Push(0x7d, e->obj.pos, 100);
+        I16(c, 0x184) = 600;
+    }
     if (U8(c, 0x189) == 0 && (U16(c, 0x198) & 0x10) && ground && U8(c, 0x181) != 7)
     {
         if (!other || (U8(other, 0x638) == 0 && (!(U16(other, 0x33a) & 2) || maxAxis < 0xfc01)))
@@ -129,7 +140,21 @@ void Car_Collide(uint8_t* c, uint8_t* rec, int dt, int ground, int self)
             }
         }
     }
-    (void)impactSnd;   /* chispas / golpes (8007734c): pendientes */
+    /* golpes: efecto de la clase del objeto (+7) o chispas (1 / 3 al chocar, 0xB al rozar) */
+    int hard = impactSnd && (Abs_(vn) > 0x3000 || Abs_(angTl) > 0x80000);
+    if (!self)
+    {
+        const uint8_t* oc = e->objUnder ? Fx_ObjClass(e->objUnder) : NULL;
+        if (hard && oc && oc[7])
+            Fx_QueueImpact(c, 0, VEC(rec, 4), e->speed, oc[7] + 1000);   /* 8007734c */
+    }
+    else if (!((U16(c, 0x198) & 8) && ground))
+    {
+        if (hard)
+            Fx_QueueImpact(c, 1, VEC(rec, 4), e->speed, (Rand_B() & 1) ? 3 : 1);
+        if ((U16(c, 0x198) & 0x10) && impactSnd && (Abs_(velTl) > 0x200 || Abs_(angTl) > 0x10000))
+            Fx_QueueImpact(c, 1, VEC(rec, 4), e->speed, 0xb);
+    }
     int kT = 0, kA = 0, kN = 0, kR = 0;
     int nUp = 0, slide = 0;
     if (self && (U16(c, 0x198) & 8) && ground)
@@ -360,13 +385,38 @@ torque:
         IA(other, 0xfe) |= 0x4003;
 }
 
+/* Golpe segun la superficie del contacto (+0x19D): 0 chispas, 0xC otra cosa, -1 nada */
+static int Contact_FxId(uint8_t* c)
+{
+    switch (U8(c, 0x19d))
+    {
+    case 1:
+    case 2:
+        return 0xc;
+    case 0x11:
+        return -1;
+    default:
+        return U8(c, 0x19d) <= 0x12 ? 0 : -1;
+    }
+}
+
+/* Chispas del contacto: punto local (+0xF0 muro, +0x110 suelo) a 3/4 hacia el centro */
+static void Contact_Fx(uint8_t* c, uint8_t* self, int off)
+{
+    int id = Contact_FxId(c);
+    if (id < 0)
+        return;
+    int p[3] = { I32(c, off), I32(c, off + 4), I32(c, off + 8) };
+    Vec_Scale(0xc000, p);
+    Fx_QueueImpact(self, 1, p, ((RaceCar*)ENT(c))->speed, id);   /* 8007734c */
+}
+
 /* 80055748: contactos acumulados con los muros (+0xEC) y con el suelo (+0x10C) */
 void Car_HandleContacts(uint8_t* c, int dt, uint8_t* self, int fromStep)
 {
     RaceCar* e = (RaceCar*)ENT(c);
     int nrm[3], edge[6];
     int decTimer = 0;
-    (void)self;
     (void)fromStep;
     int hit = Track_RayWall(e->obj.pos, VEC(c, 0x16c), nrm, edge);
     if (hit == 0)
@@ -375,7 +425,8 @@ void Car_HandleContacts(uint8_t* c, int dt, uint8_t* self, int fromStep)
         {
             if (U8(c, 0x180) & 1)
             {
-                /* (golpe 80052100 y chispas 8007734c: pendientes) */
+                /* (golpe 80052100 pendiente; con fromStep = 0 el efecto saldria de la clase del objeto) */
+                Contact_Fx(c, self, 0xf0);
                 if (IA(c, 0x42) < 0x30)
                     IA(c, 0x42) = 0x30;
                 e->obj.pos[0] += M16(IA(c, 0x42), IA(c, 0x3f));
@@ -386,6 +437,7 @@ void Car_HandleContacts(uint8_t* c, int dt, uint8_t* self, int fromStep)
             {
                 if (I16(c, 0x184) == 0)
                 {
+                    Contact_Fx(c, self, 0x110);
                     if (U8(c, 0x181) != 7)
                         e->obj.pos[1] += IA(c, 0x4a);
                 }

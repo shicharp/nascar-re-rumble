@@ -1,6 +1,7 @@
 /* Poderes: cajas de la pista y efectos sobre los coches. Ver powerup.h.
- * Pendiente: sonidos de las cajas y chispas (8003558c, 8007734c), la llama del turbo (8003da74) y los efectos
- * visuales del clima (nube y rayos de la tormenta 80070e58 / 8006dc10). */
+ * Efectos (fx.c): chispas de la caja (8003558c), destello del poder (0x401), onda (0x40E), tornado (0x404),
+ * helada (0x417) y rayo (0x40D). Pendiente: la llama del turbo (8003da74), la nube y los rayos de la tormenta
+ * (80070e58 / 8006dc10) y los tipos de efecto 0x5C / 0x58 que usan varios de ellos. */
 #include <stdlib.h>
 #include <string.h>
 #include "nr.h"
@@ -16,6 +17,7 @@
 #include "pause.h"
 #include "powerup.h"
 #include "snd.h"
+#include "fx.h"
 
 /* modelos que trae la aRSL de las cajas: proyectiles de los poderes 0 y 4, y el tornado */
 static ModelHdr* s_projModel[2];   /* DAT_800af7d0 / DAT_800af7c8 */
@@ -103,14 +105,15 @@ static void Pickup_Spin(Actor* a, int dt)
  * 0x708 tics (0x1C2 con Mayhem). */
 static int Pickup_Collect(Actor* a, RaceCar* e)
 {
-    /* 8003558c: sonido de la clase de objeto (pendiente) */
+    if (a->objClass)
+        Fx_ObjHit(a->objClass, a);   /* 8003558c: chispas y sonido de la caja (clase 0x1A) */
     if (!e || (e->type != 1 && e->type != 0x11) || !e->phys)
         return 0;
     uint8_t* c = e->phys;
     int mayhem = g_GameInfo->powerUps == 3;
     if (I8(c, 0x338) < 0)
     {
-        /* 8007734c: chispas y sonido de la caja (pendiente con los efectos) */
+        Fx_QueueImpact(e, 2, NULL, 0, 0x401);   /* 8007734c: destello del poder (clase 0x19) */
         if (e->type == 1 && !g_RacePaused)
             Speech_Say(0x10, 4, e, 1);
         int n = g_NumCars, pos = U8(c, 0x31a);
@@ -343,11 +346,12 @@ static int Vec_ApproxMax(const int* v)
 }
 
 /* 8005b2a0: onda expansiva: empuja a los rivales sin escudo a menos de 0x3000 y acerca la velocidad a la
- * punta (el sonido 8007734c(0x40E) queda pendiente) */
+ * punta */
 static int Car_Shockwave(uint8_t* c)
 {
     RaceCar* e = (RaceCar*)ENT(c);
     int hits = 0;
+    Fx_QueueImpact(c, 1, NULL, 0, 0x40e);   /* 8007734c: onda (clase 0x26) */
     for (int i = 0; i < g_NumCars; i++)
     {
         uint8_t* o = g_CarPhys[i];
@@ -583,8 +587,13 @@ static int Weather_Create(Actor* a, const ActorDef* d)
     }
     WX_PROG(a) = 0;
     if (WX_KIND(a) == 1)
-        a->flags2c |= 0x10000;   /* siempre visible; sonido 8007734c(0x404) y contador DAT_800af7bc pendientes */
-    /* helada: sonido 0x417 (pendiente); tormenta: nube de particulas 80070e58 (pendiente: solo su vida) */
+    {
+        a->flags2c |= 0x10000;   /* siempre visible (contador DAT_800af7bc pendiente) */
+        Fx_QueueImpact(a, 2, NULL, 0, 0x404);   /* tornado: anillos de humo 0x1C */
+    }
+    else if (WX_KIND(a) == 2)
+        Fx_QueueImpact(a, 2, NULL, 0, 0x417);   /* helada: 0x2F */
+    /* tormenta: nube de particulas 80070e58 (pendiente: solo su vida) */
     WX_FX(a) = WX_KIND(a) == 0 ? 1 : 0;
     return 0;
 }
@@ -655,7 +664,14 @@ static void Weather_Update(Actor* a, int dt)
                 memcpy(a->obj.pos, e->obj.pos, sizeof(a->obj.pos));
                 Track_FindSurface(&a->tpos, a->obj.pos, NULL, 1);
                 a->obj.shadowY = e->obj.shadowY;
-                /* sonidos 800352f8(0x24 / 0x2F / 0x30) y 8007734c(0x40D): pendientes */
+                Fx_Kill(a, 0x24);
+                if (kind == 0)
+                    Fx_QueueImpact(a, 2, NULL, 0, 0x40d);   /* rayo (0x25) */
+                else
+                {
+                    Fx_Kill(a, 0x2f);
+                    Fx_Kill(a, 0x30);
+                }
                 break;
             }
             if (!(WX_STATE(a) & 2))

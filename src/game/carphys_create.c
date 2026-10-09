@@ -27,6 +27,49 @@ static void Car_ParamIndex(uint8_t* c, int* group, int* car)
     *car = desc[2];
 }
 
+/* 800779a0: tubos de escape (+0x444 numero, +0x445 banderas, +0x44C registros de 0xE bytes: punto del modelo,
+ * su posicion local y la direccion del humo >> 4) segun la tabla 800ab618 (u16 escala de la llama, n, puntos
+ * en 800ab5bc {punto, rumbo, inclinacion}); largo de las llamas (+0x440 / +0x442) de 800ab6d8 / 800ab708 */
+static void Car_InitExhaust(uint8_t* c)
+{
+    int g, k;
+    Car_ParamIndex(c, &g, &k);
+    int cfg = (int8_t)Exe_U8(0x800ab688u + g * 3 + k);
+    if (cfg < 0)
+    {
+        U8(c, 0x444) = 0;
+        return;
+    }
+    U8(c, 0x445) = Exe_U8(0x800ab6b0u + g * 3 + k);
+    uint32_t t = 0x800ab618u + (uint32_t)cfg * 8;
+    int n = (int8_t)Exe_U8(t + 2);
+    U8(c, 0x444) = (uint8_t)n;
+    unsigned scale = Exe_U16(t);
+    GfxObj* o = &((RaceCar*)ENT(c))->obj;
+    for (int i = 0; i < n; i++)
+    {
+        uint32_t pd = 0x800ab5bcu + (uint32_t)(int8_t)Exe_U8(t + 3 + i) * 6;
+        uint8_t* x = B_(c) + 0x44c + i * 0xe;
+        x[0] = Exe_U8(pd);
+        int m[9], lp[3];
+        Math_RotMatrix((int16_t)Exe_U16(pd + 2), (int16_t)Exe_U16(pd + 4), 0, m);
+        Obj_GetLocalPoint(o, (int8_t)x[0], lp);
+        for (int a = 0; a < 3; a++)
+        {
+            *(int16_t*)(x + 2 + a * 2) = (int16_t)lp[a];
+            *(int16_t*)(x + 8 + a * 2) = (int16_t)(m[6 + a] >> 4);
+        }
+        int div = I16(PTR(c, 0x3e8), 4);
+        if (div)
+        {
+            int a = ((int)((uint32_t)Exe_S32(0x800ab6dcu) * scale) >> 8) - ((int)((uint32_t)Exe_S32(0x800ab6d8u) * scale) >> 8);
+            int b = ((int)((uint32_t)Exe_S32(0x800ab70cu) * scale) >> 8) - ((int)((uint32_t)Exe_S32(0x800ab708u) * scale) >> 8);
+            I16(c, 0x440) = (int16_t)(a * 0x100 / div);
+            I16(c, 0x442) = (int16_t)(b * 0x100 / div);
+        }
+    }
+}
+
 /* 8004d8dc: 12 bytes en 800ab1e4 por la tabla 800ab3e0 */
 static uint32_t Car_ParamsAddr(uint8_t* c)
 {
@@ -486,6 +529,7 @@ uint8_t* Car_CreatePhys(RaceCar* e, GfxObj* wheels, const void* desc)
     I32(c, 0x16c) = e->obj.pos[0];
     I32(c, 0x170) = e->obj.pos[1];
     I32(c, 0x174) = e->obj.pos[2];
+    Car_InitExhaust(c); /* 800779a0 */
     Engine_Create(c);   /* 80040258 */
     return c;
 }
