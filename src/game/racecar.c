@@ -12,6 +12,7 @@
 #include "racecar.h"
 #include "actor.h"
 #include "powerup.h"
+#include "snd.h"
 #include "carphys.h"
 #include "carphys_int.h"
 #include "ai.h"
@@ -198,6 +199,8 @@ void Race_FreeCars(void)
     for (int i = 0; i < RACE_MAX_CARS; i++)
     {
         RaceCar* c = &g_Cars[i];
+        if (c->phys)
+            Engine_Free(c->phys);   /* 800417ec */
         free(c->phys);
         free(c->ctrl);
         c->phys = c->phys2 = c->ctrl = NULL;
@@ -296,6 +299,12 @@ typedef struct
 
 static RaceCamView s_views[2];
 static int         s_viewMode[2];   /* DAT_800af8c0 */
+
+/* 8005e840: la camara del jugador va dentro del coche (preset de tipo 2) */
+int RaceCam_IsInCar(int view)
+{
+    return s_presets[s_viewMode[view & 1] & 3].type == 2;
+}
 
 int RaceCam_GetViewMode(int view)
 {

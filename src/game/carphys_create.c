@@ -9,6 +9,7 @@
 #include "frontend.h"
 #include "carphys.h"
 #include "carphys_int.h"
+#include "snd.h"
 
 /* 8004d668: grupo de parametros segun el piloto (personajes especiales 0x21-0x37) y tipo de coche */
 static void Car_ParamIndex(uint8_t* c, int* group, int* car)
@@ -485,5 +486,6 @@ uint8_t* Car_CreatePhys(RaceCar* e, GfxObj* wheels, const void* desc)
     I32(c, 0x16c) = e->obj.pos[0];
     I32(c, 0x170) = e->obj.pos[1];
     I32(c, 0x174) = e->obj.pos[2];
+    Engine_Create(c);   /* 80040258 */
     return c;
 }

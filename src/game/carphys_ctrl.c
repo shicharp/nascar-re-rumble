@@ -2,6 +2,7 @@
 #include "pad.h"
 #include "carphys.h"
 #include "carphys_int.h"
+#include "snd.h"
 #include "hud.h"
 
 /* ---------------------------------------------------------------- controles del coche */
@@ -247,7 +248,7 @@ static void Pad_Edge(uint32_t bits, uint8_t* bind)
 }
 
 /* Humans_Update 8005ffbc (parte): tiempo con un poder sin usar (+0x68, para el aviso del marcador), R2 (+0x34,
- * usar el poder) y arriba en la cruceta (+0x4C, la bocina 80041be8(5): pendiente con el sonido) */
+ * usar el poder) y arriba en la cruceta (+0x4C, la bocina 80041be8(5)) */
 void Human_UpdateButtons(RaceCar* e, int dt)
 {
     uint8_t* ctrl = e->ctrl;
@@ -255,6 +256,8 @@ void Human_UpdateButtons(RaceCar* e, int dt)
         I32(ctrl, 0x68) += dt;
     Pad_Edge(U32(ctrl, 8), B_(ctrl) + 0x34);
     Pad_Edge(U32(ctrl, 8), B_(ctrl) + 0x4c);
+    if (I32(ctrl, 0x50) == 0 && I32(PTR(ctrl, 0), 0x330) == 0)
+        Car_PlaySfx(5, e);   /* 80041be8: bocina */
 }
 
 /* Lectura del mando (Race_UpdateTime: 8005fc54 + 8005f928 para cada humano). Mando digital (tipo 4). */

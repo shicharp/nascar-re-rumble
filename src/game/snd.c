@@ -1,6 +1,5 @@
 /* Sonido del juego (ver snd.h). Las estructuras siguen a las del original (tamanos y campos) pero en C; nada
- * de fuera accede a ellas por desplazamientos. Pendiente: motores de los coches (Ceng, 80040258 / 80040600 /
- * 80040c58), streaming de musica y voces (80021464..80022300, 80023258, 80022f24) y comentarios (8002b920). */
+ * de fuera accede a ellas por desplazamientos. Motores en snd_car.c. Pendiente: streaming de musica y voces (80021464..80022300, 80023258, 80022f24) y comentarios (8002b920). */
 #include <stdlib.h>
 #include <string.h>
 #include "nr.h"
@@ -18,120 +17,12 @@
 #define ASSET_Cvkb NR_TAG('C', 'v', 'k', 'b')
 #define ASSET_Ceng NR_TAG('C', 'e', 'n', 'g')
 
-#define NUM_DEFS     0x6e
-#define NUM_IDS      0x8c
-#define NUM_REFS     0x96
-#define NUM_VOICES   24
-#define NUM_SOURCES  0x1e
-#define NUM_BANKS    10
-#define MAX_PATCHES  6
-
-/* ---------------------------------------------------------------- estructuras */
-
-typedef struct
-{
-    uint8_t prog;           /* programa del banco */
-    uint8_t used;
-    uint8_t slot;           /* hueco de snd_lib */
-    uint8_t bank;           /* id del banco (Cvkh) */
-} PatchRef;                 /* DAT_800b3be0 (0x96 x 4) */
-
-typedef struct SndVoice SndVoice;
-
-typedef struct
-{
-    PatchRef* patch[MAX_PATCHES];  /* +0x00 */
-    uint8_t   count;               /* +0x18 */
-    uint8_t   rr;                  /* +0x19 ultimo patch usado */
-    uint8_t   active;              /* +0x1A voces sonando */
-    uint8_t   prio;                /* +0x1B 1..10 */
-    uint8_t   maxVoices;           /* +0x1C (0 = definicion libre) */
-    uint8_t   b1d;                 /* +0x1D */
-    uint8_t   key;                 /* +0x1E clave del Cshd */
-    uint8_t   pad;
-    SndVoice* voices;              /* +0x20 ordenadas por prioridad */
-} SndDef;                          /* DAT_800b3e38 (0x6E x 0x24) */
-
-typedef struct SndSource SndSource;
-
-struct SndVoice
-{
-    int        def;         /* +0x00 0xFF = sin definicion */
-    int8_t     vol;         /* +0x04 */
-    int8_t     volReq;      /* +0x05 */
-    int8_t     pan;         /* +0x06 */
-    uint8_t    list;        /* +0x07 0, 1 (ordenada) o 2 */
-    int        pitch;       /* +0x08 */
-    int        doppler;     /* +0x0C 16.16 (0 = sin) */
-    int        prio;        /* +0x10 */
-    int8_t     lib;         /* +0x14 voz de snd_lib */
-    int8_t     reverb;      /* +0x15 */
-    int        serial;      /* +0x18 0 = libre */
-    PatchRef*  patch;       /* +0x1C */
-    int        basePitch;   /* +0x20 */
-    SndSource* src;         /* +0x24 */
-    SndVoice*  next;        /* +0x28 */
-    SndVoice*  prev;        /* +0x2C */
-    SndVoice*  dnext;       /* +0x30 en la lista de su definicion */
-    SndVoice*  dprev;       /* +0x34 */
-};
-
-/* Resultado de 8003de88: volumen, panoramica, 1 = panoramica ya calculada, reverberacion, vectores y distancias
- * a cada oyente y el ultimo angulo por vista */
-typedef struct
-{
-    int8_t vol, pan, done, reverb;
-    int    d[2][2];
-    int    dist[2];
-    int8_t angle[2];
-} SndPan;
-
-struct SndSource
-{
-    int        handle;      /* +0x00 entidad (-1 libre) */
-    int        prio;        /* +0x04 */
-    int16_t    def[2];      /* +0x08 por vista */
-    int8_t     kind[2];     /* +0x0C id de sonido por vista */
-    int8_t     lastKind[2]; /* +0x0E */
-    uint8_t    index;       /* +0x10 */
-    int8_t     patchSel;    /* +0x11 */
-    int        x, z;        /* +0x14 */
-    SndPan     pan;         /* +0x1C */
-    int        vel[3];      /* +0x3C direccion de la entidad */
-    int        speed;       /* +0x48 (-1 = sin Doppler) */
-    int        volScale;    /* +0x4C 16.16 */
-    int        pitch;       /* +0x50 */
-    SndVoice*  voice[2];    /* +0x54 */
-    SndSource* next;        /* +0x5C */
-    SndSource* prev;        /* +0x60 */
-};
-
-typedef struct
-{
-    int     pos[3];         /* +0x00 */
-    int     vel[3];         /* +0x0C */
-    int     heading;        /* +0x18 rumbo >> 4 (8 bits) */
-    int8_t  reverb;         /* +0x1C */
-    int16_t curve;          /* +0x1E */
-} SndListener;              /* DAT_800b3b10 + vista * 0x20 */
-
-typedef struct
-{
-    int8_t   lib;           /* hueco de snd_lib (-1 libre) */
-    int8_t   bank;          /* id del banco */
-    NrAsset* hdr;
-} BankEntry;                /* DAT_800b0948 (10 x 0x10) */
-
-typedef struct
-{
-    SndVoice* v;
-    int       serial;
-} SndHandle;                /* 8003fca4 / 8003fccc / 8003fcf8 */
+#include "snd_int.h"
 
 /* ---------------------------------------------------------------- estado */
 
 static int       s_on;                      /* DAT_800af270 */
-static int       s_raceActive;              /* DAT_800af809 */
+int              s_raceActive;              /* DAT_800af809 */
 static int       s_mode = 1;                /* DAT_800af800 */
 static int       s_listeners;               /* DAT_800af804 */
 static int       s_duck;                    /* DAT_800af808 (voz del comentarista) */
@@ -141,7 +32,7 @@ static int       s_speechVol;               /* DAT_800af25c */
 static int       s_engineVol, s_engineVolEff;   /* DAT_800af264 / 268 */
 static int       s_serial = 1;              /* DAT_800af26c */
 static int       s_lastTick;                /* DAT_800af274 */
-static unsigned  s_tick;                    /* DAT_800af714: vblanks (aqui frames del port) */
+unsigned         s_tick;                    /* DAT_800af714: vblanks */
 
 static SndDef    s_defs[NUM_DEFS];
 static uint8_t   s_idMap[NUM_IDS];          /* DAT_800b3b50 */
@@ -160,7 +51,7 @@ static SndSource* s_srcFree;                /* DAT_800b3a3c */
 static SndSource* s_srcHead, *s_srcTail;    /* DAT_800b3a40 / 44 */
 static int        s_srcCount;               /* DAT_800b3a38 */
 
-static SndListener s_lis[2];
+SndListener s_lis[2];
 
 static BankEntry s_banks[NUM_BANKS];
 static NrAsset*  s_cshd[2];                 /* DAT_800af668 */
@@ -175,12 +66,8 @@ typedef struct { int kind, x, z; } QueuedSnd;
 static QueuedSnd s_queue[0x14];             /* DAT_800b52f0 */
 static int       s_queueCount;              /* DAT_800af27c */
 
-static int Def_FromId(int id);
-static SndVoice* Snd_PlayDef(int x, int z, int def, const RaceCar* ent, int list, int scale, int kind, int sel,
-                             int volOverride);
-
 /* Solo en el port (depuracion): NR_SNDLOG=1 apunta en el log los bancos cargados y los sonidos tocados */
-static int Snd_LogOn(void)
+int Snd_LogOn(void)
 {
     static int s_log = -1;
     if (s_log < 0)
@@ -287,7 +174,7 @@ static void Defs_Reset(void)
 }
 
 /* 8003d89c: definicion de un id de sonido (0xFF si no hay o no tiene muestras) */
-static int Def_FromId(int id)
+int Def_FromId(int id)
 {
     if ((unsigned)(id - 1) > 0x8a)
         return 0xff;
@@ -463,14 +350,14 @@ static void Voice_Link(SndVoice* v)
 }
 
 /* 80023910 */
-static void Voice_StopLib(SndVoice* v)
+void Voice_StopLib(SndVoice* v)
 {
     SndLib_Stop(v->lib);
     SndLib_ReverbOff(v->lib);
 }
 
 /* 8003f0c8 */
-static void Voice_Free(SndVoice* v)
+void Voice_Free(SndVoice* v)
 {
     if (!v || !v->serial)
         return;
@@ -494,7 +381,7 @@ static void Voice_Free(SndVoice* v)
 
 /* 8003f550: voz para un sonido de volumen vol y clase de prioridad cls (lista list, definicion def); si no
  * hay libres se roba la de menor prioridad (la primera de la lista 1, o la mas baja de la definicion) */
-static SndVoice* Voice_Alloc(int vol, int cls, int list, int def)
+SndVoice* Voice_Alloc(int vol, int cls, int list, int def)
 {
     int prio = vol + cls * 16;
     SndVoice* v = NULL;
@@ -607,7 +494,7 @@ static int Voice_Start(const SndDef* d, SndVoice* v)
 }
 
 /* 800400a0 -> 8002387c (+ 800238c8) */
-static void Voice_Set(SndVoice* v, int pan, int vol, int pitch, int reverb)
+void Voice_Set(SndVoice* v, int pan, int vol, int pitch, int reverb)
 {
     Voice_SetParams(v, pan, vol, pitch, reverb);
     SndLibParams p = { Voice_Pitch(v, pitch), v->vol, v->pan };
@@ -619,7 +506,7 @@ static void Voice_Set(SndVoice* v, int pan, int vol, int pitch, int reverb)
 }
 
 /* 8003ff20: toca en la voz el patch sel de la definicion (-1: el siguiente, al azar si hay varios) */
-static int Def_Play(int def, SndVoice* v, int pan, int vol, int pitch, int sel, int reverb)
+int Def_Play(int def, SndVoice* v, int pan, int vol, int pitch, int sel, int reverb)
 {
     SndDef* d = &s_defs[def];
     if (!d->count)
@@ -744,6 +631,8 @@ int Snd_SourceCreate(int id, int handle, int x, int z, int pitch, int speed, con
     s->prio = 0;
     s->pitch = pitch;
     Source_Insert(s);
+    if (Snd_LogOn())
+        NR_Log("[snd] fuente %d: id %d (def %d) entidad %d\n", idx, id, d, handle);
     return idx;
 }
 
@@ -778,8 +667,6 @@ void Snd_SourceSetVolume(int handle, int src, int scale)
     if (src >= 0 && src < NUM_SOURCES)
         s_sources[src].volScale = scale;
 }
-
-static void Voice_Fade(SndVoice* v);
 
 void Snd_SourceKill(int handle, int src)
 {
@@ -826,7 +713,7 @@ static int Snd_Atten(int dist, int maxv)
 }
 
 /* 8003de88: volumen y panoramica de un sonido en (x, z) para los oyentes (0 = no se oye) */
-static int Snd_Listen(int x, int z, SndPan* o, const RaceCar* ent, int kind)
+int Snd_Listen(int x, int z, SndPan* o, const RaceCar* ent, int kind)
 {
     int n = s_listeners, ok = 1, view = 0;
     int maxv = Snd_IsEngine(kind) ? s_engineVolEff : s_sfxVolEff;
@@ -957,7 +844,7 @@ static int Snd_PanFor(SndPan* o, int view, int k)
 }
 
 /* 8003e784 */
-static void Snd_PanFinish(SndPan* o)
+void Snd_PanFinish(SndPan* o)
 {
     if (o->done)
         return;
@@ -979,7 +866,7 @@ static void Snd_PanFinish(SndPan* o)
 
 /* 80041948: Doppler (16.16) con la velocidad del oyente (que normaliza en el sitio, como el original) y la
  * de la fuente (direccion * velocidad << 8); 0x46E58 = velocidad del sonido */
-static int Snd_Doppler(int* lvel, const int* lpos, const int* sdir, int sspeed, const int* spos)
+int Snd_Doppler(int* lvel, const int* lpos, const int* sdir, int sspeed, const int* spos)
 {
     int d[3] = { spos[0] - lpos[0], spos[1] - lpos[1], spos[2] - lpos[2] };
     Vec_Normalize(d);
@@ -1005,7 +892,7 @@ static int Snd_Approach(int cur, int want)
 /* ---------------------------------------------------------------- tocar sonidos */
 
 /* 8003f898 */
-static SndVoice* Snd_PlayDef(int x, int z, int def, const RaceCar* ent, int list, int scale, int kind, int sel,
+SndVoice* Snd_PlayDef(int x, int z, int def, const RaceCar* ent, int list, int scale, int kind, int sel,
                              int volOverride)
 {
     if (!s_on || (unsigned)def >= NUM_DEFS || !s_defs[def].count)
@@ -1073,7 +960,7 @@ void Snd_Queue(int id, int x, int z)
 }
 
 /* 800415fc: el original apaga la voz y la deja apurar unos frames (bajando el volumen); aqui se suelta */
-static void Voice_Fade(SndVoice* v)
+void Voice_Fade(SndVoice* v)
 {
     Voice_Free(v);
 }
@@ -1198,6 +1085,8 @@ int Snd_OnAsset(NrAsset* a)
             }
         return 0;
     }
+    if (a->type == ASSET_Ceng)
+        return Engine_OnCeng(a);   /* motores: los bancos se crean como Cvkh + Cvkb */
     if (a->type == ASSET_Cvkh || a->type == ASSET_Cvkb)
     {
         NrAsset** slot = a->type == ASSET_Cvkh ? &s_pendHdr : &s_pendBody;
@@ -1207,7 +1096,7 @@ int Snd_OnAsset(NrAsset* a)
         Bank_TryLoad();
         return 1;
     }
-    return 0;   /* Ceng (motores): pendiente */
+    return 0;
 }
 
 /* 80022c58 */
@@ -1328,6 +1217,7 @@ void Snd_Pause(int on)
             s_timers[i].dur = 0;
             Handle_Free(&s_timers[i].h);
         }
+    Engine_StopAll();
     while (s_list[1])
         Voice_Free(s_list[1]);
     while (s_list[0])
@@ -1484,6 +1374,8 @@ void Snd_Update(void)
     for (SndVoice* v = s_list[1]; v; v = v->next)
         if (v->prio > 0)
             v->prio -= dt;
+    if (s_raceActive)
+        Engine_UpdateAll(dt);
     int views = g_SplitScreen ? 2 : 1;
     for (int view = 0; view < views; view++)
         Snd_UpdateSources(view, dt);

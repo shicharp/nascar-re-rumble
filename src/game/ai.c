@@ -20,6 +20,7 @@
 #include "carphys.h"
 #include "carphys_int.h"
 #include "ai.h"
+#include "snd.h"
 #include "pause.h"
 
 static inline int Min_(int a, int b) { return a < b ? a : b; }
@@ -445,7 +446,10 @@ static void Ai_UpdateTarget(RaceCar* e, int dt)
                 if (ahead->type == 1)
                 {
                     if (I32(ctrl, 0x3c) < 0 && I32(c, 0x330) == 0)
-                        I32(ctrl, 0x3c) = (Rand_B() & 0x3fff) + 0x1194;   /* burla 80041c6c: pendiente */
+                    {
+                        Car_PlaySfxAt(5, e->obj.pos[0], e->obj.pos[2], e);   /* 80041c6c: bocina al adelantar */
+                        I32(ctrl, 0x3c) = (Rand_B() & 0x3fff) + 0x1194;
+                    }
                     if (ahead->obj.rot[6] > 0)
                         oz = -side;
                     if (ahead->obj.rot[8] > 0)

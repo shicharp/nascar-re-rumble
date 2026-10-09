@@ -55,4 +55,13 @@ void Snd_SourceSetPatch(int handle, int patch, int src);                        
 void Snd_SourceSetVolume(int handle, int src, int scale);                                        /* 8003dd00 */
 void Snd_SourceKill(int handle, int src);                                                        /* 8003dc58 */
 
+/* Coches (snd_car.c): motor de cada coche, bocina */
+struct RaceCar;
+void Engine_ResetTypes(void);                            /* 8003cfd0 (al cargar la carrera, antes de los Ceng) */
+void Engine_Create(uint8_t* phys);                       /* 80040258 (Car_InitPhys) */
+void Engine_Update(uint8_t* phys);                       /* 80040600 (cada paso de la fisica) */
+void Engine_Free(uint8_t* phys);                         /* 800417ec */
+void Car_PlaySfx(int id, const struct RaceCar* car);     /* 80041be8 (5 = bocina) */
+void Car_PlaySfxAt(int id, int x, int z, const struct RaceCar* car);   /* 80041c6c */
+
 #endif

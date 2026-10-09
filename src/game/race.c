@@ -38,6 +38,7 @@ void Race_Load(const char* path)
 {
     g_CarsLoaded = 0;              /* FUN_80023e70 */
     Actors_Free();                 /* 80048d5c */
+    Engine_ResetTypes();           /* 8003cfd0: tipos de motor antes de que lleguen los Ceng */
     Track_Free();
     Cnet_Reset();                  /* FUN_8002cf7c */
     g_HaveStart = 0;

@@ -7,6 +7,7 @@
 #include "vecmath.h"
 #include "carphys.h"
 #include "carphys_int.h"
+#include "snd.h"
 
 void Car_RotateMatrix(int* m, const int* w);
 void Car_BoxCorners(uint8_t* c);
@@ -679,6 +680,7 @@ void Physics_StepAll(int dt)
                 Gte_SetTransShift(e->obj.pos, 0);
                 Gte_Rt((const short*)(e->obj.model->bbox + e->obj.frame * 0x10 + 8), e->obj.unk34, 0);
             }
+            Engine_Update(c);   /* 80040600 */
         }
         sdt = rest;
         rest = 0;
