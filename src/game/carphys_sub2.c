@@ -4,6 +4,7 @@
 #include "vecmath.h"
 #include "carphys.h"
 #include "carphys_int.h"
+#include "snd.h"
 
 /* Longitud 16.16 de un vector con dos escalas segun su tamano (patron repetido en el original) */
 static int Vec_Len16(const int* v)
@@ -43,8 +44,8 @@ void Car_Integrate(uint8_t* c, int dt, int limit, int fromStep)
         IA(c, 0x5d) = e->obj.pos[2];
     }
     int sp = Vec_Len16(VEC(c, 0x18c));
-    int prev = e->speed;
-    (void)prev;   /* (comentario de golpe fuerte 8002b920 / 8002b0f4: pendiente) */
+    if (e->type == 1 && e->speed - (sp >> 8) > 0x30)
+        Speech_Say(0x2a, 0xc, e, 1);   /* frenazo brusco (golpe fuerte) */
     e->speed = sp >> 8;
     if (e->speed < 8 && (U8(c, 0x180) & 1))
         e->speed = 0;
@@ -117,6 +118,9 @@ void Car_ClampGround(uint8_t* c, int ground, int dt, int fromStep)
     }
     IA(c, 0x68) = margin;
 check:
+    /* comentario: el coche del humano cae desde mas de 0x800 */
+    if (e->type == 1 && (U16(c, 0x198) & 1) && dy > 0x800)
+        Speech_Say(0x2a, 0xc, e, 1);
     if (U8(c, 0x181) == 7)
         dy -= 0x2000;
     if (IA(c, 0x68) < dy)
@@ -143,7 +147,11 @@ void Car_Airborne(uint8_t* c, int height, int steer, int dt)
             IA(c, 0xfe) &= 0xffff7fff;   /* 80078c24: fin del efecto de salto (pendiente) */
     }
     else if (!(IA(c, 0xfe) & 0x8000))
-        IA(c, 0xfe) |= 0x8000;           /* 80078bb8 y comentario 8002b920: pendiente */
+    {
+        if (e->type == 1)
+            Speech_Say(2, 0xf, e, 1);    /* salto */
+        IA(c, 0xfe) |= 0x8000;           /* (80078bb8: efecto del salto, pendiente) */
+    }
     int a = Div_(steer * 0xff00, I16(c, 0x312));
     if ((IA(c, 0xfe) & 0x40) || (U16(c, 0x198) & 0x20) || I16(c, 0x184) != 0)
         a = 0;

@@ -6,7 +6,7 @@
  *   (< 0 freno), +0x1C/+0x1E velocidad maxima (0xB4), +0x20 velocidad deseada, +0x22 rumbo al objetivo,
  *   +0x24..+0x2E nodos (anterior, salida, destino y los 3 siguientes), +0x30 tiempo en el tramo, +0x34 marcha
  *   atras, +0x38 tiempo lento, +0x3C tiempo hasta la proxima burla, +0x40 fisica, +0x44 ruedas, +0x274 objetivo.
- * Pendiente: actores y poderes (8002d4b0 solo devuelve "nada"), mensajes y burlas (8002b920 / 80041c6c). */
+ * Pendiente: actores y poderes (8002d4b0 solo devuelve "nada"). */
 #include <stdlib.h>
 #include <string.h>
 #include "nr.h"
@@ -838,15 +838,25 @@ void Car_UpdateLap(uint8_t* c, int curve)
             if (slot >= 0 && slot < 6 && (g_CarRecords[slot].b == 0 || rec < g_CarRecords[slot].b))
                 g_CarRecords[slot].b = rec;   /* mejor vuelta (DAT_800b12b4 + id * 0x18) */
             I32(c, 0x328)++;
+            RaceCar* lapCar = (RaceCar*)ENT(c);
+            /* ultima vuelta: comentario 0xF al humano */
+            if (!g_RacePaused && I32(c, 0x328) == g_Settings.laps - 1 && g_Settings.laps > 1 && lapCar->type == 1)
+                Speech_Say(0xf, 0, lapCar, 1);
             if (g_Settings.laps <= I32(c, 0x328))
             {
                 /* meta: con un humano, 5 tics y resultados; sin humanos, al terminar el coche que se sigue
-                 * (mensajes 8002b920 y camara 80074574: pendientes) */
-                RaceCar* e = (RaceCar*)ENT(c);
+                 * (camara 80074574: pendiente) */
+                RaceCar* e = lapCar;
                 if (g_RaceEndTimer < 1)
                 {
                     if (e->type == 1)
                     {
+                        /* comentario de la llegada: 7 ganador, 9 ultimo, 8 el resto */
+                        if (!g_RacePaused && g_NumCars > 1)
+                        {
+                            int pos = U8(c, 0x31a);
+                            Speech_Say(pos == 0 ? 7 : pos == g_NumCars - 1 ? 9 : 8, 0, e, 0);
+                        }
                         RaceCar* other = g_Humans[0] == e ? g_Humans[1] : g_Humans[0];
                         if (g_NumHumans < 2 || (other && I32(other->phys, 0x330) != 0))
                             g_RaceEndTimer = 5;
@@ -916,6 +926,43 @@ void Race_UpdatePositions(int dt)
         g_CarPhys[u] = p;
     }
     g_NumCars = n;
+    /* comentarios de las posiciones (pasado el minuto y medio): adelanta (3) o le adelantan y lo recupera
+     * pronto (0x2B), lleva mucho en el mismo puesto (0xC, solo en Kid Play); lider (6) o ultimo (0xE) de 5 s */
+    if (g_RacePaused || n < 2 || g_RaceTime <= 9000)
+        return;
+    for (int h = 0; h < g_NumHumans; h++)
+    {
+        RaceCar* e = g_Humans[h];
+        uint8_t* p = e ? e->phys : NULL;
+        if (!p || I32(p, 0x330) != 0)
+            continue;
+        int t = I32(p, 0x31c), sec = -1;
+        if (t < 0x2329)
+        {
+            int cat = -1;
+            if (U8(p, 0x31a) < U8(p, 0x31b) && t > 300 && t < 900 && I32(p, 0x320) > 900)
+                cat = 0x2b;
+            else if (!(U8(p, 0x31a) <= U8(p, 0x31b) || t < 0x12d || t > 899 || I32(p, 0x320) < 0x385))
+                cat = 3;
+            if (cat >= 0)
+                sec = Speech_Pick(cat, 10);
+        }
+        else if (g_GameInfo->unk08 == 0)
+            sec = Speech_Pick(0xc, 0xf);
+        if (sec >= 0)
+            Speech_Queue(sec, e, 0);
+    }
+    RaceCar* first = (RaceCar*)ENT(g_CarPhys[0]);
+    RaceCar* last = (RaceCar*)ENT(g_CarPhys[n - 1]);
+    int sec = -1;
+    if (first->type == 1 && I32(g_CarPhys[0], 0x31c) > 0x5dc)
+        sec = Speech_Pick(6, 0x12);
+    else if (last->type == 1 && I32(g_CarPhys[n - 1], 0x31c) > 0x5dc)
+        sec = Speech_Pick(0xe, 0x12);
+    else
+        return;
+    if (sec >= 0)
+        Speech_Queue(sec, first, 1);
 }
 
 /* Parte de Race_UpdateSim 80030cac: ruta, objetivo y conduccion de la IA, y sus mandos a la fisica */

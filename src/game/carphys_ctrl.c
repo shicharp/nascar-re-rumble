@@ -362,7 +362,10 @@ void Human_Control(RaceCar* e)
     }
     Pad_Edge(U32(ctrl, 8), B_(ctrl) + 0x2c);
     if (I32(ctrl, 0x30) == 0 && g_RaceTime > 900 && !(U16(c, 0x33a) & 0x82))
+    {
+        Speech_Say(0xb, 5, e, 1);   /* vuelta a la pista */
         Car_Reset(e, 1);
+    }
 }
 
 /* 8005f708 */

@@ -32,7 +32,7 @@ static int       s_speechVol;               /* DAT_800af25c */
 static int       s_engineVol, s_engineVolEff;   /* DAT_800af264 / 268 */
 static int       s_serial = 1;              /* DAT_800af26c */
 static int       s_lastTick;                /* DAT_800af274 */
-unsigned         s_tick;                    /* DAT_800af714: vblanks */
+unsigned         s_tick;                    /* DAT_800af714: tics de 1/300 s */
 
 static SndDef    s_defs[NUM_DEFS];
 static uint8_t   s_idMap[NUM_IDS];          /* DAT_800b3b50 */
@@ -145,6 +145,29 @@ void Snd_PlayUiVol(int id, const void* entity, int vol)
     int d = Def_FromId(id);
     if (d != 0xff)
         Snd_PlayDef(0, 0, d, (const RaceCar*)entity, 1, 0x10000, id, -1, vol);
+}
+
+int Snd_SpeechVolume(void)
+{
+    return s_speechVol;   /* 8003d674 */
+}
+
+/* 8003d708 (on) / 8003d7ac (off): mientras habla el comentarista, las voces de las listas 0 y 2 (y la 1 al
+ * volver) bajan 1/8 */
+void Snd_Duck(int on)
+{
+    if (s_duck == (on != 0))
+        return;
+    s_duck = on != 0;
+    for (int l = 0; l < 3; l++)
+    {
+        if (on && l == 1)
+            continue;
+        for (SndVoice* v = s_list[l]; v; v = v->next)
+            if (v->volReq != -1 && v->patch)
+                Voice_Set(v, v->pan, v->volReq, v->pitch, v->reverb);
+    }
+    Music_SetDuck(on);
 }
 
 void Snd_SetListenerCount(int n)
@@ -432,7 +455,7 @@ SndVoice* Voice_Alloc(int vol, int cls, int list, int def)
     return v;
 }
 
-static void Handle_Set(SndHandle* h, SndVoice* v)
+void Handle_Set(SndHandle* h, SndVoice* v)
 {
     if (h && v)
     {
@@ -441,12 +464,12 @@ static void Handle_Set(SndHandle* h, SndVoice* v)
     }
 }
 
-static int Handle_Valid(const SndHandle* h)
+int Handle_Valid(const SndHandle* h)
 {
     return h->v && h->v->serial == h->serial;
 }
 
-static int Handle_Free(SndHandle* h)
+int Handle_Free(SndHandle* h)
 {
     if (!h || !Handle_Valid(h))
         return 0;
@@ -1178,7 +1201,7 @@ void Snd_Init(void)
     s_cshd[0] = s_cshd[1] = NULL;
     /* buffers de streaming (musica 0x1010 + 0x17E00) y de las voces (0xC000) como en el original */
     SndLib_SpuAllocAt(0x1010, 0x17e00);
-    SndLib_SpuAlloc(0xc000);
+    Speech_SetSpuBuffer(SndLib_SpuAlloc(0xc000));
     s_on = 1;
     /* 8003cf48 */
     Snd_SetMode(1);
@@ -1213,6 +1236,7 @@ void Snd_Pause(int on)
         return;
     }
     s_raceActive = 0;
+    Speech_ClearQueue();          /* 8002b4ac (la frase que suena sigue) */
     for (int i = 0; i < 2; i++)
         if (s_timers[i].dur)
         {
@@ -1340,11 +1364,10 @@ void Snd_Update(void)
 {
     if (!s_on)
         return;
-    /* el original mide en vblanks (DAT_800af714, 60 por segundo; hasta 300 por frame): aqui, los tics del
-     * frame (1/300 s) / 5 */
-    int dt = g_FrameDelta / 5;
-    if (dt < 1)
-        dt = 1;
+    /* DAT_800af714 suma 5 por vblank (tics de 1/300 s, como el tiempo de carrera); hasta 300 por frame */
+    int dt = g_FrameDelta;
+    if (dt < 0)
+        dt = 0;
     else if (dt > 300)
         dt = 300;
     s_tick += (unsigned)dt;
@@ -1425,6 +1448,7 @@ void Snd_Update(void)
             }
         }
     }
+    Speech_Update();
     SndLib_Commit();
     Music_Update();
 }

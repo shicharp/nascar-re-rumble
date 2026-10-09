@@ -3,7 +3,7 @@
  * largo o con L1 en automatico, 8005efec): 0 solo posicion y vuelta, 1 + mapa (8004274c) y cuentarrevoluciones
  * con marcha y velocidad (800430e4), 2 + tiempos de vuelta y diferencia con el coche de delante / detras
  * (8002cd84). Graficos de la pagina de texturas 8 (Cpag): mapa en (0,0) y esfera en (0x80,0).
- * Iconos de poderes 80042544. Pendiente: dos jugadores, mensajes (8002b920), repeticion y el marcador sin
+ * Iconos de poderes 80042544. Pendiente: dos jugadores, repeticion y el marcador sin
  * humanos (8004304c). */
 #include <stdio.h>
 #include <string.h>
@@ -24,6 +24,7 @@
 #include "ai.h"
 #include "powerup.h"
 #include "cpag.h"
+#include "snd.h"
 #include "hud.h"
 
 static uint8_t s_hudSetting[2] = { 1, 1 };   /* DAT_800b7112 */
@@ -267,11 +268,11 @@ static void Hud_Messages(int view, int y, int level)
     /* con el retrovisor (R1, ctrl +0x40 == 3) los mensajes bajan por debajo de el */
     int mir = !g_SplitScreen && I32(c, 0x330) == 0 && I32(ctrl, 0x40) == 3 ? (off ? 0xc : 0x1f) : 0;
     Font_Select(4);
-    /* sin usar el poder 18000 tics (1 minuto): "To Use" alternando con "Press R2" (DAT_800af714 & 0x100, contador
-     * de vblanks; aqui el tiempo de carrera / 5). Con la asignacion de botones por defecto el poder va en R2. */
+    /* sin usar el poder 18000 tics (1 minuto): "To Use" alternando con "Press R2" (DAT_800af714 & 0x100, reloj de
+     * tics de 1/300 s; aqui el tiempo de carrera). Con la asignacion de botones por defecto el poder va en R2. */
     if (I32(c, 0x330) == 0 && I32(ctrl, 0x68) > 18000)
     {
-        int blink = (g_RaceTime / 5) & 0x100;
+        int blink = g_RaceTime & 0x100;
         Font_DrawString(blink ? "Press" : "To", HUD_L(0x1e), y + 0xd, blink ? 9 : 1);
         Font_DrawString(blink ? "R2" : "Use", HUD_L(0x1e), y + 0x17, blink ? 9 : 1);
     }
@@ -280,7 +281,7 @@ static void Hud_Messages(int view, int y, int level)
     if (alert >= 0 && I32(c, 0x330) == 0)
     {
         static const char* const names[3] = { "Storm Alert!", "Twister Alert!", "Freeze Alert!" };
-        int blink = (g_RaceTime / 5) & 0x100;
+        int blink = g_RaceTime & 0x100;
         const char* s = blink && h->speed >= 0x50 ? "Reduce Speed" : names[alert > 1 ? 2 : alert];
         int w, hh;
         Font_Measure(s, &w, &hh);
@@ -308,6 +309,7 @@ static void Hud_Messages(int view, int y, int level)
             int w, hh;
             Font_Measure("WRONG WAY", &w, &hh);
             Font_DrawString("WRONG WAY", 0xa0 - w / 2, y + off + mir + 10, 9);
+            Speech_Say(0x2c, 8, h, 1);
         }
     }
     Font_Select(1);

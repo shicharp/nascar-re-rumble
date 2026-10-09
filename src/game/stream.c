@@ -3,6 +3,7 @@
 #include "mem.h"
 #include "file.h"
 #include "stream.h"
+#include "snd.h"
 #include "globals.h"
 
 static int         s_slot = -1;
@@ -65,6 +66,8 @@ int Stream_OnCtos(NrAsset* a)
         return 0;
     Asset_Free(s_toc);
     s_toc = a;
+    if (!g_IsFrontend)
+        Speech_SetToc(a->data, a->size);   /* 8002b810: categorias de las frases del comentarista */
     NR_Log("Stream: tabla de secciones con %u entradas (base 0x%x)\n", NR_Read32(a->data + 12), s_sectionBase);
     return 1;
 }

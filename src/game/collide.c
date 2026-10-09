@@ -4,7 +4,7 @@
  * (entidad +0x64 centro, +0x70 radio, +0x74 / +0x76 alto y ancho) y manda el mensaje 0xB (8002c894 ->
  * 8002c6a0 -> 8005cdb8) que resuelve 8005c05c: separacion de las cajas (80059f0c), impulso y giro (8005a534),
  * trompos y vuelcos en los golpes fuertes (8005ba30 -> 8005b408 / 8005b660 / 8005b848).
- * Pendiente: actores (objetos de la pista), chispas, sonidos y mensajes (8007734c, 8002b920), restos que
+ * Pendiente: actores (objetos de la pista), chispas (8007734c), restos que
  * suelta el coche al golpearse (80052100 -> 8003da74) y la prueba con las cajas de colision del modelo
  * (80060f88, bit 27 de las banderas del modelo). */
 #include <string.h>
@@ -15,6 +15,7 @@
 #include "racecar.h"
 #include "carphys.h"
 #include "carphys_int.h"
+#include "snd.h"
 #include "collide.h"
 
 /* semiextensiones de la caja del modelo (3DBB +0xE / +0x10 / +0x12) */
@@ -427,8 +428,12 @@ static int Car_CollidePair(uint8_t* c1, uint8_t* c2)
             }
         }
     }
-    else
+    int human = e1->type == 1 || e2->type == 1, sec = -1;
+    if (speed >= 0x16)
     {
+        if (human)
+            sec = Speech_Pick(4, 10);
+        Fx_Push(0xd, e1->obj.pos, 100);   /* sonido del golpe (cola DAT_800b52f0) */
         IA(c1, 0xfe) |= 0x4003;
         IA(c2, 0xfe) |= 0x4003;
     }
@@ -438,7 +443,19 @@ static int Car_CollidePair(uint8_t* c1, uint8_t* c2)
         U8(c2, 0x182) = 0x2f;
     }
     if (speed > 0x10)
+    {
         Car_BigHit(speed, c1, c2, pt1, pt2, t1, t2);
+        if (human)
+            sec = Speech_Pick(4, 10);
+    }
+    /* comentario del choque al humano (o a los dos) */
+    if (sec >= 0)
+    {
+        if (e1->type == 1)
+            Speech_Queue(sec, e1, 1);
+        if (e2->type == 1)
+            Speech_Queue(sec, e2, 1);
+    }
     return 1;
 }
 

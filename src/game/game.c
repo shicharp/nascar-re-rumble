@@ -211,6 +211,8 @@ void Level_Unload(const char* name)
     }
     Snd_Pause(0);                   /* 8003fe7c(0) */
     Music_Stop();                   /* 80023cf8 */
+    Speech_Reset();                 /* 80023088 / 8002b4ac */
+    Speech_SetToc(NULL, 0);
     Stream_Close();                 /* FUN_8002b7c8 / Stream_Close 8002ba0c */
     if (g_IsFrontend)
         Frontend_Free();            /* FUN_800241d4 */

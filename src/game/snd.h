@@ -62,6 +62,14 @@ void Music_Pause(int on);
 void Music_SetVolume(int vol);
 void Music_Update(void);
 
+/* Comentarista (snd_speech.c): categoria (0..0x36), espera, coche y 1 = solo si no habla ya */
+void Speech_SetToc(const uint8_t* toc, int size);         /* 8002b810: tabla de secciones de la pista */
+int  Speech_Pick(int cat, int wait);                      /* 8002b920 */
+int  Speech_Queue(int section, const void* entity, int onlyIfIdle);   /* 8002b0f4 */
+void Speech_Say(int cat, int wait, const void* entity, int onlyIfIdle);
+void Speech_Reset(void);
+void Music_SetDuck(int on);
+
 /* Coches (snd_car.c): motor de cada coche, bocina */
 struct RaceCar;
 void Engine_ResetTypes(void);                            /* 8003cfd0 (al cargar la carrera, antes de los Ceng) */

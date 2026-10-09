@@ -121,6 +121,11 @@ extern int         s_raceActive;
 extern unsigned    s_tick;
 
 int       Snd_LogOn(void);                                                      /* NR_SNDLOG */
+void      Handle_Set(SndHandle* h, SndVoice* v);                                /* 8003fca4 */
+int       Handle_Valid(const SndHandle* h);                                     /* 8003fccc */
+int       Handle_Free(SndHandle* h);                                            /* 8003fcf8 */
+void      Snd_Duck(int on);                                                     /* 8003d708 / 8003d7ac */
+int       Snd_SpeechVolume(void);                                               /* 8003d674 */
 int       Def_FromId(int id);                                                   /* 8003d89c */
 SndVoice* Voice_Alloc(int vol, int cls, int list, int def);                     /* 8003f550 */
 void      Voice_Free(SndVoice* v);                                              /* 8003f0c8 */
@@ -141,5 +146,10 @@ void Engine_StopAll(void);                /* 8004170c */
 int  Engine_NextMainBank(void);           /* 8003d128: bancos 2..7 (ids 4 motor y 5 bocina) */
 int  Engine_NextExtraBank(void);          /* 8003d160: bancos 8..9 (id 3, motor sin gas de los humanos) */
 int  Engine_OnCeng(NrAsset* a);           /* parte de 80022908 */
+
+/* comentarista (snd_speech.c) */
+void Speech_SetSpuBuffer(int addr);
+void Speech_Update(void);
+void Speech_ClearQueue(void);
 
 #endif

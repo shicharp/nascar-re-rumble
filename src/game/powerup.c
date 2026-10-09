@@ -1,5 +1,5 @@
 /* Poderes: cajas de la pista y efectos sobre los coches. Ver powerup.h.
- * Pendiente: sonidos y comentarios (8003558c, 8007734c, 8002b920), la llama del turbo (8003da74) y los efectos
+ * Pendiente: sonidos de las cajas y chispas (8003558c, 8007734c), la llama del turbo (8003da74) y los efectos
  * visuales del clima (nube y rayos de la tormenta 80070e58 / 8006dc10). */
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +15,7 @@
 #include "cnet.h"
 #include "pause.h"
 #include "powerup.h"
+#include "snd.h"
 
 /* modelos que trae la aRSL de las cajas: proyectiles de los poderes 0 y 4, y el tornado */
 static ModelHdr* s_projModel[2];   /* DAT_800af7d0 / DAT_800af7c8 */
@@ -109,7 +110,9 @@ static int Pickup_Collect(Actor* a, RaceCar* e)
     int mayhem = g_GameInfo->powerUps == 3;
     if (I8(c, 0x338) < 0)
     {
-        /* 8007734c (sonido) y comentario 8002b920(0x10) del humano: pendientes */
+        /* 8007734c: chispas y sonido de la caja (pendiente con los efectos) */
+        if (e->type == 1 && !g_RacePaused)
+            Speech_Say(0x10, 4, e, 1);
         int n = g_NumCars, pos = U8(c, 0x31a);
         int ahead = Car_TrackDeltaPublic(c, g_CarPhys[(pos == 0 ? n : pos) - 1]);
         int behind = Car_TrackDeltaPublic(c, g_CarPhys[pos == n - 1 ? 0 : pos + 1]);
@@ -369,13 +372,15 @@ static int Car_Shockwave(uint8_t* c)
 #define FX_TICKS(c, i) I16(c, 0x342 + (i) * 4)
 
 /* 8002f268: activa (o alarga) un efecto. La IA dura 1/4 en los malos (0, 4, 7) y 1,5 veces en los buenos
- * (2, 3, 6, 9); el escudo (2) corta los malos. El comentario del humano (8002b920(tipo + 0x1D)) queda
- * pendiente. Devuelve los tics que le quedan o -1. */
+ * (2, 3, 6, 9); el escudo (2) corta los malos. Al humano le comenta el efecto (8002b920(tipo + 0x1D)).
+ * Devuelve los tics que le quedan o -1. */
 int Car_AddEffect(uint8_t* c, int type, int ticks)
 {
     if (!c || U8(c, 0x339) > 3)
         return -1;
     RaceCar* e = (RaceCar*)ENT(c);
+    if (!g_RacePaused && e->type == 1 && type < 9)
+        Speech_Say(type + 0x1d, 5, e, 1);
     if (ticks > 0 && e->type == 0x11)
     {
         if (type == 0 || type == 4 || type == 7)
@@ -831,7 +836,12 @@ void Car_UpdatePowerUps(uint8_t* c, int dt, int use)
             go = (int16_t)t < 0;
         }
         else
-            I32(e->ctrl, 0x68) = -2;   /* (comentario 8002b920(poder + 0x12): pendiente) */
+        {
+            int held = I8(c, 0x338);
+            if (!g_RacePaused && held < POWER_MYSTERY)
+                Speech_Say(held + 0x12, 5, e, 1);
+            I32(e->ctrl, 0x68) = -2;
+        }
         if (go)
         {
             int s = I8(c, 0x338), fromMystery = -1, fx = -1;

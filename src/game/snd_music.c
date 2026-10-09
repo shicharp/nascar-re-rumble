@@ -27,6 +27,7 @@ static double   s_hist[2][2];    /* estado del ADPCM por canal */
 static ALuint   s_src, s_bufs[MUSIC_BUFS];
 static int      s_alOk, s_playing, s_paused;
 static float    s_gain = 0.4f;
+static int      s_duck;          /* el comentarista habla: -1/8 (como las voces del streaming en 8003d708) */
 static int16_t  s_pcm[CH_SAMPLES * 2];
 
 static const double K0[5] = { 0.0, 0.9375, 1.796875, 1.53125, 1.90625 };
@@ -163,7 +164,14 @@ void Music_SetVolume(int vol)
 {
     s_gain = (float)(vol * 0x7f) / 16384.0f;
     if (s_alOk)
-        alSourcef(s_src, AL_GAIN, s_gain);
+        alSourcef(s_src, AL_GAIN, s_duck ? s_gain * 0.875f : s_gain);
+}
+
+void Music_SetDuck(int on)
+{
+    s_duck = on != 0;
+    if (s_alOk)
+        alSourcef(s_src, AL_GAIN, s_duck ? s_gain * 0.875f : s_gain);
 }
 
 /* Cada frame: rellena los buffers que ya han sonado */
