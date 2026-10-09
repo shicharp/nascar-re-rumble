@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 #include "frontend.h"
+#include "snd.h"
 
 int      Fe_BaseDepth(void);
 void     Fe_DrawBox(int r, int g, int b, int x0, int y0, int x1, int y1, int semi);  /* 8008e614 */
@@ -26,7 +27,7 @@ void        Fe_DrawCallout(int x, int y, int w, int h, int down, int left, int d
 int         Fe_DrawTextRgb(int r, int g, int b, const char* text, int x, int y, int align);    /* 8008efec */
 const char* HelpText(int i);                                                      /* DAT_800b6e78[i] */
 
-/* Sonidos del front-end (FUN_8003f6fc): sin audio todavia */
-static inline void Fe_PlaySound(int id) { (void)id; }
+/* Sonidos del front-end (FUN_8003f6fc(id, 0)) */
+static inline void Fe_PlaySound(int id) { Snd_PlayUi(id, NULL); }
 
 #endif

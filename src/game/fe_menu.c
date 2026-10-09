@@ -11,6 +11,7 @@
 #include "globals.h"
 #include "frontend.h"
 #include "fe_internal.h"
+#include "snd.h"
 
 /* ---------------------------------------------------------------- primitivas 2D */
 
@@ -333,7 +334,9 @@ static void Fe_DrawMenuItem(int r, int g, int b, MenuItem* items, int index, int
                         (((r / 3 + 0x15) * 0x400 | (g / 3 + 0x15) * 0x20) & 0xffe3) | 0x8003);
         if (it->type == 1 && it->anim < 10000)
         {
-            it->anim = (short)(it->anim + g_FrameDelta * 0x82);   /* (sonido 0x51 al empezar) */
+            if (it->anim == 0)
+                Snd_PlayUi(0x51, NULL);
+            it->anim = (short)(it->anim + g_FrameDelta * 0x82);
             if (it->anim > 10000)
                 it->anim = 10000;
         }
@@ -535,9 +538,11 @@ int Fe_MsgBox(int x, int y, const char* text, uint8_t* yesNo, int port)
 
     int result = -1;
     if (Fe_PadPressed(PADB_CROSS, port, 1))
-        result = (!yesNo || *yesNo) ? 1 : 0;      /* sonidos 0x48 / 0x5c */
+        result = (!yesNo || *yesNo) ? 1 : 0;
     else if (Fe_PadPressed(PADB_TRIANGLE, port, 1))
         result = 0;
+    if (result != -1)
+        Snd_PlayUi(result ? 0x48 : 0x5c, NULL);
     else if (yesNo)
     {
         if ((Fe_PadPressed(PADB_LEFT, port, 1) && !*yesNo) || (Fe_PadPressed(PADB_RIGHT, port, 1) && *yesNo))
@@ -913,6 +918,7 @@ void Fe_Screen400(void)
             {
                 g_Settings.yesNo = 0;
                 fe->popup = g_Settings.clearRecords;
+                Snd_PlayUi(0x48, NULL);
             }
             else if (fe->cursor == 2)
                 fe->nextScreen = g_Settings.loadSaveMode == 0 ? 800 : 700;
@@ -923,11 +929,13 @@ void Fe_Screen400(void)
             {
                 fe->portPopup = 1;
                 fe->nextScreen = -1;
+                Snd_PlayUi(0x4c, NULL);   /* (0x4C no esta en el banco del front-end: no suena, como en el original) */
             }
             else if (g_Settings.setNamePlayers == 1 && (Pad_GetType(0) < 1 || Pad_GetType(1) < 1))
             {
                 fe->portPopup = 2;
                 fe->nextScreen = -1;
+                Snd_PlayUi(0x4c, NULL);
             }
             else
                 g_Settings.numPlayers = (uint8_t)(g_Settings.setNamePlayers + 1);
@@ -973,9 +981,13 @@ void Fe_Screen500(void)
         {
             g_Settings.audioMode = (uint8_t)Fe_Clamp(g_Settings.audioMode + dir, 0, 2);
             fe->valueDir = 1;
+            Snd_ApplySettings(g_Settings.volume, g_Settings.audioMode);   /* 8003d43c */
         }
         else if (dir)
+        {
             g_Settings.volume[fe->cursor] = (uint8_t)Fe_Clamp(g_Settings.volume[fe->cursor] + dir, 0, 0x7f);
+            Snd_ApplySettings(g_Settings.volume, g_Settings.audioMode);   /* 8003d498 / 8003d680 / 8003d538 / 8003d628 */
+        }
     }
     Fe_PadRepeatReset();
 }

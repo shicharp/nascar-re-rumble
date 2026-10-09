@@ -9,6 +9,7 @@
 #include "lsc.h"
 #include "globals.h"
 #include "frontend.h"
+#include "snd.h"
 
 FrontendState* g_Frontend;
 short g_FadeDir;
@@ -195,8 +196,11 @@ void Frontend_InitScreens(void)
         static const int8_t opts1P[4] = { 6, 3, 4, 0 }, opts2P[5] = { 6, 3, 3, 4, 0 };
         memcpy(g_Settings.raceOpts1P, opts1P, sizeof(opts1P));
         memcpy(g_Settings.raceOpts2P, opts2P, sizeof(opts2P));
-        /* volumenes: el original los lee del motor de sonido (FUN_8003d520...); sin audio, al maximo */
-        memset(g_Settings.volume, 0x7f, sizeof(g_Settings.volume));
+        /* volumenes: los del motor de sonido (8003d520, 8003d6f0, 8003d5d0, 8003d668 tras 8003cf48) */
+        g_Settings.volume[0] = 0x40;
+        g_Settings.volume[1] = 0x40;
+        g_Settings.volume[2] = 0x40;
+        g_Settings.volume[3] = 0x7f;
         g_Settings.audioMode = 1;
         /* pilotos iniciales al azar entre los 33 de la Winston Cup (FUN_800181ac % 33) */
         for (int p = 0; p < 2; p++)
@@ -236,6 +240,7 @@ void Frontend_InitScreens(void)
     fe->descAnim = (short)0xf000;
     fe->descAnimOn = 1;
     fe->idleTimer = 0;
+    Snd_ApplySettings(g_Settings.volume, g_Settings.audioMode);
 }
 
 /* 80089240: la primera vez copia lo que se esta viendo (la pantalla de carga) como fondo */
@@ -263,7 +268,7 @@ static void Fe_ScreenPending(void)
 }
 
 /* 8007a994. Pendiente: Camera_ApplyProjection, memoria (DAT_800b7118), avisos de mando
- * desconectado (FUN_8008ec2c), demo por inactividad y sonidos de navegacion (FUN_8003f6fc). */
+ * desconectado (FUN_8008ec2c) y demo por inactividad. */
 void Frontend_Update(void)
 {
     FrontendState* fe = g_Frontend;
@@ -329,9 +334,26 @@ void Frontend_Update(void)
         fe->fadeDone = 0;
         fe->idleTimer = 0;
     }
+    if (g_FadeDir == 0 && fe->nextScreen == -1)
+    {
+        /* sonidos de navegacion: mover el cursor 0x46, cambiar un ajuste 0x47 */
+        if (fe->cursor != fe->prevCursor)
+        {
+            fe->prevCursor = fe->cursor;
+            Snd_PlayUi(0x46, NULL);
+        }
+        else if (fe->valueDir)
+        {
+            fe->valueDir = 0;
+            Snd_PlayUi(0x47, NULL);
+        }
+    }
     if (fe->nextScreen != -1 && g_FadeDir == 0)
     {
-        /* LAB_8007afc4: empieza el fundido a negro hacia la siguiente pantalla */
+        /* LAB_8007afc4: empieza el fundido a negro hacia la siguiente pantalla (sonido 0x48; no al volver de la
+         * pantalla 700 con +0xB6 puesto) */
+        if (fe->screen != 700 || fe->nextScreen != 0 || fe->popup == 0)
+            Snd_PlayUi(0x48, NULL);
         g_FadeDir = -1;
         g_FadeLevel = 0;
         fe->descAnim = (short)0xf000;

@@ -9,6 +9,7 @@
 #include "cnet.h"
 #include "racecar.h"
 #include "actor.h"
+#include "snd.h"
 
 #define MAX_TYPES 48
 
@@ -88,6 +89,11 @@ static int Asset_Dispatch(NrAsset* a)
         return g_IsFrontend ? 0 : Cnet_OnLoaded(a);   /* 8004c368 */
     case ASSET_Cact:
         return g_IsFrontend ? 0 : Cact_OnLoaded(a);   /* 8004942c */
+    case NR_TAG('C', 's', 'h', 'd'):
+    case NR_TAG('C', 'v', 'k', 'h'):
+    case NR_TAG('C', 'v', 'k', 'b'):
+    case NR_TAG('C', 'e', 'n', 'g'):
+        return Snd_OnAsset(a);     /* 80022908 */
     case ASSET_Cctr:
         /* cambia el estado del nivel: id 0 -> 2, id 1 -> 4 (en juego) */
         if (a->id == 0)
@@ -107,7 +113,7 @@ static int Asset_Dispatch(NrAsset* a)
     case ASSET_Gmdc:
         return Fe_OnMdc(a);
     /* TODO: Ctrk 80062680, Cact 8004942c, Cnet 8004c368,
-     *       sonido 80022908, menus del front-end (Bmdc/Lmdc/Gmdc/Tmdc/McIc/TkFE)... */
+     *       menus del front-end (Bmdc/Lmdc/Gmdc/Tmdc/McIc/TkFE)... */
     default:
         return 0;
     }

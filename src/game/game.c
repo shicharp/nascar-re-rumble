@@ -17,6 +17,7 @@
 #include "frontend.h"
 #include "font.h"
 #include "game.h"
+#include "snd.h"
 #include "race.h"
 #include "render.h"
 #include "texslot.h"
@@ -27,12 +28,13 @@ GameOptions g_Options;
 static int s_lastFrameTime;   /* DAT_800af718 */
 
 /* 80079470. Pendiente: InitHeap3 (malloc del host), FUN_80074ee8, FUN_80016dac, CdInit (no hay CD),
- * callback de VSync (FUN_8001ce28(FUN_8008b160)), sonido (FUN_8001a884, FUN_80022330), memoria. */
+ * callback de VSync (FUN_8001ce28(FUN_8008b160)), FUN_8001a884, memoria. */
 int Game_Init(void)
 {
     g_GameInfo = (GameInfo*)Mem_Alloc(sizeof(GameInfo), 3);
     memset(g_GameInfo, 0, sizeof(GameInfo));
     Pad_Init();
+    Snd_Init();                     /* 80022330 */
     return 1;
 }
 
@@ -180,6 +182,8 @@ void Frontend_MainLoop(void)
         Gfx_BeginFrame(0, 0, 0);
         Frontend_Update();
         Frontend_DrawFade();
+        Snd_SetListenerCount(0);    /* 8003d48c(0) */
+        Snd_Update();               /* 8003e848 */
         Stream_Pump(1);             /* el original lee por DMA en segundo plano */
         Asset_DispatchAll();        /* FUN_80028634: Asset_Dispatch + Gfx_Flip(1) */
         Gfx_Flip(GFX_FLIP_FULL);
@@ -200,9 +204,11 @@ void Level_Unload(const char* name)
     case 0xc: g_GameInfo->nextMode = 0; break;
     default: g_GameInfo->nextMode = 4; break;
     }
+    Snd_Pause(0);                   /* 8003fe7c(0) */
     Stream_Close();                 /* FUN_8002b7c8 / Stream_Close 8002ba0c */
     if (g_IsFrontend)
         Frontend_Free();            /* FUN_800241d4 */
+    Snd_UnloadBanks();              /* 80022da4 */
     Asset_ClearRegistry();
 }
 

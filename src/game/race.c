@@ -26,6 +26,8 @@
 #include "pause.h"
 #include "actor.h"
 #include "powerup.h"
+#include "snd.h"
+#include "vecmath.h"
 
 uint8_t g_CarLoadOrder[8];
 int     g_CarsLoaded;
@@ -217,6 +219,26 @@ static void Race_DrawMirror(void)
     g_Camera = saved;
 }
 
+/* 800299a8: oyente del sonido para la vista (camara: posicion, rumbo, velocidad del coche que sigue y si esta
+ * en un tunel, bit 14 de la cara de la pista bajo ella) */
+static void Race_UpdateListener(int view)
+{
+    int heading = Math_Atan2(g_Camera.view[2], g_Camera.view[8]) & 0xfff;
+    int vel[3] = { 0, 0, 0 };
+    RaceCar* t = RaceCam_GetTarget(view);
+    if (t && t->phys)
+        memcpy(vel, t->phys + 0x154, sizeof(vel));
+    TrackPos tp = { 0xff, 0, -1 };
+    const uint8_t* face = NULL;
+    int reverb = 0;
+    if (Track_FindSurface(&tp, g_Camera.pos, NULL, 1) != TRACK_NO_SURFACE)
+    {
+        Track_SurfaceType(&tp, &face);
+        reverb = face ? (*(const uint16_t*)(face + 8) >> 14) & 1 : 0;
+    }
+    Snd_SetListener(view, g_Camera.pos, heading, vel, reverb, tp.curve);
+}
+
 /* 800299a8 + 80026f28 (un jugador). Del bucle original estan: tiempo de carrera, texturas animadas,
  * camara de persecucion (8005f034), visibilidad y dibujo de la pista (Track_DrawView 800644c0 +
  * Race_DrawView 8006422c), parte del HUD y la fisica (80030cac / 80056c6c). Pendiente: IA, poderes, actores,
@@ -240,6 +262,9 @@ void Race_MainLoop(void)
         g_Humans[0]->phys[0x338] = (uint8_t)atoi(power);
         *(int16_t*)(g_Humans[0]->phys + 0x33e) = 0x7fff;
     }
+    Snd_RaceInit();                    /* 8003cfd0 */
+    Snd_ApplySettings(g_Settings.volume, g_Settings.audioMode);
+    Snd_Pause(1);                      /* 8003fe7c(1) (Level_WaitLoaded) */
     while (g_GameState == GAMESTATE_RUNNING || g_GameState == GAMESTATE_RESULTS)
     {
         Frame_Wait();
@@ -282,10 +307,15 @@ void Race_MainLoop(void)
         else if (g_RacePaused)
             Pause_Menu();              /* 80025ad4 */
 
+        Race_UpdateListener(0);        /* 800299a8: 8003dd84 por vista */
+        Snd_SetListenerCount(1);       /* 8003d48c */
+        Snd_Update();                  /* 8003e848 */
+
         Asset_DispatchAll();
         Gfx_Flip(GFX_FLIP_FULL);
         Race_UpdateState(dt);          /* 80027e90 */
     }
+    Snd_StopRace();                    /* 8003d04c */
     Race_FreeCars();
     Actors_Free();
     Track_Free();

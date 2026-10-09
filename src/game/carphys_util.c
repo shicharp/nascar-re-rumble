@@ -3,6 +3,7 @@
 #include "gte.h"
 #include "model.h"
 #include "carphys_int.h"
+#include "snd.h"
 
 /* ---------------------------------------------------------------- aleatorios (800182ec) */
 
@@ -296,10 +297,9 @@ faceZ:
     return 1;
 }
 
-/* Cola de efectos/sonidos de impacto (DAT_800b52f0, 0x14 x 20 bytes): pendiente con el sonido */
+/* Cola de sonidos de la carrera (DAT_800b52f0, 20 entradas {0, id, x, z, -1}; la toca 80042234 en 8003e848) */
 void Fx_Push(int kind, const int* pos, int life)
 {
-    (void)kind;
-    (void)pos;
     (void)life;
+    Snd_Queue(kind, pos[0], pos[2]);
 }

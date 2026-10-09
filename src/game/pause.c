@@ -22,6 +22,7 @@
 #include "hud.h"
 #include "ai.h"
 #include "pause.h"
+#include "snd.h"
 
 int g_RacePaused;              /* DAT_800af710 */
 int g_RaceEndTimer;            /* DAT_800af740 */
@@ -172,6 +173,7 @@ void Pause_Init(void)
 static void Pause_Begin(int player)
 {
     g_RacePaused = 1;
+    Snd_Pause(0);                 /* 8003fec4 */
     s_pausePlayer = player;
     s_resume = 0;
     s_sel = 0;
@@ -250,6 +252,8 @@ void Pause_Menu(void)
         (void)sq;
         (void)ci;
         int item = s_items[s_menu][s_sel];
+        if (up == 0 || dn == 0 || cr == 0 || ((ri == 0 || le == 0) && s_menu == 0))
+            Snd_PlayUi(0x22, h);  /* 8002651c */
         if (up == 0)
         {
             if (--s_sel < 0)
@@ -269,9 +273,14 @@ void Pause_Menu(void)
                     int d = ri == 3 ? 1 : -1;
                     if (s_menu == 1 && item < 4)
                     {
-                        int v = g_Settings.volume[item] + d;
+                        int old = g_Settings.volume[item];
+                        int v = old + d;
                         g_Settings.volume[item] = (uint8_t)(v < 0 ? 0 : v > 127 ? 127 : v);
+                        Snd_ApplySettings(g_Settings.volume, g_Settings.audioMode);
                         Pause_UpdateTexts(h);
+                        /* al cambiar el porcentaje, el sonido 0x22 con ese volumen (8003f6d8) */
+                        if (((old + 1) * 100) >> 7 != ((g_Settings.volume[item] + 1) * 100) >> 7)
+                            Snd_PlayUiVol(0x22, h, Snd_EffectiveVolume(item));
                     }
                 }
                 else if (ri == 0 || le == 0)
@@ -282,6 +291,8 @@ void Pause_Menu(void)
                         if (item == 4)
                         {
                             g_Settings.audioMode = (uint8_t)((g_Settings.audioMode + 3 + d) % 3);
+                            Snd_ApplySettings(g_Settings.volume, g_Settings.audioMode);
+                            Snd_PlayUi(0x22, h);
                             Pause_UpdateTexts(h);
                         }
                     }
@@ -357,6 +368,7 @@ void Pause_Menu(void)
         s_sel = -1;
         s_pausePlayer = -1;
         g_RacePaused = 0;
+        Snd_Pause(1);             /* 8003fe7c(1) */
     }
 }
 
@@ -489,6 +501,8 @@ void Race_Results(int dt)
         uint32_t b = g_PadButtons[p];
         int cr = Edge(p, B_CROSS, b), le = Edge(p, B_LEFT, b), ri = Edge(p, B_RIGHT, b);
         int up = Edge(p, B_UP, b), dn = Edge(p, B_DOWN, b);
+        if (cr == 0 || le == 0 || ri == 0 || up == 0 || dn == 0)
+            Snd_PlayUi(0x22, g_Humans[p]);   /* 80029950 */
         if (cr == 0)
         {
             if (s_resConfirm == 1)
