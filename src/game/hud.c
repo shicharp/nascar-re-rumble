@@ -3,7 +3,7 @@
  * largo o con L1 en automatico, 8005efec): 0 solo posicion y vuelta, 1 + mapa (8004274c) y cuentarrevoluciones
  * con marcha y velocidad (800430e4), 2 + tiempos de vuelta y diferencia con el coche de delante / detras
  * (8002cd84). Graficos de la pagina de texturas 8 (Cpag): mapa en (0,0) y esfera en (0x80,0).
- * Pendiente: dos jugadores, iconos de poderes (80042544), mensajes (8002b920), repeticion y el marcador sin
+ * Iconos de poderes 80042544. Pendiente: dos jugadores, mensajes (8002b920), repeticion y el marcador sin
  * humanos (8004304c). */
 #include <stdio.h>
 #include <string.h>
@@ -22,6 +22,8 @@
 #include "racecar.h"
 #include "carphys_int.h"
 #include "ai.h"
+#include "powerup.h"
+#include "cpag.h"
 #include "hud.h"
 
 static uint8_t s_hudSetting[2] = { 1, 1 };   /* DAT_800b7112 */
@@ -223,6 +225,35 @@ int Hud_GapTime(uint8_t* me, uint8_t* other)
     return (q >> 0xf) * 0x1e;
 }
 
+/* 80042544: icono de poder (pagina 8, 20 x 20 en (i * 0x14, 0x54), del 6 en adelante en la fila 0x68). El que se
+ * lleva (slot 0) a la izquierda; los activos (slot 1..4) en columna a la derecha, con una barra del tiempo que
+ * les queda (fraccion de la duracion de 800aa90c, 18 pixeles). */
+static void Hud_PowerIcon(int icon, int slot, int ticks, int dx, int y)
+{
+    int x;
+    if (slot == 0)
+    {
+        y += 0xe;
+        x = HUD_L(9);
+    }
+    else
+    {
+        y += slot * 0x16 + 10;
+        x = HUD_R(dx + 0x11a);
+    }
+    int i = icon > 5 ? icon - 6 : icon, v = icon < 6 ? 0x54 : 0x68;
+    Hud_Sprite(Cpag_FindRegion(8, i * 0x14, v), i * 0x14, v, 0x14, 0x14, 0, x, y);
+    int dur = Power_Duration(icon);
+    if (ticks > 0 && dur > 0)
+    {
+        int fill = ticks * 0x12 / dur + 1;
+        if (fill > 0x12)
+            fill = 0x12;
+        Hud_Rect15(0, (x + 0x15) * 2, y * 2, 8, 0x28, 0);
+        Hud_Rect15(0x7fe0, (x + 0x16) * 2, (y - (fill - 0x13)) * 2, 4, fill * 2, 0);
+    }
+}
+
 /* 800429d0 (parte): CONTRA DIRECCION si se va hacia atras por la pista mas de 300 tics */
 static void Hud_Messages(int view, int y, int level)
 {
@@ -233,6 +264,14 @@ static void Hud_Messages(int view, int y, int level)
     uint8_t* c = h->phys;
     int off = level == 2 || g_GameInfo->isRestart ? 0x13 : 0;
     Font_Select(4);
+    /* sin usar el poder 18000 tics (1 minuto): "To Use" alternando con "Press R2" (DAT_800af714 & 0x100, contador
+     * de vblanks; aqui el tiempo de carrera / 5). Con la asignacion de botones por defecto el poder va en R2. */
+    if (I32(c, 0x330) == 0 && I32(ctrl, 0x68) > 18000)
+    {
+        int blink = (g_RaceTime / 5) & 0x100;
+        Font_DrawString(blink ? "Press" : "To", HUD_L(0x1e), y + 0xd, blink ? 9 : 1);
+        Font_DrawString(blink ? "R2" : "Use", HUD_L(0x1e), y + 0x17, blink ? 9 : 1);
+    }
     if (I32(c, 0x330) == 0 && g_Track && g_Track->numCurve > 0 && h->tpos.curve >= 0)
     {
         int n = g_Track->numCurve, a[3], b[3];
@@ -345,6 +384,13 @@ void Hud_Draw(int view)
         Font_DrawString(s, HUD_R(0xf6), ty + 10, 8);
     }
     Font_Select(1);
+    if (I8(c, 0x338) >= 0)
+    {
+        int held = I8(c, 0x338);
+        Hud_PowerIcon(Exe_U8(0x800aa90fu + (uint32_t)held * 4), 0, held == POWER_MYSTERY ? I16(c, 0x33e) : 0, 0, ty);
+    }
+    for (int i = 0; i < U8(c, 0x339); i++)
+        Hud_PowerIcon(Exe_U8(0x800aa90fu + (uint32_t)I8(c, 0x340 + i * 4) * 4), i + 1, I16(c, 0x342 + i * 4), 0, ty);
     if (g_RaceTime < 0x4b1 || level != 2)
         return;
     if (ahead && I32(ahead, 0x330) != 0)

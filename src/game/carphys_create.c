@@ -257,25 +257,6 @@ static void Car_InitParams(RaceCar* e, uint8_t* c)
     U16(c, 0x312) = (uint16_t)(Exe_U8(p + 6) << 1);
 }
 
-/* 8004becc: nodo de la red mas cercano en 3D */
-static int Cnet_FindNearest3D(const uint8_t* net, const int* pos)
-{
-    int best = -1, bestD = 0;
-    for (int i = 0; i < Cnet_Count(net); i++)
-    {
-        int n[3];
-        Cnet_NodePos(net, i, n);
-        int d[3] = { pos[0] - n[0], pos[1] - n[1], pos[2] - n[2] };
-        int l = Vec_ApproxLen3(d);
-        if (best < 0 || l < bestD)
-        {
-            best = i;
-            bestD = l;
-        }
-    }
-    return best;
-}
-
 /* 80065fe8: posicion y marco desde la linea central (si no hay red) */
 static void Car_CurveFrame(const int* pos, int* outPos, int* frame)
 {

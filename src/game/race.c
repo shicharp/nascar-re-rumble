@@ -24,6 +24,7 @@
 #include "racecar.h"
 #include "hud.h"
 #include "pause.h"
+#include "actor.h"
 
 uint8_t g_CarLoadOrder[8];
 int     g_CarsLoaded;
@@ -33,6 +34,7 @@ int     g_CarsLoaded;
 void Race_Load(const char* path)
 {
     g_CarsLoaded = 0;              /* FUN_80023e70 */
+    Actors_Free();                 /* 80048d5c */
     Track_Free();
     Cnet_Reset();                  /* FUN_8002cf7c */
     g_HaveStart = 0;
@@ -196,6 +198,7 @@ static void Race_DrawMirror(void)
     Track_DrawSegments(0, 1);
     Render_ClearList();
     Race_AddCarsToDrawList();
+    Actors_AddToDrawList(0);
     Render_DrawList(1);
     Render_SetMirrorProjection(0);
 
@@ -223,12 +226,19 @@ void Race_MainLoop(void)
     Font_FlushUploads();
     g_RaceTime = g_PrevRaceTime = 0;
     Race_CreateCars();             /* 8003132c (desde Level_Run) */
+    Actors_LogSummary();
     RaceCam_Init();
     Hud_Init();
     Pause_Init();
     const char* laps = getenv("NR_LAPS");   /* solo en el port (depuracion): numero de vueltas */
     if (laps && atoi(laps) > 0)
         g_Settings.laps = (uint8_t)atoi(laps);
+    const char* power = getenv("NR_POWER");  /* solo en el port (depuracion): poder en la mano del jugador 1 */
+    if (power && g_Humans[0] && g_Humans[0]->phys)
+    {
+        g_Humans[0]->phys[0x338] = (uint8_t)atoi(power);
+        *(int16_t*)(g_Humans[0]->phys + 0x33e) = 0x7fff;
+    }
     while (g_GameState == GAMESTATE_RUNNING || g_GameState == GAMESTATE_RESULTS)
     {
         Frame_Wait();
@@ -239,6 +249,7 @@ void Race_MainLoop(void)
             g_PrevRaceTime = g_RaceTime;
             g_RaceTime += dt;          /* Race_UpdateTime 800269c0 */
             Track_Animate(dt);         /* 80061e94 */
+            Actors_Update(dt);         /* 80048dec(6) */
             Race_UpdateCars(dt);
             Hud_Update(dt);            /* 80042330 */
             RaceCam_Update(0, dt);     /* 8005f034 */
@@ -258,6 +269,7 @@ void Race_MainLoop(void)
         Track_DrawSegments(0, 0);
         Render_ClearList();
         Race_AddCarsToDrawList();
+        Actors_AddToDrawList(0);       /* 80061a0c + Actors_DrawView 80061b28 */
         Render_DrawList(0);
         Sprite_DrawAll();              /* 80045268 */
         Race_DrawHud();
@@ -272,5 +284,6 @@ void Race_MainLoop(void)
         Race_UpdateState(dt);          /* 80027e90 */
     }
     Race_FreeCars();
+    Actors_Free();
     Track_Free();
 }

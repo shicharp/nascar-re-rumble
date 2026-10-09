@@ -8,6 +8,7 @@
 #include "race.h"
 #include "cnet.h"
 #include "racecar.h"
+#include "actor.h"
 
 #define MAX_TYPES 48
 

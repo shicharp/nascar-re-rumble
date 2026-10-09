@@ -944,6 +944,11 @@ static void Track_DrawSegFaces(const TrackSeg* s, int nearMode, int lod, int mir
     }
 }
 
+int Track_SegFlags(int view, int seg)
+{
+    return (unsigned)seg < MAX_SEGS ? s_segFlags[view & 1][seg] : 0;
+}
+
 /* 8006327c: caras de los segmentos visibles y sus objetos D (halos de luz: {forma, color TCOL, tamano,
  * vertice}) a la lista de sprites */
 void Track_DrawSegments(int view, int mirror)

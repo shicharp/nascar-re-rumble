@@ -534,21 +534,26 @@ static int Approx2(int a, int b)
     return (hi + (lo >> 2)) - (lo >> 6);
 }
 
-static int Car_Near(RaceCar* a, RaceCar* b)
+int Ent_Near(const GfxObj* a, uint32_t fa, const GfxObj* b, uint32_t fb)
 {
-    int dxz = Approx2(a->obj.unk34[2] - b->obj.unk34[2], a->obj.unk34[0] - b->obj.unk34[0]);
-    int rs = a->obj.radius + b->obj.radius;
+    int dxz = Approx2(a->unk34[2] - b->unk34[2], a->unk34[0] - b->unk34[0]);
+    int rs = a->radius + b->radius;
     if (dxz - rs >= 0x4000)
         return 0;
-    int dy = a->obj.unk34[1] - b->obj.unk34[1];
+    int dy = a->unk34[1] - b->unk34[1];
     int d = Approx2(dxz, dy) - rs;
-    if (d >= 0x4000 || !((a->flags2c | b->flags2c) & 0x200) || d >= 0)
+    if (d >= 0x4000 || !((fa | fb) & 0x200) || d >= 0)
         return 0;
-    if (dxz - (a->obj.bb16 + b->obj.bb16) * 0x10 >= 0)
+    if (dxz - (a->bb16 + b->bb16) * 0x10 >= 0)
         return 0;
-    if (Abs_(dy) - (a->obj.bb10 + b->obj.bb10) * 0x10 >= 0)
+    if (Abs_(dy) - (a->bb10 + b->bb10) * 0x10 >= 0)
         return 0;
-    return Car_ModelBoxes(&a->obj, &b->obj);
+    return Car_ModelBoxes(a, b);
+}
+
+static int Car_Near(RaceCar* a, RaceCar* b)
+{
+    return Ent_Near(&a->obj, a->flags2c, &b->obj, b->flags2c);
 }
 
 /* 80061808: cada coche con los de su celda de TCRV (curva >> 2) y la siguiente */

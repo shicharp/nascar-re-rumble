@@ -45,9 +45,14 @@ cuenta atrás y la física original de los coches (X acelera, cuadrado frena, c�
 L1/L2 cambio manual, triángulo vuelve a la pista), la IA que corre por la red de trazadas, los choques entre
 coches, las vueltas y las posiciones, y el marcador (mapa, cuentarrevoluciones, tiempos; SELECT largo cambia de
 nivel, corto de camara), la pausa con START (camara, marcador, audio, reiniciar, salir) y los resultados al
-terminar; "Exit Race" vuelve al front-end). `--shot` guarda el frame N y sale; `--press "185:down,205:right"` simula
+terminar; "Exit Race" vuelve al front-end). Actores de la pista: objetos y cajas de poder que giran y reaparecen;
+los coches recogen un poder segun su puesto y lo usan (la IA sola, el jugador con R2), con sus efectos (escudo,
+turbo, ruedas grandes, embestida, onda expansiva...) e iconos en el marcador; los proyectiles y el clima quedan
+pendientes. `--shot` guarda el frame N y sale; `--press "185:down,205:right"` simula
 pulsaciones (para verificar sin intervención; botones: up, down, left, right, cross, circle, triangle, square,
 start, select, l1, r1, l2, r2).
+Variables de depuracion: `NR_LAPS=n` vueltas, `NR_CAMCAR=n` camara en el coche n, `NR_POWER=n` poder n en la
+mano del jugador al salir, `NR_POWERLOG=1` cajas recogidas y poderes usados en el log.
 `--viewer` es el visor de páginas Cpag (flechas para cambiar de página).
 
 ## Controles
@@ -63,7 +68,7 @@ Mando compatible con SDL (Xbox, DualShock, etc.) o teclado (configuracion por de
 | Triangulo | Z | Volver a la pista / atras |
 | L1 / L2 | Mayus izq. / Ctrl izq. | Subir / bajar marcha (manual); en automatico, marcador / camara |
 | R1 | Mayus der. | Retrovisor (mantener) |
-| R2 | Ctrl der. | Usar poder (pendiente: poderes) |
+| R2 | Ctrl der. | Usar poder (mantener) |
 | Arriba | Flecha arriba | Bocina (pendiente: sonido) |
 | START | Intro | Pausa |
 | SELECT | Espacio | Corto: camara; largo: nivel del marcador |
@@ -85,8 +90,10 @@ mostrando mas escenario a los lados; el marcador se ancla a los bordes.
 | `src/game/racecar.c` | coches de la carrera: salida 800317a0, parrilla 8003132c, cámara 8005d4c8 / 8005f034 / 8005e8b0 / 8005dc98 |
 | `src/game/carphys*.c` | física de los coches (8004c000-8005a000): Physics_StepAll 80056c6c, creación 8004e830 / 8004dc1c / 8004e1b4, contactos 8004fb10 / 8004fdd4 / 80055748 / 80050210, neumáticos 80052dbc, en el aire 800524b4, integración 80054a14 / 80055f44, ruedas 8004ef54, controles 80059870 / 800598dc / 8005967c, mando 8005f928 / 8004cae8 |
 | `src/game/ai.c` | IA: Ai_UpdatePath 80030928, Ai_UpdateTarget 8002de7c, Ai_DriveAll 8002f4ac, Ai_ChooseNext 80030504, AiCar_Create 8002cfbc; vueltas 8003014c y posiciones 8002fc9c |
+| `src/game/actor.c` | actores Cact: Cact_OnLoaded 8004942c, entidades 800491ec / 8002c2a0 / 8002c894 / 80049688 / 80049360, visibles 80061a0c / 80061b28, choques con los coches 80061608 / 800613b4, objetos 0xB 8003421c, animacion 8003c95c / 8003c8ac / 8003cb08 / 80013aa4 |
+| `src/game/powerup.c` | poderes: cajas 0x16 8003203c (80031854, 80031f04, 800319c4), Car_UpdatePowerUps 8002ec00, Car_AddEffect 8002f268, turbo 80050130 / 800501b8, onda expansiva 8005b2a0 / 8005b068, 8004ffec |
 | `src/game/collide.c` | choques entre coches: 80061808 / 800613b4 / 80060f88, Car_CollidePair 8005c05c (80059f0c, 8005a534, 8005ba30) |
-| `src/game/hud.c` | marcador: Race_DrawHud 80043520, mapa 8004274c, cuentarrevoluciones 800430e4 / 80042330, mensajes 800429d0, diferencia 8002cd84 |
+| `src/game/hud.c` | marcador: Race_DrawHud 80043520, mapa 8004274c, iconos de poderes 80042544, cuentarrevoluciones 800430e4 / 80042330, mensajes 800429d0, diferencia 8002cd84 |
 | `src/game/pause.c` | pausa y fin de carrera: Race_UpdateState 80027e90, Pause_Menu 80025ad4 (8002552c, 80025a60), resultados 8002896c, 800266f0 |
 | `src/game/exe.c` | lectura de tablas de datos del propio SLUS_010.68 (Exe_Ptr) |
 | `src/game/cnet.c` | redes de trazadas Cnet 8004c368 / 8002cc50 / 8004bd74 |

@@ -246,6 +246,17 @@ static void Pad_Edge(uint32_t bits, uint8_t* bind)
         *st = 3;
 }
 
+/* Humans_Update 8005ffbc (parte): tiempo con un poder sin usar (+0x68, para el aviso del marcador), R2 (+0x34,
+ * usar el poder) y arriba en la cruceta (+0x4C, la bocina 80041be8(5): pendiente con el sonido) */
+void Human_UpdateButtons(RaceCar* e, int dt)
+{
+    uint8_t* ctrl = e->ctrl;
+    if (I32(ctrl, 0x68) >= 0)
+        I32(ctrl, 0x68) += dt;
+    Pad_Edge(U32(ctrl, 8), B_(ctrl) + 0x34);
+    Pad_Edge(U32(ctrl, 8), B_(ctrl) + 0x4c);
+}
+
 /* Lectura del mando (Race_UpdateTime: 8005fc54 + 8005f928 para cada humano). Mando digital (tipo 4). */
 void Human_ReadPad(RaceCar* e, int port)
 {

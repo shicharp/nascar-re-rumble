@@ -10,7 +10,10 @@
 #include "vecmath.h"
 #include "frontend.h"
 #include "racecar.h"
+#include "actor.h"
+#include "powerup.h"
 #include "carphys.h"
+#include "carphys_int.h"
 #include "ai.h"
 #include "collide.h"
 #include "hud.h"
@@ -38,27 +41,6 @@ void Race_SetStart(const int* pos)
     g_StartPos[1] = Track_GroundHeight(&tp, pos, 0);
     g_StartCurve = tp.curve;
     g_HaveStart = 1;
-}
-
-/* 8004942c (parcial): de los actores solo se usa por ahora la salida. Cada Cact es una lista de bloques
- * [tag][tamano]: tACT {id, tipo, x, y, z, ...}, aRSL, NULL. */
-int Cact_OnLoaded(NrAsset* a)
-{
-    const uint8_t* d = a->data;
-    for (const uint8_t* c = d; c + 0x1c <= d + a->size;)
-    {
-        uint32_t tag = NR_Read32(c), len = NR_Read32(c + 4);
-        if (len < 8)
-            break;
-        if (tag == NR_TAG('t', 'A', 'C', 'T') && NR_Read32(c + 0xc) == 0x55)
-        {
-            int pos[3] = { (int)NR_Read32(c + 0x10), (int)NR_Read32(c + 0x14), (int)NR_Read32(c + 0x18) };
-            Race_SetStart(pos);
-        }
-        c += len;
-    }
-    Asset_Register(a);
-    return 1;
 }
 
 static ModelHdr* Cobj_Model(int id)
@@ -228,7 +210,7 @@ void Race_FreeCars(void)
 }
 
 /* Race_UpdateSim 80030cac: posiciones (8002fc9c), mando de los humanos (8005ffbc -> 8004cae8), vueltas
- * (8003014c), IA (80030928, 8002de7c, 8002f4ac) y fisica (80056c6c). Pendiente: poderes (Car_UpdatePowerUps). */
+ * (8003014c), poderes (8002ec00), IA (80030928, 8002de7c, 8002f4ac) y fisica (80056c6c). */
 void Race_UpdateCars(int dt)
 {
     if (g_NumCars <= 0)
@@ -240,13 +222,23 @@ void Race_UpdateCars(int dt)
         if (!c)
             continue;
         Human_ReadPad(c, c->ctrl[0x59]);
+        Human_UpdateButtons(c, dt);
         Human_Control(c);
         Human_Buttons(c);
     }
     Ai_UpdateLaps();
+    for (int i = 0; i < g_NumCars; i++)   /* Car_UpdatePowerUps 8002ec00: IA con algo en la mano, humano con R2 */
+    {
+        RaceCar* c = &g_Cars[i];
+        if (!c->phys || !c->ctrl)
+            continue;
+        int use = c->type == 1 ? I32(c->ctrl, 0x38) == 3 : I8(c->phys, 0x338) >= 0;
+        Car_UpdatePowerUps(c->phys, dt, use);
+    }
     Ai_UpdateAll(dt);
     Physics_StepAll(dt);
     Race_CollideCars();            /* 800268c0 (tras dibujar en el original) */
+    Actors_CollideCars();
 }
 
 void Race_AddCarsToDrawList(void)

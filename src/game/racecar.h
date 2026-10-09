@@ -68,7 +68,6 @@ extern int      g_StartCurve;             /* DAT_800af7b8 */
 extern int      g_HaveStart;
 
 void Race_SetStart(const int* pos);       /* 800317a0 (con la posicion del tACT tipo 0x55) */
-int  Cact_OnLoaded(NrAsset* a);           /* 8004942c (solo la salida, de momento) */
 void Race_CreateCars(void);               /* 8003132c */
 void Race_FreeCars(void);
 void Race_UpdateCars(int dt);             /* parte de Race_UpdateSim 80030cac */

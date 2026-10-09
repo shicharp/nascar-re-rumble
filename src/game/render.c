@@ -164,7 +164,7 @@ void Math_RotMatrix(int ay, int ax, int az, int* m)
 }
 
 /* Carga en la GTE una matriz de columnas 16.16 (80015880): fila Y negada */
-static void Gte_LoadColumns(const int* m)
+void Gte_LoadColumns(const int* m)
 {
     Gte_SetRot(m[0] >> 4, m[3] >> 4, m[6] >> 4,
                -m[1] >> 4, -m[4] >> 4, -m[7] >> 4,

@@ -672,10 +672,10 @@ void Physics_StepAll(int dt)
                     IA(c, 0xfc) += over;
                 }
             }
-            /* centro de la caja del modelo en el mundo (3DBB +8 + frame*16) */
+            /* centro de la caja del modelo en el mundo (3DBB +8 + frame*16): 80015880 + 80015928 + 80016784 */
             if (e->obj.model && e->obj.model->bbox)
             {
-                Gte_LoadObjMatrix(e->obj.rot);
+                Gte_LoadColumns(e->obj.rot);
                 Gte_SetTransShift(e->obj.pos, 0);
                 Gte_Rt((const short*)(e->obj.model->bbox + e->obj.frame * 0x10 + 8), e->obj.unk34, 0);
             }

@@ -101,6 +101,7 @@ int  Track_FindSegment(const int* pos);
 int  Track_FindSegmentByCurve(int i);
 
 void Track_DrawView(int view, int curSeg, int mirrorCam);   /* 800644c0: visibilidad de los segmentos */
+int  Track_SegFlags(int view, int seg);                     /* DAT_800b62a0[seg]: 0x80 visible, 0x40 cerca */
 void Track_DrawSegments(int view, int mirror);              /* 8006327c */
 void Track_DrawHorizon(int view, int mirror);               /* 80064078 (antes de los segmentos) */
 void Track_Animate(int dt);                                 /* 80061e94: texturas animadas (TTXA) */

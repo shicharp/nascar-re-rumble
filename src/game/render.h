@@ -84,6 +84,7 @@ void Render_UpdateWide(void);
 void Render_SetMirrorProjection(int on);   /* Camera_ApplyProjection con el retrovisor */
 static inline int Wide_X(int ax) { return (int)(((long long)ax << 8) / g_WideFix); }
 static inline int Wide_OnScreenX(int sx) { return (unsigned)(sx + g_WideMargin) < (unsigned)(2 * 160 + 2 * g_WideMargin); }
+void Gte_LoadColumns(const int* m);                             /* 80015880: columnas 16.16 -> GTE 4.12, fila Y negada */
 void Render_LoadCameraRotation(void);                           /* 8001032c */
 void Math_SinCos(int angle, int* s, int* c);                    /* 800176c0: 4096 = vuelta, 16.16 */
 void Math_RotMatrix(int ay, int ax, int az, int* m);            /* 80017ad8 */

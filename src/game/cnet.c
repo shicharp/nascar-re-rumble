@@ -96,3 +96,22 @@ int Cnet_Next(const uint8_t* net, int node)
             return links[k];
     return -1;
 }
+
+/* 8004becc: nodo de la red mas cercano en 3D */
+int Cnet_FindNearest3D(const uint8_t* net, const int* pos)
+{
+    int best = -1, bestD = 0;
+    for (int i = 0; i < Cnet_Count(net); i++)
+    {
+        int n[3];
+        Cnet_NodePos(net, i, n);
+        int d[3] = { pos[0] - n[0], pos[1] - n[1], pos[2] - n[2] };
+        int l = Vec_ApproxLen3(d);
+        if (best < 0 || l < bestD)
+        {
+            best = i;
+            bestD = l;
+        }
+    }
+    return best;
+}

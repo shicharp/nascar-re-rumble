@@ -21,5 +21,6 @@ int  Cnet_Count(const uint8_t* net);
 void Cnet_NodePos(const uint8_t* net, int node, int* out);   /* mundo */
 int  Cnet_FindNearest(const uint8_t* net, const int* pos, int skipFlagged);   /* 8002cc50 */
 int  Cnet_Next(const uint8_t* net, int node);           /* 8004bd74: primer enlace valido o -1 */
+int  Cnet_FindNearest3D(const uint8_t* net, const int* pos);   /* 8004becc */
 
 #endif

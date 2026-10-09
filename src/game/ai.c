@@ -183,7 +183,7 @@ static void Ai_QueueNext(RaceCar* e, int from, int16_t* outNode, int16_t* outLen
 }
 
 /* 8002ea48: vuelve a la red (y a la pista si se ha salido o lleva varios intentos) */
-static void Ai_Recover(RaceCar* e)
+void Ai_Recover(RaceCar* e)
 {
     uint8_t* ctrl = CTRL(e);
     uint8_t* c = Ai_Phys(e);
