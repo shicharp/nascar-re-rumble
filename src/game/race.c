@@ -264,6 +264,11 @@ void Race_MainLoop(void)
         *(int16_t*)(g_Humans[0]->phys + 0x33e) = 0x7fff;
     }
     Snd_RaceInit();                    /* 8003cfd0 */
+    {
+        char p[64];
+        snprintf(p, sizeof(p), "%s%s.AV", Level_GetDataDir(), Fe_VenueCode(g_Venue));
+        Music_Play(p);                 /* musica de la sede (en el original, por el stream del .AV) */
+    }
     Snd_ApplySettings(g_Settings.volume, g_Settings.audioMode);
     Snd_Pause(1);                      /* 8003fe7c(1) (Level_WaitLoaded) */
     while (g_GameState == GAMESTATE_RUNNING || g_GameState == GAMESTATE_RESULTS)

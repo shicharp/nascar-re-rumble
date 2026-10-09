@@ -55,6 +55,13 @@ void Snd_SourceSetPatch(int handle, int patch, int src);                        
 void Snd_SourceSetVolume(int handle, int src, int scale);                                        /* 8003dd00 */
 void Snd_SourceKill(int handle, int src);                                                        /* 8003dc58 */
 
+/* Musica (snd_music.c): bloques VAGM del fichero, decodificados y tocados con OpenAL en bucle */
+void Music_Play(const char* path);
+void Music_Stop(void);
+void Music_Pause(int on);
+void Music_SetVolume(int vol);
+void Music_Update(void);
+
 /* Coches (snd_car.c): motor de cada coche, bocina */
 struct RaceCar;
 void Engine_ResetTypes(void);                            /* 8003cfd0 (al cargar la carrera, antes de los Ceng) */

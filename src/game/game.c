@@ -174,6 +174,11 @@ void Frontend_MainLoop(void)
 {
     g_FrameCount = 0;
     Frontend_InitScreens();
+    {
+        char p[64];
+        snprintf(p, sizeof(p), "%sFE.TRK", Level_GetDataDir());
+        Music_Play(p);              /* (en el original llega por el stream: VAGM de FE.TRK) */
+    }
     while (g_GameState == GAMESTATE_RUNNING)
     {
         g_FrameCount++;
@@ -205,6 +210,7 @@ void Level_Unload(const char* name)
     default: g_GameInfo->nextMode = 4; break;
     }
     Snd_Pause(0);                   /* 8003fe7c(0) */
+    Music_Stop();                   /* 80023cf8 */
     Stream_Close();                 /* FUN_8002b7c8 / Stream_Close 8002ba0c */
     if (g_IsFrontend)
         Frontend_Free();            /* FUN_800241d4 */

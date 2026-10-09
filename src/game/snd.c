@@ -91,7 +91,8 @@ void Snd_SetSfxVolume(int v)
 void Snd_SetMusicVolume(int v)
 {
     s_musicVol = Clamp127(v);
-    s_musicVolEff = (s_musicVol * 0xcccc) >> 16;   /* (el streaming de la musica: pendiente) */
+    s_musicVolEff = (s_musicVol * 0xcccc) >> 16;
+    Music_SetVolume(s_musicVolEff);
 }
 
 void Snd_SetSpeechVolume(int v)
@@ -1205,6 +1206,7 @@ void Snd_RaceInit(void)
 /* 8003fe7c: 0 para todo (pausa, fin de nivel), 1 vuelve a activar las fuentes de la carrera */
 void Snd_Pause(int on)
 {
+    Music_Pause(!on);
     if (on)
     {
         s_raceActive = 1;
@@ -1424,4 +1426,5 @@ void Snd_Update(void)
         }
     }
     SndLib_Commit();
+    Music_Update();
 }
