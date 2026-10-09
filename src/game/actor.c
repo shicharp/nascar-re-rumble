@@ -460,14 +460,203 @@ static int Prop_Handler(int msg, Actor* a, intptr_t p1, intptr_t p2)
     return Actor_DefaultHandler(msg, a, p1, p2);
 }
 
+/* Objeto que gira (tipo 6, 0xF8 bytes): +0xE0 parametro del modo, +0xE2 modo de seguimiento (0 girar sin parar,
+ * 1-4 mirar a la entidad +0xE4 si su handle sigue siendo +0xE8 y esta a menos de +0xEE * 16), +0xE3 bits (1 se
+ * orienta, 2 gira sobre su eje Z, 4 parado, 8 tambien cabecea, 0x40 rumbo limitado a +-0x300), +0xEC velocidad,
+ * +0xF0 rumbo inicial, +0xF2 giro fijo (modo 2) o cuenta atras, +0xF4 rumbo, +0xF6 cabeceo.
+ * tACT +0x34 modo de suelo, +0x35 / +0x36 modo y parametro, +0x38 rumbo, +0x3A altura / 16, +0x3C velocidad,
+ * +0x3E alcance, +0x40 bits (1 / 4 orientarse, 2 cabecear, 8 girar, 0x10 lista DAT_800b61e0, 0x20 limite,
+ * 0x80 sin sonidos de clase al crearlo). */
+#define TU_PARAM(a)  AU16(a, 0xe0)
+#define TU_MODE(a)   A8(a, 0xe2)
+#define TU_BITS(a)   A8(a, 0xe3)
+#define TU_TARGET(a) (*(uint8_t**)((uint8_t*)(a) + 0xe4))
+#define TU_THANDLE(a) A32(a, 0xe8)
+#define TU_SPEED(a)  A16(a, 0xec)
+#define TU_RANGE(a)  A16(a, 0xee)
+#define TU_BASE(a)   A16(a, 0xf0)
+#define TU_AUX(a)    A16(a, 0xf2)
+#define TU_YAW(a)    A16(a, 0xf4)
+#define TU_PITCH(a)  A16(a, 0xf6)
+
+/* 800339b4 */
+static int Turret_Create(Actor* a, const ActorDef* d)
+{
+    const uint8_t* t = d->def;
+    uint8_t fl = t[0x40];
+    Actor_DefaultHandler(2, a, (intptr_t)d, 0);   /* (0x80: sin la clase de objeto mientras se crea; solo sonidos) */
+    TU_BITS(a) = (uint8_t)((fl & 1 ? 0x10 : 0) | (fl & 2 ? 8 : 0));
+    int16_t heading = *(const int16_t*)(t + 0x38);
+    Math_RotMatrix(heading, 0, 0, a->obj.rot);
+    TU_PITCH(a) = 0;
+    TU_BASE(a) = TU_YAW(a) = heading;
+    int spin = (fl & 8) != 0;
+    if (fl & 5)
+    {
+        TU_SPEED(a) = (int16_t)(((int)*(const int16_t*)(t + 0x3c) * 0x10 / 0xda) >> 2);
+        TU_AUX(a) = 0;
+        TU_TARGET(a) = NULL;
+        TU_BITS(a) |= 1;
+        TU_RANGE(a) = *(const int16_t*)(t + 0x3e);
+        TU_MODE(a) = t[0x35];
+        TU_PARAM(a) = *(const uint16_t*)(t + 0x36);
+        spin = 0;   /* el original borra el bit 8 del tACT */
+    }
+    if (spin)
+    {
+        TU_SPEED(a) = (int16_t)(((int)*(const int16_t*)(t + 0x3c) << 4) / 300 >> 2);
+        TU_BITS(a) |= 2;
+        TU_AUX(a) = heading;
+    }
+    int mode = (int8_t)t[0x34];
+    int y = Track_GroundHeight(&a->tpos, a->obj.pos, mode == 0 ? -1 : mode == 1 ? -2 : mode - 2) +
+            *(const int16_t*)(t + 0x3a) * 0x10;
+    a->obj.pos[1] = y;
+    if (a->obj.model)
+    {
+        const uint8_t* bb = a->obj.model->bbox;
+        a->obj.pos[1] = y + (*(const int16_t*)(bb + 0x10) - *(const int16_t*)(bb + 0xa));
+    }
+    Actor_UpdateCenter(a);
+    if (fl & 0x10)
+        TU_BITS(a) |= 0x20;   /* 80061c88: lista DAT_800b61e0 (24 entradas, uso sin identificar) */
+    if (fl & 0x20)
+        TU_BITS(a) |= 0x40;
+    return 0;
+}
+
+/* 80033c5c: ordenes del guion 0x29-0x2C (modo de seguimiento y parametro) y 0x2D (0 parar, si no seguir) */
+static void Turret_Commands(Actor* a)
+{
+    for (int i = 0; i < 4;)
+    {
+        uint8_t c = a->cmds[i * 2], arg = a->cmds[i * 2 + 1];
+        if (c == 0)
+            return;
+        if (c > 0x28 && c < 0x2d)
+        {
+            TU_MODE(a) = (uint8_t)(c - 0x28);
+            TU_PARAM(a) = arg;
+        }
+        else if (c == 0x2d)
+            TU_BITS(a) = arg == 0 ? (uint8_t)(TU_BITS(a) | 4) : (uint8_t)(TU_BITS(a) & 0xfb);
+        else
+        {
+            i++;
+            continue;
+        }
+        Actor_RemoveCmd(a, i);
+    }
+}
+
+/* gira 'cur' hacia 'want' como mucho 'step' (angulos de 12 bits) */
+static int16_t Angle_Approach(int cur, int want, int step)
+{
+    int d = (want - cur) & 0xfff;
+    if (d > 0x800)
+        d -= 0x1000;
+    int m = Abs_(d) < step ? Abs_(d) : step;
+    return (int16_t)((cur + (d < 0 ? -m : m)) & 0xfff);
+}
+
+/* 80033d30 */
+static void Turret_Update(Actor* a, int dt)
+{
+    if (a->cmds[0])
+        Turret_Commands(a);
+    if (!a->obj.model || (TU_BITS(a) & 4))
+        return;
+    if (TU_BITS(a) & 2)
+    {
+        TU_YAW(a) = (int16_t)((TU_YAW(a) + ((dt * TU_SPEED(a)) >> 2)) & 0xfff);
+        Math_RotMatrix(TU_AUX(a), 0, TU_YAW(a), a->obj.rot);
+        Actor_UpdateCenter(a);
+        return;
+    }
+    if (!(TU_BITS(a) & 1))
+        return;
+    int yaw, pitch = 0;
+    if (TU_MODE(a) == 0)
+        yaw = (TU_YAW(a) + 0x800) & 0xfff;
+    else
+    {
+        uint8_t* t = TU_TARGET(a);
+        TU_AUX(a) = (int16_t)(TU_AUX(a) - dt);
+        yaw = TU_BASE(a);
+        if (t && A32(t, 0xc) == TU_THANDLE(a))
+        {
+            int v[3] = { A32(t, 0x64) - a->obj.unk34[0], A32(t, 0x68) - a->obj.unk34[1], A32(t, 0x6c) - a->obj.unk34[2] };
+            int dist = Vec_ApproxLen3(v);
+            if (dist - (A32(t, 0x70) + a->obj.radius) < TU_RANGE(a) << 4)
+            {
+                yaw = Math_Atan2(v[0], v[2]) & 0xfff;
+                if (TU_BITS(a) & 8)
+                {
+                    /* cabeceo hacia el objetivo, limitado a +-0x200 */
+                    int ax = Abs_(v[0]), az = Abs_(v[2]), hi = ax > az ? ax : az, lo = ax > az ? az : ax;
+                    if ((hi >> 1) < lo)
+                    {
+                        int t2 = lo * 0x6a;
+                        lo = hi - lo;
+                        hi = (hi * 0x4b + t2) >> 7;
+                    }
+                    int p = -Math_Atan2(v[1], (hi + (lo >> 2)) - (lo >> 6));
+                    pitch = p < -0x200 ? -0x200 : p > 0x200 ? 0x200 : p;
+                }
+            }
+        }
+    }
+    if (TU_YAW(a) != yaw && (TU_BITS(a) & 0x40))
+    {
+        int d = (yaw - TU_BASE(a)) & 0xfff;
+        if (d > 0x800)
+            d -= 0x1000;
+        if (d < -0x300)
+            yaw = (TU_BASE(a) - 0x300) & 0xfff;
+        else if (d > 0x300)
+            yaw = (TU_BASE(a) + 0x300) & 0xfff;
+    }
+    if (TU_YAW(a) == yaw && TU_PITCH(a) == pitch)
+        return;
+    int step = (dt * TU_SPEED(a)) >> 2;
+    if (TU_YAW(a) != yaw)
+        TU_YAW(a) = Angle_Approach(TU_YAW(a), yaw, step);
+    if (TU_PITCH(a) != pitch)
+        TU_PITCH(a) = Angle_Approach(TU_PITCH(a), pitch, step);
+    Math_RotMatrix(TU_YAW(a), TU_PITCH(a), 0, a->obj.rot);
+    Actor_UpdateCenter(a);
+    a->vel[0] = a->obj.rot[6];
+    a->vel[1] = a->obj.rot[7];
+    a->vel[2] = a->obj.rot[8];
+}
+
+/* 80034198 */
+static int Turret_Handler(int msg, Actor* a, intptr_t p1, intptr_t p2)
+{
+    switch (msg)
+    {
+    case 1:
+        return 0xf8;
+    case 2:
+        Turret_Create(a, (const ActorDef*)p1);
+        return 0;
+    case 6:
+        Turret_Update(a, (int)p1);
+        return 0;
+    default:
+        return Actor_DefaultHandler(msg, a, p1, p2);
+    }
+}
+
 /* 8002ca3c: manejador de cada tipo de tACT (los de 1 y 0x11, coches, no llegan por aqui) */
 static ActorFn Actor_HandlerFor(int type)
 {
     switch (type)
     {
+    case 0x06: return Turret_Handler;   /* 80034198 */
     case 0x0b: return Prop_Handler;     /* 800343dc */
     case 0x16: return Pickup_Handler;   /* 8003203c */
-    default:   return NULL;             /* 5 80034e6c, 6 80034198, 8 80033274, 0xD 80033468, 0xE 80034894 */
+    default:   return NULL;             /* 5 80034e6c, 0xE 80034894 (8 y 0xD los crean los poderes) */
     }
 }
 
@@ -505,7 +694,7 @@ int Cact_OnLoaded(NrAsset* as)
     }
     ActorFn fn = Actor_HandlerFor(type);
     if (!fn)
-        return 1;                       /* 0x54 80072208 y los tipos 5, 6 y 0xE: pendientes */
+        return 1;                       /* 0x54 80072208 y los tipos 5 y 0xE: pendientes */
     uint8_t* rb = Cact_FindBlock(as, NR_TAG('a', 'R', 'S', 'L'));
     uint32_t* res = NULL;
     if (rb)
@@ -521,7 +710,7 @@ int Cact_OnLoaded(NrAsset* as)
     return 1;
 }
 
-/* Solo en el port: resumen de lo creado (y el punto de TCRV de cada caja de poder) */
+/* Solo en el port: resumen de lo creado (con NR_POWERLOG, tambien donde esta cada actor) */
 void Actors_LogSummary(void)
 {
     int count[256] = { 0 }, total = 0;
@@ -530,10 +719,12 @@ void Actors_LogSummary(void)
         count[a->type]++;
         total++;
     }
-    NR_Log("Actores: %d (objetos 0x0B: %d, cajas de poder 0x16: %d)\n", total, count[0x0b], count[0x16]);
+    NR_Log("Actores: %d (objetos 0x0B: %d, giratorios 0x06: %d, cajas de poder 0x16: %d)\n", total, count[0x0b],
+           count[0x06], count[0x16]);
     for (Actor* a = g_Actors; a; a = a->next)
-        if (a->type == 0x16)
-            NR_Log("  caja %d: curva %d segmento %d\n", a->id, a->tpos.curve, a->tpos.seg);
+        if (getenv("NR_POWERLOG"))
+            NR_Log("  tipo 0x%02x id %d: curva %d segmento %d, altura %d, modelo %s\n", a->type, a->id, a->tpos.curve,
+                   a->tpos.seg, a->obj.pos[1], a->obj.model ? "si" : "no");
 }
 
 /* ---------------------------------------------------------------- por frame */
