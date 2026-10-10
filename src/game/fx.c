@@ -18,6 +18,8 @@
  * la tormenta. Marcas y humo de las ruedas en fx_marks.c. */
 #include <stdlib.h>
 #include <string.h>
+#include "libgte.h"
+#include "libgpu.h"
 #include "nr.h"
 #include "gte.h"
 #include "gfx.h"
@@ -164,6 +166,22 @@ void Fx_ProjectVerts(const int16_t* v, int n, uint32_t* sxy, int* sz, uint8_t* f
         sz[i] = (int)MFC2(19) >> shift;
         fl[i] = (uint8_t)(Wide_OnScreenX((int16_t)xy) << 6 | ((unsigned)(xy >> 16) < 2u * 0x78) << 7);
     }
+}
+
+/* Modo de dibujo 0xE10006A0 (semitransparencia aditiva) antes de una primitiva sin textura */
+void Fx_DrawModeAdd(int depth)
+{
+    DR_TPAGE* t = (DR_TPAGE*)Gfx_AllocPrim(sizeof(DR_TPAGE));
+    if (!t)
+        return;
+    setDrawTPage(t, 1, 1, 0xa0);
+    Gfx_AddPrimDepth(depth, t);
+}
+
+/* DAT_800af7e0 >> 16: la textura 2x2 de 80039098 (15 bits, aditiva) */
+uint16_t Fx_WhiteTPage(void)
+{
+    return 0x13d;
 }
 
 /* 8001025c: carga rotacion (columnas) y traslacion (m[9..11] >> 4) */
@@ -989,8 +1007,11 @@ FxInst* Fx_SpawnInst(FxAnchor* an, FxInst* parent, int cls, const FxSpawn* sp, i
     case 0x5a:
         in = Debris_Create(t);
         break;
+    case 0x58:
+        in = BoltInst_Create(t);
+        break;
     default:
-        in = NULL;   /* 0x57 80070684, 0x58 8006e4b4: pendientes */
+        in = NULL;   /* 0x57 80070684: pendiente */
         break;
     }
     if (!in)
@@ -1584,6 +1605,7 @@ void Fx_FreeAll(int bank)
         Fx_FreePersist(s_persist);
         s_persist = n;
     }
+    Bolt_FreeAll();     /* (8006d918) */
     while (s_anchors)   /* 800369fc */
     {
         FxAnchor* n = s_anchors->next;
@@ -1603,7 +1625,13 @@ void Fx_PostLoad(void)
         if (ENT_HANDLE(s_deferred[i]) == s_deferredHandle[i])
             Fx_ObjCreated(s_deferred[i]);
     s_numDeferred = 0;
-    /* (80039098 sube una textura gris de 2x2 en (0x340, 0x100); sin uso conocido) */
+    /* 80039098: textura gris de 2x2 en (0x340, 0x100) para los rayos (y el coche helado) */
+    {
+        static u_long gray[2] = { 0xc210c210, 0xc210c210 };
+        RECT16 r = { 0x340, 0x100, 2, 2 };
+        LoadImage(&r, gray);
+        DrawSync(0);
+    }
     Psys_InitSprites();
 }
 
@@ -1658,6 +1686,7 @@ void Fx_Update(int dt)
         }
     }
     /* 80038998 */
+    Bolt_UpdateAll(dt);                /* 8006dae0 */
     Ring_UpdateAll(s_lists[2], dt);
     Psys_UpdateAll(s_lists[3], dt);
     Debris_UpdateAll(s_lists[4], dt);
@@ -1690,6 +1719,7 @@ void Fx_Draw(int view)
 {
     int focus[3];
     Fx_Focus(view, focus);
+    Bolt_DrawAll(focus);               /* 8006db94 */
     /* 800780d0 (sin las llamas del escape, pendientes): baja las banderas de humo y llama del frame */
     for (int i = 0; i < g_NumCars; i++)
         if (g_CarPhys[i])

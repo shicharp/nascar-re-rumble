@@ -145,6 +145,15 @@ void     Psys_SetSpeed(FxInst* in, int min, int max);                        /* 
 FxAnchor* Fx_NewAnchor(void* ent, int cls, int bank, const FxSpawn* sp, FxCallback* cb, int keep);   /* 80036fb4 */
 FxInst*  Fx_SpawnInst(FxAnchor* an, FxInst* parent, int cls, const FxSpawn* sp, int bank);   /* 80038208 */
 
+void     Fx_DrawModeAdd(int depth);
+uint16_t Fx_WhiteTPage(void);
+
+/* fx_bolt.c: rayos (tipo 0x58) */
+FxInst*  BoltInst_Create(uint8_t* t);                                         /* 8006e4b4 */
+void     Bolt_UpdateAll(int dt);                                              /* 8006dae0 */
+void     Bolt_DrawAll(const int* focus);                                      /* 8006db94 */
+void     Bolt_FreeAll(void);                                                  /* 8006d918 */
+
 /* fx_debris.c: restos (tipo 0x5A) */
 FxInst*  Debris_Create(uint8_t* t);                                           /* 80048b64 */
 void     Debris_UpdateAll(FxInst* list, int dt);                              /* 800480c0 */
