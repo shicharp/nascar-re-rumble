@@ -608,46 +608,6 @@ typedef struct
 static MarkVert s_mv[0x66];          /* DAT_800b6a20 */
 static uint8_t  s_mvShade[0x33];     /* DAT_800b6dc0 */
 
-/* 800688c8: proyecta con la rotacion de la camara; si la division se desborda (vertice muy cerca) lo
- * proyecta 32 veces mas lejos en la misma direccion y divide la profundidad */
-static void Marks_Project(int n, uint32_t* sxy, int* sz, uint8_t* fl)
-{
-    for (int i = 0; i < n; i++)
-    {
-        Gte_SetV0(s_mv[i].x, s_mv[i].y, s_mv[i].z);
-        doCOP2(GTE_OP_RTPS);
-        uint32_t flag = CFC2(31);
-        int shift = 0;
-        if (flag & 0x20000)
-        {
-            int m3 = MFC2_S(27);
-            if (m3 < 0x20)
-            {
-                fl[i] = 1;
-                continue;
-            }
-            int m1 = MFC2_S(25), m2 = MFC2_S(26);
-            int tx = (int)CFC2(5), ty = (int)CFC2(6), tz = (int)CFC2(7);
-            Gte_SetTrans(m1 << 5, m2 << 5, m3 << 5);
-            Gte_SetV0(0, 0, 0);
-            doCOP2(GTE_OP_RTPS);
-            flag = CFC2(31);
-            Gte_SetTrans(tx, ty, tz);
-            shift = 5;
-        }
-        int z = (int)MFC2(19) >> shift;
-        uint32_t xy = MFC2(14);
-        if (flag & 0x1c66000)
-        {
-            fl[i] = 1;
-            continue;
-        }
-        sxy[i] = xy;
-        sz[i] = z;
-        fl[i] = (uint8_t)(((unsigned)(xy & 0xffff) < 2u * 0xa0) << 6 | ((unsigned)(xy >> 16) < 2u * 0x78) << 7);
-    }
-}
-
 /* Vertices de una marca a cada lado (mundo + medio ancho * 2, respecto a la camara a 1/8) */
 static void Mark_Verts(int n, const int* base, const int8_t* x, int shade)
 {
@@ -734,7 +694,7 @@ void Marks_Draw(uint8_t* c, int view)
                     int sz[0x66];
                     uint8_t fl[0x66];
                     Render_LoadCameraRotation();
-                    Marks_Project(n, sxy, sz, fl);
+                    Fx_ProjectVerts(&s_mv[0].x, n, sxy, sz, fl);
                     for (int q = 0; q < (n >> 1) - 1; q++)
                     {
                         int a = q * 2;

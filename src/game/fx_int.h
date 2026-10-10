@@ -131,6 +131,8 @@ const int* Fx_BaseFrame(FxInst* in);                                          /*
 void     Fx_Focus(int view, int* out);                                        /* 80035914 */
 void     Fx_RotI(const int* m, const int* in, int* out, int n);               /* 8001006c con la matriz m */
 void     Fx_RotS(const int* m, const int16_t* in, int16_t* out);              /* 8001010c con la matriz m */
+void     Fx_ProjectVerts(const int16_t* v, int n, uint32_t* sxy, int* sz, uint8_t* fl);   /* 800688c8 */
+void     Fx_LoadMatrix(const int* m);                                         /* 8001025c */
 extern int g_FxParticles;                                                     /* DAT_800af7f0 */
 
 /* fx_psys.c: sistemas de particulas (tipo 0x5E) */
@@ -139,6 +141,16 @@ void     Psys_UpdateAll(FxInst* list, int dt);                                /*
 void     Psys_DrawAll(FxInst* list, const int* focus, int view);              /* 8003be24 */
 void     Psys_InitSprites(void);                                              /* 8003bd60 */
 void     Psys_SetSpeed(FxInst* in, int min, int max);                        /* 800751cc (+0x80 / +0x82) */
+
+/* fx_ring.c: anillos y cupulas (tipo 0x5C) */
+typedef struct FxDome FxDome;
+FxInst*  Ring_Create(uint8_t* t);                                             /* 8006a578 */
+void     Ring_UpdateAll(FxInst* list, int dt);                                /* 8006939c */
+void     Ring_DrawAll(FxInst* list, const int* focus);                        /* 8006a394 */
+FxDome*  Dome_Create(int step, int mode);                                     /* 80068400 */
+void     Dome_Free(FxDome* d);                                                /* 80068654 */
+void     Dome_SetScale(FxDome* d, int x, int y, int z);                       /* +0x19..+0x1B */
+void     Dome_Draw(FxDome* d, const int* w, int r, const uint8_t* c0, const uint8_t* c1);   /* 80068a18 */
 
 /* fx_marks.c: marcas de las ruedas y su humo */
 void     Fx_QueueWheel(uint8_t* c, int k);                                    /* 80075130 (tipo 3) */

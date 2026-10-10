@@ -126,6 +126,53 @@ void Fx_RotS(const int* m, const int16_t* in, int16_t* out)
     out[2] = (int16_t)MFC2_S(11);
 }
 
+/* 800688c8: proyecta n vertices (4 shorts cada uno) con la matriz cargada; si la division se desborda (vertice
+ * muy cerca) lo proyecta 32 veces mas lejos en la misma direccion y divide la profundidad. Banderas: 1 mal,
+ * 0x40 dentro en x, 0x80 dentro en y. */
+void Fx_ProjectVerts(const int16_t* v, int n, uint32_t* sxy, int* sz, uint8_t* fl)
+{
+    for (int i = 0; i < n; i++, v += 4)
+    {
+        Gte_SetV0(v[0], v[1], v[2]);
+        doCOP2(GTE_OP_RTPS);
+        uint32_t flag = CFC2(31);
+        int shift = 0;
+        if (flag & 0x20000)
+        {
+            int m3 = MFC2_S(27);
+            if (m3 < 0x20)
+            {
+                fl[i] = 1;
+                continue;
+            }
+            int m1 = MFC2_S(25), m2 = MFC2_S(26);
+            int tx = (int)CFC2(5), ty = (int)CFC2(6), tz = (int)CFC2(7);
+            Gte_SetTrans(m1 << 5, m2 << 5, m3 << 5);
+            Gte_SetV0(0, 0, 0);
+            doCOP2(GTE_OP_RTPS);
+            flag = CFC2(31);
+            Gte_SetTrans(tx, ty, tz);
+            shift = 5;
+        }
+        if (flag & 0x1c66000)
+        {
+            fl[i] = 1;
+            continue;
+        }
+        uint32_t xy = MFC2(14);
+        sxy[i] = xy;
+        sz[i] = (int)MFC2(19) >> shift;
+        fl[i] = (uint8_t)(Wide_OnScreenX((int16_t)xy) << 6 | ((unsigned)(xy >> 16) < 2u * 0x78) << 7);
+    }
+}
+
+/* 8001025c: carga rotacion (columnas) y traslacion (m[9..11] >> 4) */
+void Fx_LoadMatrix(const int* m)
+{
+    Gte_LoadColumns(m);
+    Gte_SetTrans(m[9] >> 4, -m[10] >> 4, m[11] >> 4);
+}
+
 static void Mat_Identity(int* m)
 {
     memset(m, 0, 9 * sizeof(int));
@@ -936,8 +983,11 @@ static FxInst* Fx_SpawnInst(FxAnchor* an, FxInst* parent, int cls, const FxSpawn
     case 0x5e:
         in = Psys_Create(t, obj);
         break;
+    case 0x5c:
+        in = Ring_Create(t);
+        break;
     default:
-        in = NULL;   /* 0x57 80070684, 0x58 8006e4b4, 0x5A 80048b64, 0x5C 8006a578: pendientes */
+        in = NULL;   /* 0x57 80070684, 0x58 8006e4b4, 0x5A 80048b64: pendientes */
         break;
     }
     if (!in)
@@ -1605,6 +1655,7 @@ void Fx_Update(int dt)
         }
     }
     /* 80038998 */
+    Ring_UpdateAll(s_lists[2], dt);
     Psys_UpdateAll(s_lists[3], dt);
     if (s_persist)
         Fx_UpdatePersist();
@@ -1642,6 +1693,7 @@ void Fx_Draw(int view)
     for (int i = 0; i < g_NumHumans; i++)
         if (g_Humans[i] && g_Humans[i]->phys)
             Marks_Draw(g_Humans[i]->phys, view);
+    Ring_DrawAll(s_lists[2], focus);
     Psys_DrawAll(s_lists[3], focus, view);
 }
 
