@@ -35,6 +35,7 @@ void Fx_ObjCreated(void* ent);                   /* 80038ff8 */
 /* Coches */
 void Car_ExhaustFx(uint8_t* c, int dt);          /* 80077c60 */
 void Car_WheelMarksFx(uint8_t* c, int dt);       /* 80076500 (cada paso de la fisica) */
+void Car_JumpFx(uint8_t* c);                     /* 80078bb8 */
 void Marks_Init(uint8_t* c, int k);              /* 80075a9c */
 void Marks_Free(uint8_t* c, int k);              /* 80075c08 */
 

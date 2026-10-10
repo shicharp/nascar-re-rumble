@@ -1010,8 +1010,11 @@ FxInst* Fx_SpawnInst(FxAnchor* an, FxInst* parent, int cls, const FxSpawn* sp, i
     case 0x58:
         in = BoltInst_Create(t);
         break;
+    case 0x57:
+        in = Trail_Create(t);
+        break;
     default:
-        in = NULL;   /* 0x57 80070684: pendiente */
+        in = NULL;   /* (0x59 y 0x5D no estan en GlblData) */
         break;
     }
     if (!in)
@@ -1690,7 +1693,9 @@ void Fx_Update(int dt)
     Ring_UpdateAll(s_lists[2], dt);
     Psys_UpdateAll(s_lists[3], dt);
     Debris_UpdateAll(s_lists[4], dt);
+    Trail_UpdateAll(s_lists[5], dt);   /* 8006fd98 */
     Debris_ReapAll(s_lists[4]);        /* 80048150 */
+    Trail_NotifyAll(s_lists[5]);       /* 80038920 */
     if (s_persist)
         Fx_UpdatePersist();
     while (s_pending)
@@ -1731,9 +1736,22 @@ void Fx_Draw(int view)
     Debris_DrawAll(s_lists[4], focus);
     Ring_DrawAll(s_lists[2], focus);
     Psys_DrawAll(s_lists[3], focus, view);
+    Trail_DrawAll(s_lists[5], focus);  /* 8006e594 */
 }
 
 /* ---- coches ---- */
+
+/* 80078bb8: estelas (clase 1) desde los puntos 2 y 3 del coche al despegar */
+void Car_JumpFx(uint8_t* c)
+{
+    FxSpawn sp;
+    memset(&sp, 0, sizeof(sp));
+    sp.flags = 0x20;
+    sp.lp = 2;
+    Fx_Spawn(ENT(c), 1, &sp, 0, NULL);
+    sp.lp = 3;
+    Fx_Spawn(ENT(c), 1, &sp, 0, NULL);
+}
 
 /* 80077c60: humo del escape (0x21 al acelerar cada 0x20 tics, 0x22 con la bandera 4 de +0x445) y petardeo */
 void Car_ExhaustFx(uint8_t* c, int dt)

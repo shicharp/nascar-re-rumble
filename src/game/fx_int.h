@@ -154,6 +154,12 @@ void     Bolt_UpdateAll(int dt);                                              /*
 void     Bolt_DrawAll(const int* focus);                                      /* 8006db94 */
 void     Bolt_FreeAll(void);                                                  /* 8006d918 */
 
+/* fx_trail.c: estelas (tipo 0x57) */
+FxInst*  Trail_Create(uint8_t* t);                                            /* 80070684 */
+void     Trail_UpdateAll(FxInst* list, int dt);                               /* 8006fd98 */
+void     Trail_NotifyAll(FxInst* list);                                       /* 80038920 */
+void     Trail_DrawAll(FxInst* list, const int* focus);                       /* 8006e594 */
+
 /* fx_debris.c: restos (tipo 0x5A) */
 FxInst*  Debris_Create(uint8_t* t);                                           /* 80048b64 */
 void     Debris_UpdateAll(FxInst* list, int dt);                              /* 800480c0 */

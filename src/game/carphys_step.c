@@ -445,7 +445,10 @@ static int Car_Suspension(uint8_t* c, int ground, int sdt, int* minComp, int8_t*
     if (U8(c, 0x181) != 7 && I16(c, 0x184) != 0)
         I16(c, 0x184) = 0;
     if (IA(c, 0xfe) & 0x8000)
+    {
         IA(c, 0xfe) &= 0xffff7fff;
+        Fx_Kill(ENT(c), 1);   /* 80078c24 */
+    }
     uint8_t bit = 1;
     for (int k = 0; k < 4; k++, bit <<= 1)
         if (I32(c, 0x648 + k * 0xc) != TRACK_NO_SURFACE && comp[k] != 0)

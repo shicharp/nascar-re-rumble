@@ -4,6 +4,7 @@
 #include "vecmath.h"
 #include "carphys.h"
 #include "carphys_int.h"
+#include "fx.h"
 #include "snd.h"
 
 /* Longitud 16.16 de un vector con dos escalas segun su tamano (patron repetido en el original) */
@@ -144,13 +145,17 @@ void Car_Airborne(uint8_t* c, int height, int steer, int dt)
     if (height < 0x801 || (f198 & 0x40) || IA(c, 0x59) < 0xf001 || e->speed < 0x41)
     {
         if (IA(c, 0xfe) & 0x8000)
-            IA(c, 0xfe) &= 0xffff7fff;   /* 80078c24: fin del efecto de salto (pendiente) */
+        {
+            IA(c, 0xfe) &= 0xffff7fff;
+            Fx_Kill(e, 1);               /* 80078c24: fin de las estelas del salto */
+        }
     }
     else if (!(IA(c, 0xfe) & 0x8000))
     {
         if (e->type == 1)
             Speech_Say(2, 0xf, e, 1);    /* salto */
-        IA(c, 0xfe) |= 0x8000;           /* (80078bb8: efecto del salto, pendiente) */
+        IA(c, 0xfe) |= 0x8000;
+        Car_JumpFx(c);                   /* 80078bb8 */
     }
     int a = Div_(steer * 0xff00, I16(c, 0x312));
     if ((IA(c, 0xfe) & 0x40) || (U16(c, 0x198) & 0x20) || I16(c, 0x184) != 0)
