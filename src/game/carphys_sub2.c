@@ -29,7 +29,9 @@ void Car_Integrate(uint8_t* c, int dt, int limit, int fromStep)
         else
             U8(c, 0x189) -= (uint8_t)dt;
     }
-    (void)fromStep;   /* (actor bajo el coche con la bandera 0x800: pendiente con los actores) */
+    /* cuerpo suelto con la clase 0x800: no gira sobre X ni Z */
+    if (!fromStep && e->objUnder && Fx_ObjClass(e->objUnder) && (NR_Read32(Fx_ObjClass(e->objUnder) + 8) & 0x800))
+        IA(c, 0x54) = IA(c, 0x52) = 0;
     if (Abs_(IA(c, 0x52)) < 0xc001 && Abs_(IA(c, 0x53)) < 0xc001 && Abs_(IA(c, 0x54)) < 0xc001)
         U16(c, 0x198) &= 0xfffe;
     else
@@ -99,9 +101,12 @@ void Car_ClampGround(uint8_t* c, int ground, int dt, int fromStep)
     RaceCar* e = (RaceCar*)ENT(c);
     int dy = e->obj.pos[1] - ground;
     int margin;
-    (void)fromStep;
     uint16_t sf = U16(c, 0x18a);
-    if ((sf & 0x5000) == 0x5000)
+    const uint8_t* cl = !fromStep && e->objUnder ? Fx_ObjClass(e->objUnder) : NULL;
+    if (cl && (NR_Read32(cl + 8) & 0x400) && dy < 0x400 && e->obj.model && e->obj.model->bbox)
+        /* cuerpo con la clase 0x400: apoyado por la base de su caja */
+        margin = I16(e->obj.model->bbox, 0xe) - I16(e->obj.model->bbox, 8);
+    else if ((sf & 0x5000) == 0x5000)
         margin = 0xc00;
     else
     {

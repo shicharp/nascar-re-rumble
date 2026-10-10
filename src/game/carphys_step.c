@@ -32,7 +32,7 @@ void Physics_Init(void)
 }
 
 /* Promedio de un registro de contacto (+0: n s16, +4 punto, +0x10 normal) */
-static void Contact_Average(uint8_t* rec)
+void Contact_Average(uint8_t* rec)
 {
     int n = I16(rec, 0);
     if (n == 0 || n == 1)

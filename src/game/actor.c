@@ -13,6 +13,7 @@
 #include "powerup.h"
 #include "actor.h"
 #include "fx.h"
+#include "body.h"
 #include "tvcam.h"
 
 Actor* g_Actors;            /* DAT_800af87c */
@@ -328,11 +329,29 @@ int Actor_DefaultHandler(int msg, Actor* a, intptr_t p1, intptr_t p2)
         Actor_Destroy(a);
         return 1;
     case 5:
+        Body_Free(a);   /* 8004de8c */
+        return 0;
     case 6:
+        /* 8005610c: el cuerpo suelto; dormido, se libera y el objeto se queda donde cayo */
+        if (a->body && Body_Step((uint8_t*)a->body, (int)p1) == 1)
+            Body_Free(a);
+        return 0;
+    case 0xb:
+    {
+        /* Entity_OnCollide 8002c6a0: el choque ya lo resuelve el coche (los coches tienen clase 0); aqui solo
+         * el dano (el +0x1E del otro: 1 para los coches) y la bandera 0x2000000 (el guion 80067890, pendiente) */
+        const RaceCar* o = (const RaceCar*)p1;
+        int dmg = o ? (o->type == 1 || o->type == 0x11 ? 1 : o->unk1e) : 0;
+        if (!(a->flags2c & 0x80) && dmg > 0)
+        {
+            a->hp = (int16_t)(a->hp - dmg);
+            a->flags2c |= 0x2000000;
+        }
+        return 0;
+    }
     case 7:
     case 8:
     case 9:
-    case 0xb:
     case 0xc:
     case 0xd:
     case 0xe:
@@ -738,7 +757,7 @@ void Actors_LogSummary(void)
            count[0x06], count[0x16]);
     for (Actor* a = g_Actors; a; a = a->next)
         if (getenv("NR_POWERLOG"))
-            NR_Log("  tipo 0x%02x id %d: curva %d segmento %d, altura %d, modelo %s\n", a->type, a->id, a->tpos.curve,
+            NR_Log("  tipo 0x%02x id %d clase 0x%x (banderas %x, masa %d) vida %d: curva %d segmento %d, altura %d, modelo %s\n", a->type, a->id, a->objClass, a->objClass && Fx_ObjClass(a->objClass) ? NR_Read32(Fx_ObjClass(a->objClass) + 8) : 0, a->objClass && Fx_ObjClass(a->objClass) ? Fx_ObjClass(a->objClass)[1] : -1, a->hp, a->tpos.curve,
                    a->tpos.seg, a->obj.pos[1], a->obj.model ? "si" : "no");
 }
 
@@ -805,7 +824,10 @@ void Actors_CollideCars(void)
             if ((a->flags2c & 0x800000) && !a->handler(10, a, (intptr_t)c, 0))
                 continue;
             if (Ent_Near(&c->obj, c->flags2c, &a->obj, a->flags2c))
+            {
+                Body_CarHitsActor(c, a);   /* mensaje 0xB del coche: 8005cdb8 */
                 a->handler(0xb, a, (intptr_t)c, 1);
+            }
         }
     }
 }

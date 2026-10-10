@@ -137,7 +137,7 @@ static void Car_SetSuspension(uint8_t* c, int travel, int stiff, int damp1, int 
 }
 
 /* 8004e1b4: masa, inercias y puntos de la caja del coche desde la caja del modelo */
-static void Car_InitBody(RaceCar* e, uint8_t* c, int mass)
+void Car_InitBody(RaceCar* e, uint8_t* c, int mass)
 {
     for (int i = 0; i < 8; i++)
         U8(c, 4 + i * 4) = 0xff;           /* TrackPos de las 8 esquinas de la caja */
@@ -410,7 +410,7 @@ void Car_SetCorners(uint8_t* c)
 }
 
 /* 8004d4f0: velocidad local (+0x154) al mundo */
-static void Car_VelToWorld(uint8_t* c, int* out)
+void Car_VelToWorld(uint8_t* c, int* out)
 {
     const int* r = ENT(c) ? ((RaceCar*)ENT(c))->obj.rot : NULL;
     int vx = IA(c, 0x55), vy = IA(c, 0x56), vz = IA(c, 0x57);

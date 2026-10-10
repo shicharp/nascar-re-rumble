@@ -45,7 +45,8 @@ cuenta atrás y la física original de los coches (X acelera, cuadrado frena, c�
 L1/L2 cambio manual, triángulo vuelve a la pista), la IA que corre por la red de trazadas, los choques entre
 coches, las vueltas y las posiciones, y el marcador (mapa, cuentarrevoluciones, tiempos; SELECT largo cambia de
 nivel, corto de camara), la pausa con START (camara, marcador, audio, reiniciar, salir) y los resultados al
-terminar; "Exit Race" vuelve al front-end). Actores de la pista: objetos (conos, vallas, carteles), objetos que giran y cajas de poder que reaparecen;
+terminar; "Exit Race" vuelve al front-end). Actores de la pista: objetos (conos, vallas, carteles) que salen despedidos al golpearlos y se rompen, objetos
+que giran y cajas de poder que reaparecen;
 los coches recogen un poder segun su puesto y lo usan (la IA sola, el jugador con R2), con sus efectos (escudo,
 turbo, ruedas grandes, embestida, onda expansiva, objetos que se sueltan en la pista, tormenta, helada y
 tornado que persiguen a los rivales) e iconos y avisos en el marcador. Sonido: efectos, motores, bocina, musica
@@ -56,7 +57,7 @@ start, select, l1, r1, l2, r2).
 Variables de depuracion: `NR_LAPS=n` vueltas, `NR_CAMCAR=n` camara en el coche n, `NR_POWER=n` poder n en la
 mano del jugador al salir, `NR_POWERLOG=1` cajas recogidas y poderes usados en el log, `NR_SNDLOG=1` sonidos,
 `NR_FXLOG=1` efectos creados, `NR_FXTEST=clase[,golpe]` crea un efecto en el coche del jugador cada segundo,
-`NR_TVLOG=1` camaras de TV, `NR_TVCAM=1` empieza con las camaras de TV (`vN`: la virtual N), `NR_PSXLOD=1`
+`NR_BODYLOG=1` golpes a los objetos sueltos, `NR_TVLOG=1` camaras de TV, `NR_TVCAM=1` empieza con las camaras de TV (`vN`: la virtual N), `NR_PSXLOD=1`
 niveles de detalle de la PS1 (por defecto, todo con el detalle completo).
 `--viewer` es el visor de páginas Cpag (flechas para cambiar de página).
 

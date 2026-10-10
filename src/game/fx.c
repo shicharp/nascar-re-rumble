@@ -31,6 +31,7 @@
 #include "vecmath.h"
 #include "snd.h"
 #include "model.h"
+#include "body.h"
 
 #define ENT_HANDLE(e) (((RaceCar*)(e))->handle)
 #define ENT_OBJ(e)    (&((RaceCar*)(e))->obj)
@@ -1719,8 +1720,9 @@ void Fx_Update(int dt)
         for (FxPersist* r = s_persist; r; r = r->next)
             np++;
         NR_Log("[fx] t=%d instancias 0x5E %d 0x5C %d 0x5A %d 0x57 %d 0x58 %d, anclas %d, persistentes %d, "
-               "particulas %d, nubes %d\n", g_RaceTime, n[3], n[2], n[4], n[5], n[6], na, np, g_FxParticles,
-               Storm_Count());
+               "particulas %d, nubes %d, cuerpos %d\n", g_RaceTime, n[3], n[2], n[4], n[5], n[6], na, np,
+               g_FxParticles,
+               Storm_Count(), Body_Count());
     }
 }
 

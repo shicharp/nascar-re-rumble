@@ -11,8 +11,8 @@
  * (80031854); los poderes crean 0xD (objetos que se sueltan) y 8 (clima) en powerup.c. Pendientes: 0x05
  * (80034e6c, vehiculos que siguen una red, 8004bc80), 0x0E disparadores (80034894); el 0x54 son las camaras de
  * TV (tvcam.c),
- * los generadores Csac (800605f0), los guiones (80048f78, 80067890) y la fisica de los objetos sueltos
- * (Body_Step 8005610c, clases de objeto DAT_800b1b38). */
+ * los generadores Csac (800605f0) y los guiones (80048f78, 80067890). Los objetos sueltos (cuerpos con la fisica
+ * de los coches al golpearlos) estan en body.c. */
 #ifndef NR_ACTOR_H
 #define NR_ACTOR_H
 

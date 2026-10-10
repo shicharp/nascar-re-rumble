@@ -268,6 +268,11 @@ static void Car_WallContacts(uint8_t* c)
     }
 }
 
+void Car_WallContactsOne(uint8_t* c)
+{
+    Car_WallContacts(c);
+}
+
 /* 8004fb10 */
 void Car_WallContactsAll(void)
 {
@@ -368,6 +373,11 @@ static void Car_GroundContacts(uint8_t* c, const int* heights, const int* normal
         if (skipped < 8)
             return;
     }
+}
+
+void Car_GroundContactsOne(uint8_t* c, const int* heights, const int* normals)
+{
+    Car_GroundContacts(c, heights, normals);
 }
 
 /* 8004fdd4: alturas del suelo bajo las esquinas (DAT_800b5d68 / normales DAT_800b5e28) */

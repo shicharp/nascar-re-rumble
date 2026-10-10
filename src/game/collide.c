@@ -4,9 +4,7 @@
  * (entidad +0x64 centro, +0x70 radio, +0x74 / +0x76 alto y ancho) y manda el mensaje 0xB (8002c894 ->
  * 8002c6a0 -> 8005cdb8) que resuelve 8005c05c: separacion de las cajas (80059f0c), impulso y giro (8005a534),
  * trompos y vuelcos en los golpes fuertes (8005ba30 -> 8005b408 / 8005b660 / 8005b848).
- * Pendiente: actores (objetos de la pista), chispas (8007734c), restos que
- * suelta el coche al golpearse (80052100 -> 8003da74) y la prueba con las cajas de colision del modelo
- * (80060f88, bit 27 de las banderas del modelo). */
+ * Con los actores (objetos sueltos, body.c) el mismo 8005c05c resuelve el choque coche - objeto. */
 #include <string.h>
 #include "nr.h"
 #include "track.h"
@@ -18,6 +16,7 @@
 #include "snd.h"
 #include "collide.h"
 #include "fx.h"
+#include "body.h"
 
 /* semiextensiones de la caja del modelo (3DBB +0xE / +0x10 / +0x12) */
 static void Car_Half(RaceCar* e, int* h)
@@ -105,28 +104,42 @@ static int Car_BoxOverlap(int speed, RaceCar* a, int* ptA, RaceCar* b, int* ptB,
     return 1;
 }
 
-/* 8005a534 (solo coches, sin actores): impulso en la normal del punto de contacto y giro por el brazo de
- * palanca, repartidos por las masas (+0x134, escalada por +0x311 / 16) */
-static void Car_Impulse(uint8_t* c1, const int* pt1, int* torque1, uint8_t* c2, const int* pt2, int* torque2)
+/* 8005a534: impulso en la normal del punto de contacto y giro por el brazo de palanca, repartidos por las masas
+ * (+0x134; escalada por +0x311 / 16 solo entre dos coches). car1 / car2: el cuerpo es un coche. Con un actor:
+ * si su clase tiene la bandera 1 el coche no recibe nada del golpe (local_2f / local_30), con 0x100 la normal es
+ * la velocidad relativa y con 0x400 el empujon que recibe el actor no tiene componente vertical. */
+static void Car_Impulse(uint8_t* c1, int car1, const int* pt1, int* torque1, uint8_t* c2, int car2, const int* pt2,
+                        int* torque2)
 {
     RaceCar* e1 = (RaceCar*)ENT(c1);
     RaceCar* e2 = (RaceCar*)ENT(c2);
+    uint32_t f1 = e1->objUnder && Fx_ObjClass(e1->objUnder) ? NR_Read32(Fx_ObjClass(e1->objUnder) + 8) : 0;
+    uint32_t f2 = e2->objUnder && Fx_ObjClass(e2->objUnder) ? NR_Read32(Fx_ObjClass(e2->objUnder) + 8) : 0;
+    int to2 = !(car2 && (f1 & 1)), to1 = !(car1 && (f2 & 1));
     int v1[3], v2[3], rel[3], loc[3], n[3];
     Mat_MulT(e1->obj.rot, VEC(c1, 0x154), v1);
     Mat_MulT(e2->obj.rot, VEC(c2, 0x154), v2);
     for (int k = 0; k < 3; k++)
         rel[k] = v1[k] - v2[k];
     Mat_Mul(e2->obj.rot, rel, loc);
-    memcpy(n, pt2, sizeof(n));
+    if (f2 & 0x100)
+        for (int k = 0; k < 3; k++)
+            n[k] = -loc[k];
+    else
+        memcpy(n, pt2, sizeof(n));
     Vec_Normalize(n);
     for (int k = 0; k < 3; k++)
         n[k] >>= 8;
     int dot = ((n[0] * loc[0]) >> 8) + ((n[1] * loc[1]) >> 8) + ((n[2] * loc[2]) >> 8);
     int m1 = I32(c1, 0x134), m2 = I32(c2, 0x134);
-    if (U8(c1, 0x311) != 0x10)
-        m1 = (int)(m1 * (uint32_t)U8(c1, 0x311)) >> 4;
-    if (U8(c2, 0x311) != 0x10)
-        m2 = (int)(m2 * (uint32_t)U8(c2, 0x311)) >> 4;
+    if (car1 && car2)
+    {
+        if (U8(c1, 0x311) != 0x10)
+            m1 = (int)(m1 * (uint32_t)U8(c1, 0x311)) >> 4;
+        if (U8(c2, 0x311) != 0x10)
+            m2 = (int)(m2 * (uint32_t)U8(c2, 0x311)) >> 4;
+    }
+    int skip2 = 0;
     if (dot < 0)
     {
         int imp = (Div_(dot * m1, m2) * 3) >> 2;
@@ -134,12 +147,18 @@ static void Car_Impulse(uint8_t* c1, const int* pt1, int* torque1, uint8_t* c2, 
             Car_Shake(e1, imp);
         if (e2->type == 1)
             Car_Shake(e2, imp);
-        I32(c2, 0x154) += (n[0] * imp) >> 8;
-        I32(c2, 0x158) += (n[1] * imp) >> 8;
-        I32(c2, 0x15c) += (n[2] * imp) >> 8;
+        if (!to2)
+            skip2 = 1;
+        else
+        {
+            I32(c2, 0x154) += (n[0] * imp) >> 8;
+            I32(c2, 0x158) += (!car2 && (f2 & 0x400)) ? 0 : (n[1] * imp) >> 8;
+            I32(c2, 0x15c) += (n[2] * imp) >> 8;
+        }
     }
+    if (!skip2 && to2)
     {
-        const uint8_t* d = PTR(c2, 0x1b4);
+        const uint8_t* d = car2 ? PTR(c2, 0x1b4) : NULL;
         int sh = (d && d[1] == '1') ? (pt2[2] > 0 ? 0xe : 0xd) : (pt2[2] > 0 ? 0xc : 0xb);
         int t0 = (loc[2] * pt2[1] - loc[1] * pt2[2]) >> sh;
         int t1 = (loc[0] * pt2[2] - loc[2] * pt2[0]) >> sh;
@@ -154,18 +173,25 @@ static void Car_Impulse(uint8_t* c1, const int* pt1, int* torque1, uint8_t* c2, 
     for (int k = 0; k < 3; k++)
         rel[k] = v2[k] - v1[k];
     Mat_Mul(e1->obj.rot, rel, loc);
-    memcpy(n, pt1, sizeof(n));
+    if (f1 & 0x100)
+        for (int k = 0; k < 3; k++)
+            n[k] = -loc[k];
+    else
+        memcpy(n, pt1, sizeof(n));
     Vec_Normalize(n);
     dot = (((n[0] >> 8) * loc[0]) >> 8) + (((n[1] >> 8) * loc[1]) >> 8) + (((n[2] >> 8) * loc[2]) >> 8);
     if (dot < 0)
     {
         int imp = (Div_(dot * m2, m1) * 3) >> 2;
+        if (!to1)
+            return;
         I32(c1, 0x154) += ((n[0] >> 8) * imp) >> 8;
-        I32(c1, 0x158) += ((n[1] >> 8) * imp) >> 8;
+        I32(c1, 0x158) += (!car1 && (f1 & 0x400)) ? 0 : ((n[1] >> 8) * imp) >> 8;
         I32(c1, 0x15c) += ((n[2] >> 8) * imp) >> 8;
     }
+    if (to1)
     {
-        const uint8_t* d = PTR(c1, 0x1b4);
+        const uint8_t* d = car1 ? PTR(c1, 0x1b4) : NULL;
         int sh = (d && d[1] == '1') ? (pt1[2] > 0 ? 0xe : 0xd) : (pt1[2] > 0 ? 0xc : 0xb);
         int t0 = (loc[2] * pt1[1] - loc[1] * pt1[2]) >> sh;
         int t1 = (loc[0] * pt1[2] - loc[2] * pt1[0]) >> sh;
@@ -358,8 +384,49 @@ static void Car_BigHit(int speed, uint8_t* c1, uint8_t* c2, const int* pt1, cons
     Hit_Roll(c2, c1, f1);
 }
 
-/* 8005c05c (coche contra coche) */
+/* 8005c05c, con un actor (car = 0): el actor sale despedido si su clase lo pide (& 0x70, 8005bebc) con la
+ * velocidad del otro, se le dan 3000 tics de fisica, suena (clase +5 y, con masa > 0x3F y sin la bandera 1, el
+ * golpe 0xD / 0xE / 0xF) y suelta el efecto de su clase (+7) en el punto del contacto */
+static int Body_ObjectHit(uint8_t* c1, int car1, uint8_t* c2, int car2, int speed, const int* pt1)
+{
+    RaceCar* e1 = (RaceCar*)ENT(c1);
+    RaceCar* e2 = (RaceCar*)ENT(c2);
+    const uint8_t* cl1 = e1->objUnder ? Fx_ObjClass(e1->objUnder) : NULL;
+    const uint8_t* cl2 = e2->objUnder ? Fx_ObjClass(e2->objUnder) : NULL;
+    uint32_t f1 = cl1 ? NR_Read32(cl1 + 8) : 0, f2 = cl2 ? NR_Read32(cl2 + 8) : 0;
+    if (!car2 && (f2 & 0x70))
+        Body_Fling(c2, e1->speed);
+    else if (!car1 && (f1 & 0x70))
+        Body_Fling(c1, e2->speed);
+    uint8_t* ob = car2 ? c1 : c2;
+    RaceCar* eo = (RaceCar*)ENT(ob);
+    const uint8_t* cl = car2 ? cl1 : cl2;
+    I16(ob, 0x17c) = 3000;
+    int fx = cl ? cl[7] : 0;
+    if (speed > 0x10)
+    {
+        Fx_Push(cl ? cl[5] : 0, eo->obj.pos, 100);
+        if (!cl)
+            fx = 0;
+        else if (cl[1] > 0x3f && !(NR_Read32(cl + 8) & 1))
+        {
+            int id = speed > 0x80 ? 0xf : speed > 0x40 ? 0xe : speed > 8 ? 0xd : 0;
+            if (id)
+                Fx_Push(id, eo->obj.pos, 100);
+        }
+    }
+    if (fx)
+        Fx_QueueImpact(ob, 0, pt1, eo->speed, fx + 1000);   /* 8007734c: la clase fx de la tabla */
+    return 1;
+}
+
 static int Car_CollidePair(uint8_t* c1, uint8_t* c2)
+{
+    return Body_CollidePair(c1, 1, c2, 1);
+}
+
+/* 8005c05c: dos cuerpos (car1 / car2: el cuerpo es la fisica de un coche, con sus ruedas) */
+int Body_CollidePair(uint8_t* c1, int car1, uint8_t* c2, int car2)
 {
     RaceCar* e1 = (RaceCar*)ENT(c1);
     RaceCar* e2 = (RaceCar*)ENT(c2);
@@ -375,24 +442,27 @@ static int Car_CollidePair(uint8_t* c1, uint8_t* c2)
         return 0;
     if (ov)
     {
-        GfxObj* w1 = (GfxObj*)PTR(c1, 0x1f8);
-        GfxObj* w2 = (GfxObj*)PTR(c2, 0x1f8);
+        /* solo los coches empujan: el otro cuerpo se separa si su rival es un coche */
+        GfxObj* w1 = car1 ? (GfxObj*)PTR(c1, 0x1f8) : NULL;
+        GfxObj* w2 = car2 ? (GfxObj*)PTR(c2, 0x1f8) : NULL;
         for (int k = 0; k < 3; k++)
         {
-            e1->obj.pos[k] += push[k];
-            e2->obj.pos[k] -= push[k];
+            if (car2)
+                e1->obj.pos[k] += push[k];
+            if (car1)
+                e2->obj.pos[k] -= push[k];
         }
         for (int w = 0; w < 4; w++)
             for (int k = 0; k < 3; k++)
             {
-                if (w1)
+                if (w1 && car2)
                     w1[w].pos[k] += push[k];
-                if (w2)
+                if (w2 && car1)
                     w2[w].pos[k] -= push[k];
             }
     }
     int t1[3], t2[3];
-    Car_Impulse(c1, pt1, t1, c2, pt2, t2);
+    Car_Impulse(c1, car1, pt1, t1, c2, car2, pt2, t2);
     if ((U16(c1, 0x33a) & 0x200) && !(U16(c2, 0x33a) & 4))
         speed += 0x40;
     if ((U16(c2, 0x33a) & 0x200) && !(U16(c1, 0x33a) & 4))
@@ -401,6 +471,8 @@ static int Car_CollidePair(uint8_t* c1, uint8_t* c2)
     U8(c2, 0x180) |= 4;
     U16(c1, 0x198) &= 0xffd1;
     U16(c2, 0x198) &= 0xffd1;
+    if (!car1 || !car2)
+        return Body_ObjectHit(c1, car1, c2, car2, speed, pt1);
     if (speed < 0x16)
     {
         if (speed >= 3)

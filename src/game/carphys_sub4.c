@@ -402,15 +402,30 @@ static int Contact_FxId(uint8_t* c)
     }
 }
 
-/* Chispas del contacto: punto local (+0xF0 muro, +0x110 suelo) a 3/4 hacia el centro */
-static void Contact_Fx(uint8_t* c, uint8_t* self, int off)
+/* Chispas del contacto: punto local (+0xF0 muro, +0x110 suelo) a 3/4 hacia el centro. Cuerpos sueltos
+ * (fromStep = 0): solo si su clase tiene efecto (+6; con '4' siempre el 0xD) y en el punto tal cual */
+static void Contact_Fx(uint8_t* c, uint8_t* self, int off, int fromStep)
 {
+    RaceCar* e = (RaceCar*)ENT(c);
+    if (!fromStep)
+    {
+        const uint8_t* cl = e->objUnder ? Fx_ObjClass(e->objUnder) : NULL;
+        int k = cl ? cl[6] : 0;
+        if (!k)
+            return;
+        int id = k == '4' ? 0xd : Contact_FxId(c);
+        if (id < 0)
+            return;
+        int p[3] = { I32(c, off), I32(c, off + 4), I32(c, off + 8) };
+        Fx_QueueImpact(c, 0, p, e->speed, id);
+        return;
+    }
     int id = Contact_FxId(c);
     if (id < 0)
         return;
     int p[3] = { I32(c, off), I32(c, off + 4), I32(c, off + 8) };
     Vec_Scale(0xc000, p);
-    Fx_QueueImpact(self, 1, p, ((RaceCar*)ENT(c))->speed, id);   /* 8007734c */
+    Fx_QueueImpact(self, 1, p, e->speed, id);   /* 8007734c */
 }
 
 /* 80055748: contactos acumulados con los muros (+0xEC) y con el suelo (+0x10C) */
@@ -476,7 +491,6 @@ void Car_HandleContacts(uint8_t* c, int dt, uint8_t* self, int fromStep)
     RaceCar* e = (RaceCar*)ENT(c);
     int nrm[3], edge[6];
     int decTimer = 0;
-    (void)fromStep;
     int hit = Track_RayWall(e->obj.pos, VEC(c, 0x16c), nrm, edge);
     if (hit == 0)
     {
@@ -486,8 +500,7 @@ void Car_HandleContacts(uint8_t* c, int dt, uint8_t* self, int fromStep)
             {
                 if (e->speed > 8)
                     Car_HitSound(c, e->speed & 0xff, 0);
-                /* (con fromStep = 0 el efecto saldria de la clase del objeto) */
-                Contact_Fx(c, self, 0xf0);
+                Contact_Fx(c, self, 0xf0, fromStep);
                 if (IA(c, 0x42) < 0x30)
                     IA(c, 0x42) = 0x30;
                 e->obj.pos[0] += M16(IA(c, 0x42), IA(c, 0x3f));
@@ -500,7 +513,7 @@ void Car_HandleContacts(uint8_t* c, int dt, uint8_t* self, int fromStep)
                 {
                     if (e->speed > 8)
                         Car_HitSound(c, e->speed & 0xff, 0);
-                    Contact_Fx(c, self, 0x110);
+                    Contact_Fx(c, self, 0x110, fromStep);
                     if (U8(c, 0x181) != 7)
                         e->obj.pos[1] += IA(c, 0x4a);
                 }
@@ -546,8 +559,11 @@ void Car_HandleContacts(uint8_t* c, int dt, uint8_t* self, int fromStep)
         else
         {
             I16(c, 0x184) = 0;
+            Fx_Kill(e, 0x17);   /* 800352f8 */
             if (e->type == 1 || e->type == 0x11)
                 Car_Reset(e, 0);
+            else if (!(e->flags2c & 0x80))
+                e->unk20 = -1;   /* un cuerpo suelto hundido muere */
         }
     }
     if (U8(c, 0x182) != 0)
