@@ -1,7 +1,6 @@
 /* Poderes: cajas de la pista y efectos sobre los coches. Ver powerup.h.
  * Efectos (fx.c): chispas de la caja (8003558c), destello del poder (0x401), onda (0x40E), tornado (0x404),
- * helada (0x417), rayo (0x40D) y la nube de la tormenta (fx_storm.c) con sus rayos. Pendiente: el sonido del turbo
- * (8003da74). */
+ * helada (0x417), rayo (0x40D) y la nube de la tormenta (fx_storm.c) con sus rayos. */
 #include <stdlib.h>
 #include <string.h>
 #include "nr.h"
@@ -289,17 +288,25 @@ static void Car_AddForwardSpeed(uint8_t* c, int speed)
     }
 }
 
-/* 80050130: turbo (tabla de marchas +0x39C y empujon; el sonido 0x13, 8003da74 en +0x490, queda pendiente) */
+/* 80050130: turbo (tabla de marchas +0x39C, empujon y su sonido 0x13 como fuente en +0x490) */
 static void Car_TurboOn(uint8_t* c)
 {
+    RaceCar* e = (RaceCar*)ENT(c);
     SETPTR(c, 0x3e8, B_(c) + 0x39c);
     Car_AddForwardSpeed(c, I32(c, 0x39c));
+    if (IA(c, 0x124) == -1)
+        IA(c, 0x124) = Snd_SourceCreate(0x13, e->handle, e->obj.pos[0], e->obj.pos[2], -1, e->speed, e->dir);
 }
 
 /* 800501b8 */
 static void Car_TurboOff(uint8_t* c)
 {
     SETPTR(c, 0x3e8, B_(c) + 0x350);
+    if (IA(c, 0x124) != -1)
+    {
+        Snd_SourceKill(((RaceCar*)ENT(c))->handle, IA(c, 0x124));
+        IA(c, 0x124) = -1;
+    }
 }
 
 /* 8005b068: empujon de la onda expansiva (giro alrededor de arriba x dir y salto hacia fuera) */

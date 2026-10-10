@@ -154,9 +154,13 @@ static int Psys_Init(Psys* ps, uint8_t* t, GfxObj* obj)
     ps->yawSpeed = T16(t, 0x66);
     int size = TS8(t, 0x50);
     int max = T16(t, 0x36), n = T16(t, 0x34);
-    /* (bandera 0x8000: con el objeto lejos (80013db0 > 0) la mitad de particulas y de 1 pixel; el port no
-     * calcula esa distancia de niebla) */
-    (void)obj;
+    /* bandera 0x8000: con el objeto lejos (80013db0 > 0) la mitad de particulas y de 1 pixel */
+    if (obj && (T16(t, 0x32) & 0x8000) && Obj_LodLevel(obj) > 0)
+    {
+        size = 1;
+        max = (int16_t)T16(t, 0x36) >> 1;
+        n = (int16_t)T16(t, 0x34) >> 1;
+    }
     if (max == -1)
         max = n;
     int cls = T8(t, TP_CLASS);

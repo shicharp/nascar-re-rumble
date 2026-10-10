@@ -449,8 +449,9 @@ static int Car_CollidePair(uint8_t* c1, uint8_t* c2)
     }
     if (e1->speed > 2 && e2->speed > 2)
     {
-        U8(c1, 0x182) = 0x2f;   /* 80052100: restos y chispas pendientes */
-        U8(c2, 0x182) = 0x2f;
+        int s1 = Car_HitSound(c1, speed & 0xff, 1), s2 = Car_HitSound(c2, speed & 0xff, 1);   /* 80052100 */
+        if ((s1 || s2) && human)
+            sec = Speech_Pick(4, 10);
     }
     if (speed > 0x10)
     {

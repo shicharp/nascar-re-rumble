@@ -51,7 +51,8 @@ void Gte_Rt(const short* v, int* out, int shift);        /* 80016784 */
 void Gte_SetTransShift(const int* pos, int shift);       /* 80015928 */
 void Obj_GetPointGte(uint8_t* obj, int idx, int* out, int load);  /* Obj_GetPoint 80013c20 */
 void Obj_GetModelPoint(uint8_t* obj, int idx, int* out); /* 8004d36c (sin transformar) */
-void Fx_Push(int kind, const int* pos, int life);        /* cola de sonidos DAT_800b52f0 (id de sonido en x, z) */
+void Fx_Push(int kind, const int* pos, int life);
+int  Car_HitSound(uint8_t* c, int strength, int carHit);   /* 80052100 */        /* cola de sonidos DAT_800b52f0 (id de sonido en x, z) */
 void Car_Shake(RaceCar* e, int impact);                   /* 80060540 (vibracion del mando) */
 
 /* carphys_ctrl.c */

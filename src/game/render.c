@@ -7,6 +7,7 @@
 #include "gfx.h"
 #include "gte.h"
 #include "render.h"
+#include "globals.h"
 #include "PsyX/PsyX_public.h"
 
 Camera3D g_Camera;
@@ -233,6 +234,53 @@ static int Gte_TransformShort(const SVECTOR* v, int16_t* out, int shift, int ext
 
 /* ---------------------------------------------------------------- camara y luz */
 
+/* Distancias del nivel de detalle (Camera_SetLodScale 80013d20: DAT_800afa00 / 04 / 08 / 0c) */
+static int s_lodNear = 180 * 0x50, s_lodMid = 180 * 0x50 * 2, s_lodFar = 180 * 0x50 * 4, s_lodK;
+
+/* 80013d20 (desde Camera_ApplyProjection 80016a50): cerca = H * 0x50 (un cuarto menos con pantalla partida o en
+ * el retrovisor, y otro octavo menos en el retrovisor), medio = x2, lejos = x4 */
+static void Camera_SetLodScale(int h, int mirror)
+{
+    int n = h * 0x50;
+    if (g_SplitScreen || mirror)
+    {
+        n -= n / 4;
+        if (mirror)
+            n -= n / 8;
+    }
+    if (n >> 1 == 0)
+        n = 2;
+    s_lodNear = n;
+    s_lodMid = n << 1;
+    s_lodFar = n << 2;
+    s_lodK = (int)(0x80000000u / (unsigned)(n >> 1));
+}
+
+int Obj_LodLevel(GfxObj* o)
+{
+    /* 80019818: distancia aproximada (mayor + los otros dos / 4) */
+    int a = abs(g_Camera.pos[0] - o->pos[0]), b = abs(g_Camera.pos[1] - o->pos[1]), c = abs(g_Camera.pos[2] - o->pos[2]);
+    if (a < b) { int t = a; a = b; b = t; }
+    if (a < c) { int t = a; a = c; c = t; }
+    int d = a + ((b + c) >> 2);
+    if (d >= s_lodMid)
+    {
+        o->envColor = 0;
+        return d > s_lodFar ? 3 : 2;
+    }
+    if (d < s_lodNear)
+    {
+        o->envColor = 0x404040;
+        return 0;
+    }
+    /* de 0x40 a 0 entre cerca y medio: (d - cerca) * 2^31 / (cerca / 2) >> 16 >> 10 */
+    unsigned v = 0x40u - (unsigned)((int)(((long long)(d - s_lodNear) * s_lodK) >> 16) >> 10);
+    if (v > 0x40)
+        v = 0x40;
+    o->envColor = v | v << 8 | v << 16;
+    return 1;
+}
+
 void Render_SetPreset(int preset)
 {
     if (preset < 0 || preset > 9)
@@ -248,6 +296,7 @@ void Render_SetPreset(int preset)
     s_frustum.lod[1] = s_presets[preset].lod[1];
     SetGeomOffset(160, 120);
     SetGeomScreen(s_presets[preset].h);
+    Camera_SetLodScale(s_presets[preset].h, 0);
 }
 
 /* 80016a50 con el retrovisor (camara +7): H * 56 / 160 y centro en el del rectangulo del retrovisor
@@ -258,11 +307,13 @@ void Render_SetMirrorProjection(int on)
     {
         SetGeomOffset(0x68 + 56, 10 + 21);
         SetGeomScreen(s_frustum.h * 0x38 / 0xa0);
+        Camera_SetLodScale(s_frustum.h * 0x38 / 0xa0, 1);
     }
     else
     {
         SetGeomOffset(160, 120);
         SetGeomScreen(s_frustum.h);
+        Camera_SetLodScale(s_frustum.h, 0);
     }
 }
 

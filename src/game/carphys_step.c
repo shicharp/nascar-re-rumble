@@ -712,6 +712,11 @@ void Physics_StepAll(int dt)
                 Gte_Rt((const short*)(e->obj.model->bbox + e->obj.frame * 0x10 + 8), e->obj.unk34, 0);
             }
             Engine_Update(c);   /* 80040600 */
+            /* el turbo (+0x490) y el roce de los golpes (+0x178) siguen al coche */
+            if (IA(c, 0x124) != -1)
+                Snd_SourceMove(e->handle, e->obj.pos[0], e->obj.pos[2], -1, e->speed, e->dir, IA(c, 0x124));
+            if (IA(c, 0x5e) != -1)
+                Snd_SourceMove(e->handle, e->obj.pos[0], e->obj.pos[2], -1, e->speed, e->dir, IA(c, 0x5e));
         }
         sdt = rest;
         rest = 0;

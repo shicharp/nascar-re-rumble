@@ -91,6 +91,13 @@ static void Car_LoadWheels(RaceCar* c, const GridCar* g, GfxObj* wheels)
     Obj_Init(&wheels[3], m[2]);
 }
 
+/* Modelos de la carroceria por nivel de detalle en el controlador (humano +0x29C, IA +0x280; Entity_InitCommon
+ * 8002c2a0: Cobj 10000 + hueco * 10 + 1 + nivel) */
+static ModelHdr** Car_LodModels(RaceCar* c)
+{
+    return (ModelHdr**)(c->ctrl + (c->type == 1 ? 0x29c : 0x280));
+}
+
 /* Ruedas del coche: dentro del controlador (humano +0x6C, IA +0x44) */
 static GfxObj* Car_Wheels(RaceCar* c)
 {
@@ -176,6 +183,9 @@ void Race_CreateCars(void)
         c->flags2c = (c->flags2c & 0xfeffffae) | 0x40800308;
         int human = c->type == 1;
         c->ctrl = (uint8_t*)calloc(1, human ? 0x2c4 : 0x2a8);
+        ModelHdr** lod = Car_LodModels(c);
+        for (int l = 0; l < 4; l++)
+            lod[l] = Cobj_Model(10000 + i * 10 + 1 + l);
         GfxObj* wheels = Car_Wheels(c);
         Car_LoadWheels(c, &g_RaceGrid.car[i], wheels);
         if (human)
@@ -207,6 +217,14 @@ void Race_FreeCars(void)
             for (int k = 0; k < 4; k++)
                 Marks_Free(c->phys, k);   /* 80075c08 */
             Car_PowerSkinFree(c->phys);
+            /* 8004de8c: el roce de los golpes (y el turbo) */
+            for (int o = 0; o < 2; o++)
+            {
+                int off = o ? 0x490 : 0x178;
+                if (*(int*)(c->phys + off) != -1)
+                    Snd_SourceKill(c->handle, *(int*)(c->phys + off));
+                *(int*)(c->phys + off) = -1;
+            }
             Engine_Free(c->phys);   /* 800417ec */
         }
         free(c->phys);
@@ -261,15 +279,24 @@ void Race_AddCarsToDrawList(void)
         if (!c->obj.model)
             continue;
         GfxObj* wheels = Car_Wheels(c);
-        /* 80060190 / 80030f84: ruedas borrosas si giran deprisa (+0x2E8 delante, +0x2EC detras); el nivel de
-         * detalle (80013db0) queda en 0 */
+        /* 80060190 / 80030f84: modelo segun el nivel de detalle (80013db0); las ruedas solo en los niveles 0 y 1,
+         * borrosas en el 0 si giran deprisa (+0x2E8 delante, +0x2EC detras) */
+        int lvl = Obj_LodLevel(&c->obj);
+        c->visBits |= (uint8_t)(lvl << 4);
+        ModelHdr* body = Car_LodModels(c)[lvl];
+        if (body)
+            c->obj.model = body;
         ModelHdr** m = Car_WheelModels(c, 0);
         ModelHdr** b = Car_WheelModels(c, 1);
+        for (int k = 0; wheels && k < 4; k++)
+            wheels[k].flags &= 0xfc;
+        if (lvl >= 2)
+            wheels = NULL;
         for (int k = 0; wheels && k < 4; k++)
         {
             int rear = k >> 1;
             int spin = c->phys ? *(int*)(c->phys + 0x2e8 + rear * 4) : 0;
-            ModelHdr* want = (spin > 0x40 || spin < -0x40) && b[rear] ? b[rear] : m[rear * 2];
+            ModelHdr* want = lvl == 0 && (spin > 0x40 || spin < -0x40) && b[rear] ? b[rear] : m[rear * 2 + lvl];
             if (want && wheels[k].model != want)
             {
                 wheels[k].model = want;

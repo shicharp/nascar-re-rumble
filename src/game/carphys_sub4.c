@@ -5,6 +5,8 @@
 #include "carphys.h"
 #include "carphys_int.h"
 #include "fx.h"
+#include "exe.h"
+#include "snd.h"
 
 static int Vec_Len16b(const int* v)
 {
@@ -412,6 +414,63 @@ static void Contact_Fx(uint8_t* c, uint8_t* self, int off)
 }
 
 /* 80055748: contactos acumulados con los muros (+0xEC) y con el suelo (+0x10C) */
+/* 80052100 (Car_HitDebris en Ghidra): sonido del golpe. Coches: el de la pared golpeada (+0x19D, tabla 800aaab4)
+ * o el de la superficie (+0x181, 800aaadc), {0, 0x11} entre coches, y 0xD / 0xE / 0xF segun la fuerza (> 8 /
+ * 0x40 / 0x80); objetos sueltos: el de su clase (+5, salvo con la bandera 0x200). Si sigue en contacto (+0x182)
+ * deja ademas el roce en bucle (id + 1 de la tabla, o +4 de la clase) como fuente en +0x178, que dura mientras
+ * se renueve el contacto (0x2F tics). Devuelve 0 si ya sonaba el roce. */
+int Car_HitSound(uint8_t* c, int strength, int carHit)
+{
+    RaceCar* e = (RaceCar*)ENT(c);
+    if (IA(c, 0x5e) != -1)
+    {
+        U8(c, 0x182) = 0x2f;
+        return 0;
+    }
+    int loop;
+    if (e->type == 1 || e->type == 0x11)
+    {
+        uint8_t pair[2] = { 0, 0x11 };
+        const uint8_t* s = pair;
+        if (!carHit)
+        {
+            int wall = (int8_t)U8(c, 0x19d), surf = (int8_t)U8(c, 0x181);
+            if (wall < 0)
+                s = Exe_Ptr(0x800aaadcu + ((unsigned)surf < 0x12 ? surf : 0) * 2);
+            else
+                s = Exe_Ptr(0x800aaab4u + ((unsigned)wall < 0x13 ? wall : 0) * 2);
+            if (!s)
+                s = pair;
+        }
+        if (s[0])
+            Fx_Push(s[0], e->obj.pos, 100);
+        int id = strength > 0x80 ? 0xf : strength > 0x40 ? 0xe : strength > 8 ? 0xd : 0;
+        if (id)
+            Fx_Push(id, e->obj.pos, 100);
+        if (U8(c, 0x182) == 0)
+        {
+            U8(c, 0x182) = 0x2f;
+            return 1;
+        }
+        loop = (int8_t)s[1];
+    }
+    else
+    {
+        const uint8_t* cl = e->objUnder ? Fx_ObjClass(e->objUnder) : NULL;
+        if (!cl || !(NR_Read32(cl + 8) & 0x200))
+            Fx_Push(cl ? cl[5] : 0, e->obj.pos, 100);
+        if (U8(c, 0x182) == 0)
+        {
+            U8(c, 0x182) = 0x2f;
+            return 1;
+        }
+        loop = cl ? cl[4] : 0;
+    }
+    IA(c, 0x5e) = Snd_SourceCreate(loop, e->handle, e->obj.pos[0], e->obj.pos[2], -1, e->speed, e->dir);
+    U8(c, 0x182) = 0x2f;
+    return 1;
+}
+
 void Car_HandleContacts(uint8_t* c, int dt, uint8_t* self, int fromStep)
 {
     RaceCar* e = (RaceCar*)ENT(c);
@@ -425,7 +484,9 @@ void Car_HandleContacts(uint8_t* c, int dt, uint8_t* self, int fromStep)
         {
             if (U8(c, 0x180) & 1)
             {
-                /* (golpe 80052100 pendiente; con fromStep = 0 el efecto saldria de la clase del objeto) */
+                if (e->speed > 8)
+                    Car_HitSound(c, e->speed & 0xff, 0);
+                /* (con fromStep = 0 el efecto saldria de la clase del objeto) */
                 Contact_Fx(c, self, 0xf0);
                 if (IA(c, 0x42) < 0x30)
                     IA(c, 0x42) = 0x30;
@@ -437,6 +498,8 @@ void Car_HandleContacts(uint8_t* c, int dt, uint8_t* self, int fromStep)
             {
                 if (I16(c, 0x184) == 0)
                 {
+                    if (e->speed > 8)
+                        Car_HitSound(c, e->speed & 0xff, 0);
                     Contact_Fx(c, self, 0x110);
                     if (U8(c, 0x181) != 7)
                         e->obj.pos[1] += IA(c, 0x4a);
@@ -492,6 +555,14 @@ void Car_HandleContacts(uint8_t* c, int dt, uint8_t* self, int fromStep)
         int v = (int)U8(c, 0x182) - dt;
         U8(c, 0x182) = (uint8_t)v;
         if ((int32_t)((uint32_t)v << 24) < 1)
+        {
+            /* se acabo el contacto: fuera el roce */
+            if (IA(c, 0x5e) != -1)
+            {
+                Snd_SourceKill(e->handle, IA(c, 0x5e));
+                IA(c, 0x5e) = -1;
+            }
             U8(c, 0x182) = 0;
+        }
     }
 }
