@@ -166,6 +166,10 @@ void     Debris_UpdateAll(FxInst* list, int dt);                              /*
 void     Debris_ReapAll(FxInst* list);                                        /* 80048150 */
 void     Debris_DrawAll(FxInst* list, const int* focus);                      /* 800487e8 */
 
+/* fx_exhaust.c: llamas del escape */
+void     Exhaust_InitTextures(void);                                          /* 80077900 */
+void     Car_DrawExhaust(int view);                                           /* 800780d0 */
+
 /* fx_ring.c: anillos y cupulas (tipo 0x5C) */
 typedef struct FxDome FxDome;
 FxInst*  Ring_Create(uint8_t* t);                                             /* 8006a578 */

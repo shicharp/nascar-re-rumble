@@ -3,8 +3,8 @@
  * 0x5E plantillas por clase en DAT_800b2320[banco * 0x100 + clase]), crear 80039a80 (ancla 80036fb4 +
  * instancia 80038208), cola de impactos 8007734c / 80038a48, actualizar 80038b50, dibujar 80038ccc.
  * Tipos: 0x5E particulas (fx_psys.c), 0x5C anillos y cupulas (fx_ring.c), 0x5A restos (fx_debris.c), 0x58 rayos
- * (fx_bolt.c), 0x57 estelas (fx_trail.c); marcas y humo de las ruedas (fx_marks.c). Pendiente: emisores 0x54,
- * nube de la tormenta, llamas del escape y cupulas de los poderes. */
+ * (fx_bolt.c), 0x57 estelas (fx_trail.c); marcas y humo de las ruedas (fx_marks.c); llamas del escape
+ * (fx_exhaust.c). Pendiente: emisores 0x54, nube de la tormenta y cupulas de los poderes. */
 #ifndef NR_FX_H
 #define NR_FX_H
 

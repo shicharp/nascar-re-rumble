@@ -15,7 +15,7 @@
  *  - Dibujar 80038ccc. Cola de impactos (25 x 40 bytes en DAT_800b1f38): 8007734c / 800773d4 (tipo 5),
  *    80075130 (3, ruedas), proceso 800774a4 (clase segun el golpe y la superficie).
  * Cada tipo en su fichero (fx_psys / fx_ring / fx_debris / fx_bolt / fx_trail) y las marcas en fx_marks.c.
- * Pendiente: llamas del escape (800780d0), emisores 0x54, nube de la tormenta y cupulas de los poderes. */
+ * Pendiente: emisores 0x54, nube de la tormenta y cupulas de los poderes. */
 #include <stdlib.h>
 #include <string.h>
 #include "libgte.h"
@@ -1619,7 +1619,7 @@ void Fx_FreeAll(int bank)
     g_FxParticles = 0;
 }
 
-/* 8003913c (+ 8003bd60 de 80075808) */
+/* 8003913c (+ 8003bd60 y 80077900 de 80075808) */
 void Fx_PostLoad(void)
 {
     Fx_ComputeClassFlags(0);
@@ -1637,6 +1637,7 @@ void Fx_PostLoad(void)
         DrawSync(0);
     }
     Psys_InitSprites();
+    Exhaust_InitTextures();            /* 80077900 (80075808) */
 }
 
 /* NR_FXTEST=clase[,id] (solo en el port, depuracion): crea la clase en el coche del jugador cada segundo
@@ -1726,10 +1727,7 @@ void Fx_Draw(int view)
     int focus[3];
     Fx_Focus(view, focus);
     Bolt_DrawAll(focus);               /* 8006db94 */
-    /* 800780d0 (sin las llamas del escape, pendientes): baja las banderas de humo y llama del frame */
-    for (int i = 0; i < g_NumCars; i++)
-        if (g_CarPhys[i])
-            U8(g_CarPhys[i], 0x445) &= 0xe3;
+    Car_DrawExhaust(view);             /* 800780d0 (desde 8007567c) */
     /* 8007567c: marcas de las ruedas de los humanos */
     for (int i = 0; i < g_NumHumans; i++)
         if (g_Humans[i] && g_Humans[i]->phys)

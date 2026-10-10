@@ -278,6 +278,8 @@ void Race_AddCarsToDrawList(void)
                 Render_Add(&wheels[k]);
         }
         Render_Add(&c->obj);
+        if (c->phys)
+            c->phys[0x49a] = 1;   /* HumanCar_Handler / AiCar_Handler: dibujado en la vista (0) */
     }
 }
 

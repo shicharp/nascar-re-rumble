@@ -1,6 +1,6 @@
 /* Poderes: cajas de la pista y efectos sobre los coches. Ver powerup.h.
  * Efectos (fx.c): chispas de la caja (8003558c), destello del poder (0x401), onda (0x40E), tornado (0x404),
- * helada (0x417) y rayo (0x40D). Pendiente: la llama del turbo (8003da74), la nube y los rayos de la tormenta
+ * helada (0x417) y rayo (0x40D). Pendiente: el sonido del turbo (8003da74), la nube y los rayos de la tormenta
  * (80070e58 / 8006dc10) y los tipos de efecto 0x5C / 0x58 que usan varios de ellos. */
 #include <stdlib.h>
 #include <string.h>
@@ -289,7 +289,7 @@ static void Car_AddForwardSpeed(uint8_t* c, int speed)
     }
 }
 
-/* 80050130: turbo (tabla de marchas +0x39C y empujon; la llama del escape 8003da74(0x13) queda pendiente) */
+/* 80050130: turbo (tabla de marchas +0x39C y empujon; el sonido 0x13, 8003da74 en +0x490, queda pendiente) */
 static void Car_TurboOn(uint8_t* c)
 {
     SETPTR(c, 0x3e8, B_(c) + 0x39c);
