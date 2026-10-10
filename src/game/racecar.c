@@ -270,6 +270,21 @@ void Race_UpdateCars(int dt)
     Actors_CollideCars();
 }
 
+/* Solo en el port: tras dibujar, la carroceria vuelve al modelo completo. En el original el modelo del nivel de
+ * detalle se queda en el objeto y la fisica lee de el los puntos de las ruedas (80013b20) y la caja de choque; los
+ * modelos de los niveles 2 y 3 no tienen esos puntos (0xFF: el original lee memoria de fuera del modelo, el port
+ * las pondria en el centro y el coche se levantaria) */
+void Race_RestoreCarModels(void)
+{
+    for (int i = 0; i < g_NumCars; i++)
+    {
+        RaceCar* c = &g_Cars[i];
+        ModelHdr* m = c->ctrl ? Car_LodModels(c)[0] : NULL;
+        if (m)
+            c->obj.model = m;
+    }
+}
+
 void Race_AddCarsToDrawList(void)
 {
     Physics_PlaceWheelsAll(0);

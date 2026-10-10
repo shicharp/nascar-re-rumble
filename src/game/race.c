@@ -208,6 +208,7 @@ static void Race_DrawMirror(void)
     Race_AddCarsToDrawList();
     Actors_AddToDrawList(0);
     Render_DrawList(1);
+    Race_RestoreCarModels();
     Render_SetMirrorProjection(0);
 
     DR_AREA* full = (DR_AREA*)Gfx_AllocPrim(sizeof(DR_AREA));
@@ -312,6 +313,7 @@ void Race_MainLoop(void)
         Race_AddCarsToDrawList();
         Actors_AddToDrawList(0);       /* 80061a0c + Actors_DrawView 80061b28 */
         Render_DrawList(0);
+        Race_RestoreCarModels();
         Fx_Draw(0);                    /* 80038ccc */
         Sprite_DrawAll();              /* 80045268 */
         Race_DrawHud();

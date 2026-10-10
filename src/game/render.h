@@ -93,7 +93,8 @@ void Light_SetSun(const int* pos, int r, int g, int b);         /* 800153e4 (sin
 
 void Obj_Init(GfxObj* o, ModelHdr* m);                          /* 800139fc */
 /* 80013db0: nivel de detalle por la distancia a la camara (0 cerca .. 3 muy lejos); deja en +0x54 el brillo del
- * reflejo (0x404040 cerca, se apaga en el nivel 1, 0 desde el 2) */
+ * reflejo (0x404040 cerca, se apaga en el nivel 1, 0 desde el 2). Solo en el port: devuelve siempre 0 (todo con el
+ * detalle completo) salvo con NR_PSXLOD=1, que imita a la PS1 */
 int  Obj_LodLevel(GfxObj* o);
 void Obj_GetPoint(const GfxObj* o, int i, int* out);            /* 80013c20: punto i en el mundo */
 void Obj_GetLocalPoint(const GfxObj* o, int i, int* out);       /* 800367d0 */

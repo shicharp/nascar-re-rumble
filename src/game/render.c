@@ -256,6 +256,19 @@ static void Camera_SetLodScale(int h, int mirror)
     s_lodK = (int)(0x80000000u / (unsigned)(n >> 1));
 }
 
+/* Solo en el port: NR_PSXLOD=1 usa los niveles de detalle de la PS1 (modelos simplificados, sin ruedas y menos
+ * particulas de lejos); por defecto todo se dibuja con el detalle completo */
+static int Lod_PsxOn(void)
+{
+    static int s_on = -1;
+    if (s_on < 0)
+    {
+        const char* v = getenv("NR_PSXLOD");
+        s_on = v && atoi(v) != 0;
+    }
+    return s_on;
+}
+
 int Obj_LodLevel(GfxObj* o)
 {
     /* 80019818: distancia aproximada (mayor + los otros dos / 4) */
@@ -266,7 +279,7 @@ int Obj_LodLevel(GfxObj* o)
     if (d >= s_lodMid)
     {
         o->envColor = 0;
-        return d > s_lodFar ? 3 : 2;
+        return !Lod_PsxOn() ? 0 : d > s_lodFar ? 3 : 2;
     }
     if (d < s_lodNear)
     {
@@ -278,7 +291,7 @@ int Obj_LodLevel(GfxObj* o)
     if (v > 0x40)
         v = 0x40;
     o->envColor = v | v << 8 | v << 16;
-    return 1;
+    return Lod_PsxOn() ? 1 : 0;
 }
 
 void Render_SetPreset(int preset)
