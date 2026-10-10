@@ -4,7 +4,7 @@
  * instancia 80038208), cola de impactos 8007734c / 80038a48, actualizar 80038b50, dibujar 80038ccc.
  * Tipos: 0x5E particulas (fx_psys.c), 0x5C anillos y cupulas (fx_ring.c), 0x5A restos (fx_debris.c), 0x58 rayos
  * (fx_bolt.c), 0x57 estelas (fx_trail.c); marcas y humo de las ruedas (fx_marks.c); llamas del escape
- * (fx_exhaust.c); nube de la tormenta (fx_storm.c). Pendiente: cupulas de los poderes. */
+ * (fx_exhaust.c); nube de la tormenta (fx_storm.c); cupulas de los poderes (fx.c). */
 #ifndef NR_FX_H
 #define NR_FX_H
 
@@ -49,7 +49,11 @@ void Car_ExhaustFx(uint8_t* c, int dt);          /* 80077c60 */
 void Car_WheelMarksFx(uint8_t* c, int dt);       /* 80076500 (cada paso de la fisica) */
 void Car_JumpFx(uint8_t* c);                     /* 80078bb8 */
 void Car_PowerSkinFx(uint8_t* c, unsigned changed); /* 800786b0 / 800787d0 (helado / electrocutado) */
-void Car_PowerSkinFree(uint8_t* c);
+void Car_PowerSkinFree(uint8_t* c);              /* (tambien las cupulas) */
+void Car_PowerDomes(uint8_t* c, unsigned changed);  /* Physics_StepAll: 80078878 / 80078c88 */
+void Car_DomePulse(int dt);                      /* 80075730 */
+void Car_DrawWheelDomes(void);                   /* 80078b30 */
+void Car_DrawRamDomes(int view);                 /* 80078d78 */
 void Marks_Init(uint8_t* c, int k);              /* 80075a9c */
 void Marks_Free(uint8_t* c, int k);              /* 80075c08 */
 

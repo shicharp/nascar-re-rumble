@@ -132,7 +132,8 @@ static void Car_PreStep(uint8_t* c, int dt)
         else
             IA(c, 0xfe) |= 0x80000;
     }
-    Car_PowerSkinFx(c, changed);   /* (0x40 / 0x200: cupulas de los poderes, pendientes) */
+    Car_PowerDomes(c, changed);    /* 80078878 / 80078c88 */
+    Car_PowerSkinFx(c, changed);
     IA(c, 0xfe) &= 0xffffbfff;
     IA(c, 0xbc) = (U16(c, 0x198) & 0x10) ? 0 : Car_SteerTorque(c, dt);
     if (IA(c, 0xcc) != 0)

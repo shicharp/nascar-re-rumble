@@ -15,7 +15,7 @@
  *  - Dibujar 80038ccc. Cola de impactos (25 x 40 bytes en DAT_800b1f38): 8007734c / 800773d4 (tipo 5),
  *    80075130 (3, ruedas), proceso 800774a4 (clase segun el golpe y la superficie).
  * Cada tipo en su fichero (fx_psys / fx_ring / fx_debris / fx_bolt / fx_trail) y las marcas en fx_marks.c.
- * Nube de la tormenta en fx_storm.c. Pendiente: cupulas de los poderes. */
+ * Nube de la tormenta en fx_storm.c; cupulas de los poderes (ruedas grandes y embestida) al final de este fichero. */
 #include <stdlib.h>
 #include <string.h>
 #include "libgte.h"
@@ -1669,6 +1669,7 @@ void Fx_Update(int dt)
 {
     Fx_DebugSpawn(dt);
     Fx_ProcessImpacts();
+    Car_DomePulse(dt);                 /* 80075730 */
     Fx_UpdateAnchors();
     for (int l = 0; l < 7; l++)
     {
@@ -1730,6 +1731,8 @@ void Fx_Draw(int view)
     Fx_Focus(view, focus);
     Bolt_DrawAll(focus);               /* 8006db94 */
     Car_DrawExhaust(view);             /* 800780d0 (desde 8007567c) */
+    Car_DrawWheelDomes();              /* 80078b30 */
+    Car_DrawRamDomes(view);            /* 80078d78 */
     /* 8007567c: marcas de las ruedas de los humanos */
     for (int i = 0; i < g_NumHumans; i++)
         if (g_Humans[i] && g_Humans[i]->phys)
@@ -1860,6 +1863,146 @@ void Car_PowerSkinFx(uint8_t* c, unsigned changed)
 void Car_PowerSkinFree(uint8_t* c)
 {
     Car_SkinOff(c);   /* 8004d470 */
+    Dome_Free((FxDome*)PTR(c, 0x488));
+    SETPTR(c, 0x488, NULL);
+    Dome_Free((FxDome*)PTR(c, 0x48c));
+    SETPTR(c, 0x48c, NULL);
+}
+
+/* ---- cupulas de los poderes: ruedas grandes (+0x33A & 0x40) y embestida (& 0x200) ---- */
+
+static unsigned s_domePulse;   /* DAT_800af33c: va y viene de 0 a 0xFFFF */
+static int      s_domeUp;      /* DAT_800af33e */
+
+/* 80075730: el latido de la cupula de la embestida (0x400 por tic, solo si algun coche la lleva) */
+void Car_DomePulse(int dt)
+{
+    int any = 0;
+    for (int i = 0; i < g_NumCars && !any; i++)
+        any = g_CarPhys[i] && PTR(g_CarPhys[i], 0x48c);
+    if (!any)
+        return;
+    unsigned step = (unsigned)(dt << 10) & 0xffff;
+    if (!s_domeUp)
+    {
+        if (s_domePulse < step)
+        {
+            s_domePulse = 0;
+            s_domeUp = 1;
+            return;
+        }
+        s_domePulse -= step;
+    }
+    else
+    {
+        if (s_domePulse + step > 0xffff)
+        {
+            s_domePulse = 0xffff;
+            s_domeUp ^= 1;
+            return;
+        }
+        s_domePulse += step;
+    }
+}
+
+/* Physics_StepAll 80056c6c (parte): al cambiar los bits 0x40 / 0x200 de +0x33A se crean o se quitan las cupulas.
+ * 80078878: ruedas grandes, cono sin la parte de arriba girado con la rueda (0x19, +0x488). 80078c88: embestida,
+ * media cupula girada con el coche (0x2F; 0x3F conica en los coches 0x36 y el resto), mas estrecha segun el modelo
+ * (escala x 0x40 / 0x4A / 0x80, +0x48C). */
+void Car_PowerDomes(uint8_t* c, unsigned changed)
+{
+    unsigned f = U16(c, 0x33a);
+    if (changed & 0x40)
+    {
+        Dome_Free((FxDome*)PTR(c, 0x488));   /* 800788c4 */
+        SETPTR(c, 0x488, (f & 0x40) ? Dome_Create(0x100, 0x19) : NULL);
+    }
+    if (changed & 0x200)
+    {
+        Dome_Free((FxDome*)PTR(c, 0x48c));   /* 80078c48 */
+        SETPTR(c, 0x48c, NULL);
+        if (f & 0x200)
+        {
+            const uint8_t* desc = PTR(c, 0x1b4);
+            int sx = 0x40, mode = 0x2f;
+            switch (desc ? desc[1] : 0)
+            {
+            case 0x2f: case 0x30: case 0x33: case 0x34: break;
+            case 0x35: sx = 0x80; break;
+            case 0x36: sx = 0x4a; mode = 0x3f; break;
+            default: mode = 0x3f; break;
+            }
+            FxDome* d = Dome_Create(0x100, mode);
+            if (d)
+                Dome_SetScale(d, sx, 0x80, 0x80);
+            SETPTR(c, 0x48c, d);
+        }
+    }
+}
+
+/* 80078b30 / 80078904: un cono naranja hacia fuera en cada rueda trasera (+0x200 / +0x204 = ruedas 2 y 3), con
+ * el eje Y de la cupula en el -X de la rueda y radio = radio de la rueda * 15/16 */
+void Car_DrawWheelDomes(void)
+{
+    static const uint8_t c0[3] = { 0, 0, 0 }, c1[3] = { 0x60, 0x40, 0x20 };
+    for (int i = 0; i < g_NumCars; i++)
+    {
+        uint8_t* c = g_CarPhys[i];
+        FxDome* d = c ? (FxDome*)PTR(c, 0x488) : NULL;
+        if (!d)
+            continue;
+        for (int k = 2; k < 4; k++)
+        {
+            const GfxObj* w = (const GfxObj*)PTR(c, 0x1f8 + k * 4);
+            if (!w || !(w->flags & 2))
+                continue;
+            int m[12];
+            for (int a = 0; a < 3; a++)
+            {
+                m[a] = w->rot[3 + a];
+                m[3 + a] = -w->rot[a];
+                m[6 + a] = w->rot[6 + a];
+                m[9 + a] = w->pos[a];
+            }
+            Dome_Draw(d, m, w->radius * 0xf00 >> 16, c0, c1);
+        }
+    }
+}
+
+/* 80078d78: la embestida, alrededor del coche (0x100 por debajo, 0x200 en el modelo 0x33; adelantada 0x100 a
+ * 0x400 segun el modelo), radio = radio del coche * 1,125, del rojo al amarillo con el latido */
+void Car_DrawRamDomes(int view)
+{
+    unsigned p = s_domePulse >> 10;
+    uint8_t c0[3] = { (uint8_t)(p ^ 0xff), 0, 0 };
+    uint8_t c1[3] = { (uint8_t)(0x80 - p), (uint8_t)(0x80 - p), 0 };
+    for (int i = 0; i < g_NumCars; i++)
+    {
+        uint8_t* c = g_CarPhys[i];
+        FxDome* d = c ? (FxDome*)PTR(c, 0x48c) : NULL;
+        if (!d)
+            continue;
+        RaceCar* e = (RaceCar*)ENT(c);
+        if (!(e->obj.flags & 2) || !U8(c, 0x49a + view))
+            continue;
+        int m[12];
+        memcpy(m, e->obj.rot, 9 * sizeof(int));
+        memcpy(m + 9, e->obj.pos, 3 * sizeof(int));
+        const uint8_t* desc = PTR(c, 0x1b4);
+        unsigned b = desc ? desc[1] : 0;
+        int down = -0x100, ahead = 0;
+        if (b > 0x2d)
+            switch (b)
+            {
+            case 0x2f: ahead = 0x400; break;
+            case 0x33: down = -0x200; ahead = 0x200; break;
+            case 0x30: case 0x34: ahead = 0x200; break;
+            case 0x35: case 0x36: ahead = 0x100; break;
+            }
+        for (int a = 0; a < 3; a++)
+            m[9 + a] += M16(m[3 + a], down) + M16(m[6 + a], ahead);
+        Dome_Draw(d, m, e->obj.radius * 0x1200 >> 16, c0, c1);
+    }
 }
 
 /* 80078bb8: estelas (clase 1) desde los puntos 2 y 3 del coche al despegar */
