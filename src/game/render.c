@@ -424,6 +424,11 @@ static int Camera_SphereInFrustum(const int16_t* c, int r)
     return z8 + s_frustum.ry * r < (ay << s_frustum.sy0) + (ay << s_frustum.sy1) ? 0 : 2;
 }
 
+int Render_SphereInFrustum(const int16_t* c, int r)
+{
+    return Camera_SphereInFrustum(c, r);
+}
+
 /* 800162d4: visibilidad, vertices a pantalla y color de cada normal */
 static int Render_PrepareObject(GfxObj* o)
 {

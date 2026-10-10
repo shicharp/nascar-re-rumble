@@ -26,6 +26,7 @@
 #include "render.h"
 #include "snd.h"
 #include "fx_int.h"
+#include "fx.h"
 #include "carphys_int.h"
 
 /* Extremo (0x20 bytes) */
@@ -429,6 +430,14 @@ static Bolt* Bolt_Create(BoltEnd* src, BoltEnd* dst, int segs, int nstrands, con
     b->next = s_bolts;
     s_bolts = b;
     return b;
+}
+
+/* Weather_Update 800323f0: rayo de la tormenta (5 segmentos, 2 hebras, gris 0x7F que se funde en 400 tics, sin
+ * regenerar) */
+void Bolt_Strike(const int* from, const int* to)
+{
+    static const uint8_t rgb[3] = { 0x7f, 0x7f, 0x7f };
+    Bolt_Create(End_Fixed(from, 0, 0x10, 0), End_Fixed(to, 0, 0x10, 0), 5, 2, rgb, 400, 0x2000, -0x800, 0, 0, 0, 1);
 }
 
 /* 8006bf90 */

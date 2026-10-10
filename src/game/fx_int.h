@@ -166,6 +166,11 @@ void     Debris_UpdateAll(FxInst* list, int dt);                              /*
 void     Debris_ReapAll(FxInst* list);                                        /* 80048150 */
 void     Debris_DrawAll(FxInst* list, const int* focus);                      /* 800487e8 */
 
+/* fx_storm.c: nube de la tormenta */
+void     Storm_UpdateAll(int dt);                                             /* 80070f80 */
+void     Storm_DrawAll(void);                                                 /* 800714a0 */
+int      Storm_Count(void);
+
 /* fx_exhaust.c: llamas del escape */
 void     Exhaust_InitTextures(void);                                          /* 80077900 */
 void     Car_DrawExhaust(int view);                                           /* 800780d0 */

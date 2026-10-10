@@ -1,7 +1,7 @@
 /* Poderes: cajas de la pista y efectos sobre los coches. Ver powerup.h.
  * Efectos (fx.c): chispas de la caja (8003558c), destello del poder (0x401), onda (0x40E), tornado (0x404),
- * helada (0x417) y rayo (0x40D). Pendiente: el sonido del turbo (8003da74), la nube y los rayos de la tormenta
- * (80070e58 / 8006dc10) y los tipos de efecto 0x5C / 0x58 que usan varios de ellos. */
+ * helada (0x417), rayo (0x40D) y la nube de la tormenta (fx_storm.c) con sus rayos. Pendiente: el sonido del turbo
+ * (8003da74). */
 #include <stdlib.h>
 #include <string.h>
 #include "nr.h"
@@ -536,13 +536,13 @@ static void Power_Drop(uint8_t* c, int kind)
 /* ---------------------------------------------------------------- clima (entidad 8) */
 
 /* Campos (0x10C bytes): +0xE0 coche que lo lanzo, +0xE4 coche al que persigue o en el que esta, +0xE8 efecto de
- * particulas (en el port, 1 mientras dura la nube de la tormenta), +0xEC red Cnet, +0xF0 tipo (0 tormenta,
+ * particulas (la nube de la tormenta, 80070e58), +0xEC red Cnet, +0xF0 tipo (0 tormenta,
  * 1 tornado, 2 helada), +0xF1 1 pegado al coche, 2 persiguiendolo, +0xF2 tics (espera al salir, vida del
  * tornado o lo que le queda al efecto), +0xF6 nodo hacia el que va, +0xF8 recorrido del tramo (<< 8), +0xFC su
  * longitud, +0x100 inicio del tramo (0x600 por encima de la red). */
 #define WX_OWNER(a)  (*(RaceCar**)((uint8_t*)(a) + 0xe0))
 #define WX_TARGET(a) (*(RaceCar**)((uint8_t*)(a) + 0xe4))
-#define WX_FX(a)     A32(a, 0xe8)
+#define WX_STORM(a)  (*(Storm**)((uint8_t*)(a) + 0xe8))
 #define WX_NET(a)    (*(const uint8_t**)((uint8_t*)(a) + 0xec))
 #define WX_KIND(a)   A8(a, 0xf0)
 #define WX_STATE(a)  A8(a, 0xf1)
@@ -593,9 +593,82 @@ static int Weather_Create(Actor* a, const ActorDef* d)
     }
     else if (WX_KIND(a) == 2)
         Fx_QueueImpact(a, 2, NULL, 0, 0x417);   /* helada: 0x2F */
-    /* tormenta: nube de particulas 80070e58 (pendiente: solo su vida) */
-    WX_FX(a) = WX_KIND(a) == 0 ? 1 : 0;
+    WX_STORM(a) = WX_KIND(a) == 0 ? Storm_Create() : NULL;   /* 80070e58: la nube de la tormenta */
     return 0;
+}
+
+static uint8_t s_strikeTimer;   /* DAT_800af224: tics hasta el siguiente rayo de una tormenta suelta */
+
+/* 8005b1ac: el coche mas cercano a p a menos de lim (longitud aproximada 800194a0) */
+static RaceCar* Weather_NearestCar(const int* p, int lim)
+{
+    RaceCar* best = NULL;
+    for (int i = 0; i < g_NumCars; i++)
+    {
+        if (!g_CarPhys[i])
+            continue;
+        RaceCar* e = (RaceCar*)ENT(g_CarPhys[i]);
+        int v[3] = { e->obj.pos[0] - p[0], e->obj.pos[1] - p[1], e->obj.pos[2] - p[2] };
+        int d = Vec_ApproxMax(v);
+        if (d < lim)
+        {
+            best = e;
+            lim = d;
+        }
+    }
+    return best;
+}
+
+/* Rayo de la tormenta hacia un lado: hasta 2 pasos de 'side' buscando un muro (Track_RayWall); en el muro, el punto
+ * se lleva al plano de la pared */
+static void Weather_WallPoint(const int* from, const int* side, int sign, int* out)
+{
+    int p[3] = { from[0], from[1], from[2] };
+    for (int i = 0; i < 2; i++)
+    {
+        int q[3] = { p[0] + sign * side[0], p[1] + sign * side[1], p[2] + sign * side[2] }, n[3], hit[6];   /* Track_RayWall: los dos extremos del muro */
+        memcpy(out, q, sizeof(q));
+        if (Track_RayWall(p, q, n, hit))
+        {
+            int d[3] = { hit[0] - q[0], hit[1] - q[1], hit[2] - q[2] };
+            Vec_Scale(Vec_Dot16(d, n), n);
+            for (int k = 0; k < 3; k++)
+                out[k] = q[k] + n[k];
+            return;
+        }
+        memcpy(p, q, sizeof(q));
+    }
+}
+
+/* Weather_Update (tormenta suelta): cada 25 a 49 tics, dos rayos desde 0x380 por encima: al coche mas cercano a
+ * menos de 0x2000 o, sin ninguno, a los muros de los dos lados (perpendicular a la marcha sobre el suelo) */
+static void Weather_Strike(Actor* a, int dt)
+{
+    uint8_t prev = s_strikeTimer;
+    s_strikeTimer = (uint8_t)(prev - dt);
+    if ((int8_t)s_strikeTimer >= 0)
+        return;
+    unsigned r = (unsigned)Rand_B();
+    int p0[3] = { a->obj.pos[0], a->obj.pos[1] + 0x380, a->obj.pos[2] };
+    s_strikeTimer = (uint8_t)(r % 0x19 + 0x19);
+    int e1[3], e2[3];
+    RaceCar* c = Weather_NearestCar(p0, 0x2000);
+    if (c)
+    {
+        memcpy(e1, c->obj.pos, sizeof(e1));
+        memcpy(e2, c->obj.pos, sizeof(e2));
+    }
+    else
+    {
+        int up[3] = { a->obj.shadowN[0] << 4, a->obj.shadowN[1] << 4, a->obj.shadowN[2] << 4 }, side[3];
+        Vec_Cross(up, a->vel, side);
+        for (int k = 0; k < 3; k++)
+            side[k] >>= 3;
+        Weather_WallPoint(p0, side, 1, e1);
+        Weather_WallPoint(p0, side, -1, e2);
+    }
+    Bolt_Strike(p0, e1);
+    Bolt_Strike(p0, e2);
 }
 
 /* 800323f0 */
@@ -739,21 +812,43 @@ static void Weather_Update(Actor* a, int dt)
     }
     if (kind == 0)
     {
-        /* tormenta: rayos contra los muros 8005b1ac / 8006dc10 y marcas en las ruedas de la victima: pendientes */
-        if (WX_FX(a))
+        Storm* s = WX_STORM(a);
+        if (s)
         {
+            RaceCar* t = WX_TARGET(a);
+            uint8_t* ph = t && (t->type == 1 || t->type == 0x11) ? t->phys : NULL;
+            if (!(WX_STATE(a) & 1) || !t)
+            {
+                Storm_SetTarget(s, NULL, a);
+                Weather_Strike(a, dt);
+            }
+            else
+            {
+                /* pegada al coche: marcas en sus 4 ruedas (registro de la rueda +6) */
+                if (ph)
+                    for (int k = 0; k < 4; k++)
+                        U8(ph, 0x4ae + k * 100) = 0xff;
+                Storm_SetTarget(s, t, a);
+                a->obj.shadowY = t->obj.shadowY;
+            }
             if (WX_STATE(a) & 1)
             {
-                RaceCar* t = WX_TARGET(a);
-                if (t)
-                    a->obj.shadowY = t->obj.shadowY;
-                if (t && t->phys && !(U16(t->phys, 0x33a) & 0x20))
+                if (ph && !(U16(ph, 0x33a) & 0x20))
                     WX_TICKS(a) = 0;
-                if ((WX_TICKS(a) < 0x12d || WX_TICKS(a) - dt > 300) && WX_TICKS(a) < 1)
-                    WX_FX(a) = 0;   /* 80071de4 (y 80071dd4 = se desvanece en los ultimos 300 tics) */
+                /* se desvanece en los ultimos 300 tics (80071dd4) y se libera al acabar (80071de4) */
+                if (WX_TICKS(a) < 0x12d || WX_TICKS(a) - dt > 300)
+                {
+                    if (WX_TICKS(a) < 1)
+                    {
+                        Storm_Free(s);
+                        WX_STORM(a) = NULL;
+                    }
+                }
+                else
+                    Storm_Fade(s);
             }
         }
-        if (!WX_FX(a))
+        if (!WX_STORM(a))
             a->hp = -1;
     }
     if (kind == 1)
@@ -777,7 +872,8 @@ static int Weather_Handler(int msg, Actor* a, intptr_t p1, intptr_t p2)
     case 2:
         return Weather_Create(a, (const ActorDef*)p1);
     case 5:
-        WX_FX(a) = 0;   /* 80071de4; el tornado descuenta DAT_800af7bc (pendiente) */
+        Storm_Free(WX_STORM(a));   /* 80071de4; el tornado descuenta DAT_800af7bc (pendiente) */
+        WX_STORM(a) = NULL;
         break;
     case 6:
         Weather_Update(a, (int)p1);

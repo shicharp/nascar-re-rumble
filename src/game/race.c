@@ -335,5 +335,6 @@ void Race_MainLoop(void)
     Render_SetPreset(1);
     Race_FreeCars();
     Actors_Free();
+    Storm_FreeAll();                   /* 80070e1c (8002456c) */
     Track_Free();
 }

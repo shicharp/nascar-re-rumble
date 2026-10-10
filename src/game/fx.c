@@ -15,7 +15,7 @@
  *  - Dibujar 80038ccc. Cola de impactos (25 x 40 bytes en DAT_800b1f38): 8007734c / 800773d4 (tipo 5),
  *    80075130 (3, ruedas), proceso 800774a4 (clase segun el golpe y la superficie).
  * Cada tipo en su fichero (fx_psys / fx_ring / fx_debris / fx_bolt / fx_trail) y las marcas en fx_marks.c.
- * Pendiente: nube de la tormenta y cupulas de los poderes. */
+ * Nube de la tormenta en fx_storm.c. Pendiente: cupulas de los poderes. */
 #include <stdlib.h>
 #include <string.h>
 #include "libgte.h"
@@ -1694,6 +1694,7 @@ void Fx_Update(int dt)
     Bolt_UpdateAll(dt);                /* 8006dae0 */
     Ring_UpdateAll(s_lists[2], dt);
     Psys_UpdateAll(s_lists[3], dt);
+    Storm_UpdateAll(dt);               /* 80070f80 */
     Debris_UpdateAll(s_lists[4], dt);
     Trail_UpdateAll(s_lists[5], dt);   /* 8006fd98 */
     Debris_ReapAll(s_lists[4]);        /* 80048150 */
@@ -1717,7 +1718,8 @@ void Fx_Update(int dt)
         for (FxPersist* r = s_persist; r; r = r->next)
             np++;
         NR_Log("[fx] t=%d instancias 0x5E %d 0x5C %d 0x5A %d 0x57 %d 0x58 %d, anclas %d, persistentes %d, "
-               "particulas %d\n", g_RaceTime, n[3], n[2], n[4], n[5], n[6], na, np, g_FxParticles);
+               "particulas %d, nubes %d\n", g_RaceTime, n[3], n[2], n[4], n[5], n[6], na, np, g_FxParticles,
+               Storm_Count());
     }
 }
 
@@ -1736,6 +1738,7 @@ void Fx_Draw(int view)
     Ring_DrawAll(s_lists[2], focus);
     Psys_DrawAll(s_lists[3], focus, view);
     Trail_DrawAll(s_lists[5], focus);  /* 8006e594 */
+    Storm_DrawAll();                   /* 800714a0 */
 }
 
 /* ---- coches ---- */

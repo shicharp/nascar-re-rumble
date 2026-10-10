@@ -99,6 +99,8 @@ void Render_ClearList(void);
 void Render_Add(GfxObj* o);
 void Render_DrawList(int mirror);                               /* 80015f4c(0, mirror) */
 
+/* 8001931c / 8001607c: esfera (centro en el espacio de la camara, a 1/16) en la vista: 0 fuera, 1 detras, 2 dentro */
+int  Render_SphereInFrustum(const int16_t* c, int r);
 /* Proyecta un punto relativo a la camara ya cargada (80010234); devuelve la profundidad */
 int  Render_ProjectPoint(const SVECTOR* v, int* sx, int* sy);
 /* Carga en la GTE la matriz de la camara compuesta con (rot, pos) a escala 1/16 (80016828 + 8001025c) */

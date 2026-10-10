@@ -397,7 +397,7 @@ static int TvCam_AvoidWalls(int view, int lim)
     for (int i = 0; i < 3; i++)
     {
         int a = i, b = i == 2 ? 0 : i + 1;
-        int n[3], hit[3];
+        int n[3], hit[6];   /* Track_RayWall: los dos extremos del muro */
         if (!Track_RayWall(e[a], e[b], n, hit))
             continue;
         int d[3] = { hit[0] - v->eye[0], hit[1] - v->eye[1], hit[2] - v->eye[2] };

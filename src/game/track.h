@@ -87,7 +87,7 @@ int  Track_FindSurface(TrackPos* tp, const int* pos, int* normal, int withCurve)
 int  Track_GroundHeight(TrackPos* tp, const int* pos, int mode);       /* 80065488 */
 int  Track_SurfaceType(const TrackPos* tp, const uint8_t** face);      /* 80065ee8 */
 int  Track_NearestCurvePoint(const int* pos);                          /* 80065610 */
-int  Track_RayWall(const int* p0, const int* p1, int* normal, int* edge);   /* 80065844 */
+int  Track_RayWall(const int* p0, const int* p1, int* normal, int* edge);   /* 80065844 (edge: 6 ints) */
 void Track_ResetNormalCache(void);                                     /* parte de 80061cd0 */
 
 void Track_Parse(uint8_t* data, int size);          /* 80062088 */

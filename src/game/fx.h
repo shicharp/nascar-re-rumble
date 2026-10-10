@@ -4,7 +4,7 @@
  * instancia 80038208), cola de impactos 8007734c / 80038a48, actualizar 80038b50, dibujar 80038ccc.
  * Tipos: 0x5E particulas (fx_psys.c), 0x5C anillos y cupulas (fx_ring.c), 0x5A restos (fx_debris.c), 0x58 rayos
  * (fx_bolt.c), 0x57 estelas (fx_trail.c); marcas y humo de las ruedas (fx_marks.c); llamas del escape
- * (fx_exhaust.c). Pendiente: nube de la tormenta y cupulas de los poderes. */
+ * (fx_exhaust.c); nube de la tormenta (fx_storm.c). Pendiente: cupulas de los poderes. */
 #ifndef NR_FX_H
 #define NR_FX_H
 
@@ -32,6 +32,17 @@ const uint8_t* Fx_ObjClass(int cls);
 void Fx_ObjDie(int cls, void* ent);              /* 800354d4 */
 void Fx_ObjHit(int cls, void* ent);              /* 8003558c */
 void Fx_ObjCreated(void* ent);                   /* 80038ff8 */
+
+/* Nube de la tormenta (fx_storm.c) y rayo suelto (fx_bolt.c) */
+typedef struct Storm Storm;
+struct RaceCar;
+struct Actor;
+Storm* Storm_Create(void);                       /* 80070e58 */
+void Storm_Fade(Storm* s);                       /* 80071dd4 */
+void Storm_Free(Storm* s);                       /* 80071de4 */
+void Storm_FreeAll(void);                        /* 80070e1c */
+void Storm_SetTarget(Storm* s, struct RaceCar* car, struct Actor* ent);
+void Bolt_Strike(const int* from, const int* to);   /* 8006d95c x 2 + 8006dc10 (rayo de la tormenta) */
 
 /* Coches */
 void Car_ExhaustFx(uint8_t* c, int dt);          /* 80077c60 */
