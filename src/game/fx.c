@@ -398,7 +398,7 @@ static void Fx_ComputeClassFlags(int bank)
 /* ---- anclas ---- */
 
 /* 80036fb4 */
-static FxAnchor* Fx_NewAnchor(void* ent, int cls, int bank, const FxSpawn* sp, FxCallback* cb, int keep)
+FxAnchor* Fx_NewAnchor(void* ent, int cls, int bank, const FxSpawn* sp, FxCallback* cb, int keep)
 {
     FxAnchor* a = (FxAnchor*)calloc(1, sizeof(FxAnchor));
     if (!a)
@@ -904,7 +904,7 @@ static int Fx_Timers(FxInst* in, int dt, int* spawn)
     return again;
 }
 
-static FxInst* Fx_SpawnInst(FxAnchor* an, FxInst* parent, int cls, const FxSpawn* sp, int bank);
+FxInst* Fx_SpawnInst(FxAnchor* an, FxInst* parent, int cls, const FxSpawn* sp, int bank);
 
 /* 800387d0: devuelve 1 si la instancia ha terminado */
 static int Fx_UpdateInst(FxInst* in, int dt)
@@ -948,7 +948,7 @@ static void Fx_Link(FxInst* in)
 }
 
 /* 80038208: crea una instancia de la clase en el ancla */
-static FxInst* Fx_SpawnInst(FxAnchor* an, FxInst* parent, int cls, const FxSpawn* sp, int bank)
+FxInst* Fx_SpawnInst(FxAnchor* an, FxInst* parent, int cls, const FxSpawn* sp, int bank)
 {
     uint8_t* t = Fx_Template(bank, cls);
     if (!t)
@@ -986,8 +986,11 @@ static FxInst* Fx_SpawnInst(FxAnchor* an, FxInst* parent, int cls, const FxSpawn
     case 0x5c:
         in = Ring_Create(t);
         break;
+    case 0x5a:
+        in = Debris_Create(t);
+        break;
     default:
-        in = NULL;   /* 0x57 80070684, 0x58 8006e4b4, 0x5A 80048b64: pendientes */
+        in = NULL;   /* 0x57 80070684, 0x58 8006e4b4: pendientes */
         break;
     }
     if (!in)
@@ -1657,6 +1660,8 @@ void Fx_Update(int dt)
     /* 80038998 */
     Ring_UpdateAll(s_lists[2], dt);
     Psys_UpdateAll(s_lists[3], dt);
+    Debris_UpdateAll(s_lists[4], dt);
+    Debris_ReapAll(s_lists[4]);        /* 80048150 */
     if (s_persist)
         Fx_UpdatePersist();
     while (s_pending)
@@ -1693,6 +1698,7 @@ void Fx_Draw(int view)
     for (int i = 0; i < g_NumHumans; i++)
         if (g_Humans[i] && g_Humans[i]->phys)
             Marks_Draw(g_Humans[i]->phys, view);
+    Debris_DrawAll(s_lists[4], focus);
     Ring_DrawAll(s_lists[2], focus);
     Psys_DrawAll(s_lists[3], focus, view);
 }

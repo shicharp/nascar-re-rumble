@@ -142,6 +142,15 @@ void     Psys_DrawAll(FxInst* list, const int* focus, int view);              /*
 void     Psys_InitSprites(void);                                              /* 8003bd60 */
 void     Psys_SetSpeed(FxInst* in, int min, int max);                        /* 800751cc (+0x80 / +0x82) */
 
+FxAnchor* Fx_NewAnchor(void* ent, int cls, int bank, const FxSpawn* sp, FxCallback* cb, int keep);   /* 80036fb4 */
+FxInst*  Fx_SpawnInst(FxAnchor* an, FxInst* parent, int cls, const FxSpawn* sp, int bank);   /* 80038208 */
+
+/* fx_debris.c: restos (tipo 0x5A) */
+FxInst*  Debris_Create(uint8_t* t);                                           /* 80048b64 */
+void     Debris_UpdateAll(FxInst* list, int dt);                              /* 800480c0 */
+void     Debris_ReapAll(FxInst* list);                                        /* 80048150 */
+void     Debris_DrawAll(FxInst* list, const int* focus);                      /* 800487e8 */
+
 /* fx_ring.c: anillos y cupulas (tipo 0x5C) */
 typedef struct FxDome FxDome;
 FxInst*  Ring_Create(uint8_t* t);                                             /* 8006a578 */
