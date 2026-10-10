@@ -15,7 +15,7 @@
  *  - Dibujar 80038ccc. Cola de impactos (25 x 40 bytes en DAT_800b1f38): 8007734c / 800773d4 (tipo 5),
  *    80075130 (3, ruedas), proceso 800774a4 (clase segun el golpe y la superficie).
  * Cada tipo en su fichero (fx_psys / fx_ring / fx_debris / fx_bolt / fx_trail) y las marcas en fx_marks.c.
- * Pendiente: emisores 0x54, nube de la tormenta y cupulas de los poderes. */
+ * Pendiente: nube de la tormenta y cupulas de los poderes. */
 #include <stdlib.h>
 #include <string.h>
 #include "libgte.h"

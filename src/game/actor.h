@@ -9,8 +9,8 @@
  * datos de cada tipo) porque el codigo portado accede a ella por desplazamientos.
  * Tipos creados: 0x06 objetos que giran (800339b4), 0x0B objetos de la pista (8003421c) y 0x16 cajas de poder
  * (80031854); los poderes crean 0xD (objetos que se sueltan) y 8 (clima) en powerup.c. Pendientes: 0x05
- * (80034e6c, vehiculos que siguen una red, 8004bc80), 0x0E disparadores (80034894), 0x54 (emisores de
- * particulas 80071f50, con los efectos),
+ * (80034e6c, vehiculos que siguen una red, 8004bc80), 0x0E disparadores (80034894); el 0x54 son las camaras de
+ * TV (tvcam.c),
  * los generadores Csac (800605f0), los guiones (80048f78, 80067890) y la fisica de los objetos sueltos
  * (Body_Step 8005610c, clases de objeto DAT_800b1b38). */
 #ifndef NR_ACTOR_H

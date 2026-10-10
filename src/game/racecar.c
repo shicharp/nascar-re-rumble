@@ -20,6 +20,7 @@
 #include "collide.h"
 #include "hud.h"
 #include "globals.h"
+#include "tvcam.h"
 
 RaceCar g_Cars[RACE_MAX_CARS];
 int     g_NumCars;
@@ -308,6 +309,7 @@ typedef struct
 
 static RaceCamView s_views[2];
 static int         s_viewMode[2];   /* DAT_800af8c0 */
+static int         s_tvAtStart;     /* solo en el port: NR_TVCAM=1 (como la demostracion) o vN (virtual N) */
 
 /* 8005e840: la camara del jugador va dentro del coche (preset de tipo 2) */
 int RaceCam_IsInCar(int view)
@@ -325,11 +327,18 @@ RaceCar* RaceCam_GetTarget(int view)
     return s_views[view & 1].target;
 }
 
-/* 8005ed10 (parte): siguiente vista de persecucion (la de dentro del coche, tipo 2, pendiente) */
+/* 8005ed10 (parte): siguiente vista de persecucion (la de dentro del coche, tipo 2, pendiente). Desde las camaras
+ * de TV vuelve a la de persecucion sin avanzar si se pasaria del principio o del final de la lista */
 void RaceCam_CycleView(int view, int dir)
 {
     int m = s_viewMode[view & 1];
-    for (int i = 0; i < 4; i++)
+    if (TvCam_IsActive(view))
+    {
+        TvCam_Leave(view);
+        if ((dir == 1 && m == 0) || (dir == -1 && m == 3))
+            dir = 0;
+    }
+    for (int i = 0; dir && i < 4; i++)
     {
         m = (m + dir + 4) % 4;
         if (s_presets[m].type == 3)
@@ -375,6 +384,10 @@ void RaceCam_Init(void)
     const char* cam = getenv("NR_CAMCAR");
     if (cam && atoi(cam) >= 0 && atoi(cam) < g_NumCars)
         s_views[0].target = &g_Cars[atoi(cam)];
+    /* solo en el port (depuracion): NR_TVCAM=1 empieza con las camaras de TV (8005f034: sin humanos o en la
+     * repeticion, en los primeros frames); NR_TVCAM=vN con la virtual N */
+    const char* tv = getenv("NR_TVCAM");
+    s_tvAtStart = !tv ? 0 : tv[0] == 'v' ? 2 + atoi(tv + 1) : 1;
 }
 
 /* 8005e8b0: detras del coche segun el eje del preset, a 'dist' en el plano y 'height' por encima */
@@ -496,6 +509,21 @@ void RaceCam_Update(int view, int dt)
     const RaceCar* c = v->target;
     if (!c)
         return;
+    if (s_tvAtStart && view == 0)
+    {
+        if (s_tvAtStart == 1)
+            TvCam_Enter(view);
+        else
+            TvCam_SelectIndex(view, s_tvAtStart - 2);
+        s_tvAtStart = 0;
+    }
+    if (TvCam_IsActive(view))
+    {
+        TvCam_Update(view, dt, &v->tpos);
+        memcpy(v->eye, g_Camera.pos, sizeof(v->eye));
+        memset(v->vel, 0, sizeof(v->vel));
+        return;
+    }
     const CamPreset* p = &s_presets[s_viewMode[view]];
     int desired[3];
     RaceCam_Desired(c, p, desired);

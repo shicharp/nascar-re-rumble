@@ -13,6 +13,7 @@
 #include "powerup.h"
 #include "actor.h"
 #include "fx.h"
+#include "tvcam.h"
 
 Actor* g_Actors;            /* DAT_800af87c */
 static Actor* s_tail;       /* DAT_800af880 */
@@ -701,9 +702,14 @@ int Cact_OnLoaded(NrAsset* as)
         Race_SetStart(pos);
         return 1;
     }
+    if (type == 0x54)
+    {
+        TvCam_AddFromDef(def);          /* Emitter_OnLoaded 80072208: camara de TV */
+        return 1;
+    }
     ActorFn fn = Actor_HandlerFor(type);
     if (!fn)
-        return 1;                       /* 0x54 80072208 y los tipos 5 y 0xE: pendientes */
+        return 1;                       /* los tipos 5 y 0xE: pendientes */
     uint8_t* rb = Cact_FindBlock(as, NR_TAG('a', 'R', 'S', 'L'));
     uint32_t* res = NULL;
     if (rb)

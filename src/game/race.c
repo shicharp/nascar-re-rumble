@@ -22,6 +22,7 @@
 #include "sprite.h"
 #include "cnet.h"
 #include "racecar.h"
+#include "tvcam.h"
 #include "hud.h"
 #include "pause.h"
 #include "actor.h"
@@ -41,6 +42,7 @@ void Race_Load(const char* path)
     Actors_Free();                 /* 80048d5c */
     Engine_ResetTypes();           /* 8003cfd0: tipos de motor antes de que lleguen los Ceng */
     Fx_Reset();                    /* 80038d54 */
+    TvCam_Free();                  /* 80072254 */
     Track_Free();
     Cnet_Reset();                  /* FUN_8002cf7c */
     g_HaveStart = 0;
@@ -253,6 +255,7 @@ void Race_MainLoop(void)
     g_RaceTime = g_PrevRaceTime = 0;
     Race_CreateCars();             /* 8003132c (desde Level_Run) */
     Fx_PostLoad();                 /* 8003913c (Level_Run) + 80075808 (Level_WaitLoaded) */
+    TvCam_PostLoad();              /* 80072320 (Level_Run): camaras de TV virtuales */
     Actors_LogSummary();
     RaceCam_Init();
     Hud_Init();
@@ -328,6 +331,8 @@ void Race_MainLoop(void)
     }
     Snd_StopRace();                    /* 8003d04c */
     Fx_FreeAll(2);                     /* 80038e28 (8002456c) */
+    TvCam_Free();                      /* RaceCam_ResetPresets 80072348 (8002456c) */
+    Render_SetPreset(1);
     Race_FreeCars();
     Actors_Free();
     Track_Free();

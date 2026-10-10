@@ -22,6 +22,7 @@
 #include "ai.h"
 #include "snd.h"
 #include "pause.h"
+#include "tvcam.h"
 
 static inline int Min_(int a, int b) { return a < b ? a : b; }
 
@@ -795,6 +796,12 @@ void Ai_Reset(void)
     s_numAi = 0;
 }
 
+/* **(DAT_800af7c4 + 0xE0): la red de la ultima IA creada (la primera de la lista) */
+const uint8_t* Ai_FirstNet(void)
+{
+    return s_numAi ? Ai_Net(s_aiList[0]) : NULL;
+}
+
 /* ---------------------------------------------------------------- vueltas y posiciones */
 
 /* 8003014c: progreso por la pista (puntos de TCRV) y vueltas */
@@ -844,8 +851,7 @@ void Car_UpdateLap(uint8_t* c, int curve)
                 Speech_Say(0xf, 0, lapCar, 1);
             if (g_Settings.laps <= I32(c, 0x328))
             {
-                /* meta: con un humano, 5 tics y resultados; sin humanos, al terminar el coche que se sigue
-                 * (camara 80074574: pendiente) */
+                /* meta: con un humano, 5 tics y resultados; sin humanos, al terminar el coche que se sigue */
                 RaceCar* e = lapCar;
                 if (g_RaceEndTimer < 1)
                 {
@@ -865,6 +871,11 @@ void Car_UpdateLap(uint8_t* c, int curve)
                         g_RaceEndTimer = 0xe10;
                 }
                 I32(c, 0x330) = g_RaceTime - 900;
+                /* 80074574: la vista que sigue a este coche pasa a las camaras de TV con la orbita (7) */
+                if (RaceCam_GetTarget(0) == e)
+                    TvCam_SelectIndex(0, 7);
+                else if (RaceCam_GetTarget(1) == e)
+                    TvCam_SelectIndex(1, 7);
             }
             d -= len;
             I32(c, 0x32c) = g_RaceTime;

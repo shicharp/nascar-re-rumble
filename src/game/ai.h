@@ -14,6 +14,7 @@ void Ai_UpdateLaps(void);                /* Car_UpdateLap de la IA y de los huma
 void Car_UpdateLap(uint8_t* phys, int curve);   /* 8003014c */
 void Race_UpdatePositions(int dt);       /* 8002fc9c */
 int  Car_TrackDeltaPublic(uint8_t* p1, uint8_t* p2);   /* 8002f094: puntos de TCRV de ventaja de p1 */
+const uint8_t* Ai_FirstNet(void);       /* red de DAT_800af7c4 (camaras de TV) */
 void Ai_Recover(RaceCar* e);             /* 8002ea48: vuelve a la red (o a la pista) */
 
 #endif
