@@ -50,7 +50,7 @@ los coches recogen un poder segun su puesto y lo usan (la IA sola, el jugador co
 turbo, ruedas grandes, embestida, onda expansiva, objetos que se sueltan en la pista, tormenta, helada y
 tornado que persiguen a los rivales) e iconos y avisos en el marcador. Sonido: efectos, motores, bocina, musica
 de la sede y comentarista. Efectos visuales: chispas, destellos y trozos de los choques, humo del escape y
-anillos de humo del tornado, marcas y humo de las ruedas (el resto de tipos de efecto y la tormenta, pendientes). `--shot` guarda el frame N y sale; `--press "185:down,205:right"` simula
+anillos de humo del tornado, marcas y humo de las ruedas, ondas y cupulas de luz, restos de los objetos, rayos, estelas y coche helado o electrocutado (pendientes: la nube de la tormenta, los emisores de la pista, las llamas del escape y las cupulas de los poderes). `--shot` guarda el frame N y sale; `--press "185:down,205:right"` simula
 pulsaciones (para verificar sin intervención; botones: up, down, left, right, cross, circle, triangle, square,
 start, select, l1, r1, l2, r2).
 Variables de depuracion: `NR_LAPS=n` vueltas, `NR_CAMCAR=n` camara en el coche n, `NR_POWER=n` poder n en la

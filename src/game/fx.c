@@ -14,8 +14,8 @@
  *    80036484 (vida +4, intervalo +0x14 con repeticiones +7, temporizador +0xC), tipos 80038998.
  *  - Dibujar 80038ccc. Cola de impactos (25 x 40 bytes en DAT_800b1f38): 8007734c / 800773d4 (tipo 5),
  *    80075130 (3, ruedas), proceso 800774a4 (clase segun el golpe y la superficie).
- * Pendiente: tipos 0x57, 0x58, 0x5A, 0x5C, llamas del escape (800780d0), emisores 0x54, nube y rayos de
- * la tormenta. Marcas y humo de las ruedas en fx_marks.c. */
+ * Cada tipo en su fichero (fx_psys / fx_ring / fx_debris / fx_bolt / fx_trail) y las marcas en fx_marks.c.
+ * Pendiente: llamas del escape (800780d0), emisores 0x54, nube de la tormenta y cupulas de los poderes. */
 #include <stdlib.h>
 #include <string.h>
 #include "libgte.h"
@@ -30,6 +30,7 @@
 #include "track.h"
 #include "vecmath.h"
 #include "snd.h"
+#include "model.h"
 
 #define ENT_HANDLE(e) (((RaceCar*)(e))->handle)
 #define ENT_OBJ(e)    (&((RaceCar*)(e))->obj)
@@ -1740,6 +1741,125 @@ void Fx_Draw(int view)
 }
 
 /* ---- coches ---- */
+
+/* 800786b0 / 80078460: el coche pasa a la textura gris 2x2 (helado: opaca 0x11D; electrocutado: aditiva 0x13D y
+ * semitransparente). Guarda las caras originales en +0x484. En el original, los 4 modelos del coche (+0x280 / +0x29C
+ * del controlador); el port solo dibuja el del objeto. */
+typedef struct
+{
+    ModelHdr* model;
+    uint32_t* saved;
+    int       words;
+} CarSkin;
+
+static int Car_SkinOn(uint8_t* c, int frozen)
+{
+    RaceCar* e = (RaceCar*)ENT(c);
+    ModelHdr* m = e->obj.model;
+    if (!m || !m->faces)
+        return 0;
+    CarSkin* s = (CarSkin*)calloc(1, sizeof(CarSkin));
+    if (!s)
+        return 0;
+    int words = frozen ? 3 : 4, n = (int)m->faces[0];
+    s->saved = (uint32_t*)malloc((size_t)n * words * 4);
+    if (!s->saved)
+    {
+        free(s);
+        return 0;
+    }
+    s->model = m;
+    s->words = words;
+    uint32_t* f = m->faces + 1;
+    for (int i = 0; i < n; i++, f += 6)
+    {
+        uint32_t* o = s->saved + i * words;
+        o[0] = f[1];
+        o[1] = f[2];
+        o[2] = f[3];
+        if (words == 4)
+            o[3] = f[0];
+        f[1] = 0;
+        f[2] = frozen ? 0x11d0000 : 0x13d0000;
+        f[3] = 0;
+        if (words == 4)
+            f[0] |= 2;
+    }
+    SETPTR(c, 0x484, s);
+    return 1;
+}
+
+/* 800787d0 / 800785e4 */
+static void Car_SkinOff(uint8_t* c)
+{
+    CarSkin* s = (CarSkin*)PTR(c, 0x484);
+    if (!s)
+        return;
+    uint32_t* f = s->model->faces + 1;
+    int n = (int)s->model->faces[0];
+    for (int i = 0; i < n; i++, f += 6)
+    {
+        const uint32_t* o = s->saved + i * s->words;
+        f[1] = o[0];
+        f[2] = o[1];
+        f[3] = o[2];
+        if (s->words == 4)
+            f[0] = o[3];
+    }
+    free(s->saved);
+    free(s);
+    SETPTR(c, 0x484, NULL);
+}
+
+/* Physics_StepAll 80056c6c (parte): 0x33A & 4 electrocutado (rayos 0x2E por la carroceria, 0x416) y & 2 helado
+ * (humo azul 0x2A, 0x412), mientras el coche se ve (en el original, entidad +0x25: visible y con detalle < 3) */
+void Car_PowerSkinFx(uint8_t* c, unsigned changed)
+{
+    RaceCar* e = (RaceCar*)ENT(c);
+    unsigned f = U16(c, 0x33a);
+    int vis = (f & 6) && (e->obj.flags & 2);
+    if (f & 4)
+    {
+        if (vis)
+        {
+            if (!PTR(c, 0x484) && Car_SkinOn(c, 0))
+                Fx_QueueImpact(c, 1, NULL, 0, 0x416);
+        }
+        else if (PTR(c, 0x484))
+        {
+            Car_SkinOff(c);
+            Fx_Kill(e, 0x2e);
+        }
+    }
+    else if ((changed & 4) && PTR(c, 0x484))
+    {
+        Car_SkinOff(c);
+        Fx_Kill(e, 0x2e);
+    }
+    if (f & 2)
+    {
+        if (vis)
+        {
+            if (!PTR(c, 0x484) && Car_SkinOn(c, 1))
+                Fx_QueueImpact(c, 1, NULL, 0, 0x412);
+        }
+        else if (PTR(c, 0x484))
+        {
+            Fx_Kill(e, 0x2a);
+            Car_SkinOff(c);
+        }
+    }
+    else if ((changed & 2) && PTR(c, 0x484))
+    {
+        Fx_Kill(e, 0x2a);
+        Car_SkinOff(c);
+    }
+}
+
+void Car_PowerSkinFree(uint8_t* c)
+{
+    Car_SkinOff(c);   /* 8004d470 */
+}
 
 /* 80078bb8: estelas (clase 1) desde los puntos 2 y 3 del coche al despegar */
 void Car_JumpFx(uint8_t* c)

@@ -2,8 +2,9 @@
  * Original: Csfx 80035adc / 800359bc (registros 0x56 banco, 0x5B clases de objeto, 0x57 / 0x58 / 0x5A / 0x5C /
  * 0x5E plantillas por clase en DAT_800b2320[banco * 0x100 + clase]), crear 80039a80 (ancla 80036fb4 +
  * instancia 80038208), cola de impactos 8007734c / 80038a48, actualizar 80038b50, dibujar 80038ccc.
- * Portados: tipo 0x5E (particulas) y las marcas y el humo de las ruedas (fx_marks.c). Pendiente: 0x5C, 0x5A,
- * 0x57, 0x58, emisores 0x54, nube y rayos de la tormenta. */
+ * Tipos: 0x5E particulas (fx_psys.c), 0x5C anillos y cupulas (fx_ring.c), 0x5A restos (fx_debris.c), 0x58 rayos
+ * (fx_bolt.c), 0x57 estelas (fx_trail.c); marcas y humo de las ruedas (fx_marks.c). Pendiente: emisores 0x54,
+ * nube de la tormenta, llamas del escape y cupulas de los poderes. */
 #ifndef NR_FX_H
 #define NR_FX_H
 
@@ -36,6 +37,8 @@ void Fx_ObjCreated(void* ent);                   /* 80038ff8 */
 void Car_ExhaustFx(uint8_t* c, int dt);          /* 80077c60 */
 void Car_WheelMarksFx(uint8_t* c, int dt);       /* 80076500 (cada paso de la fisica) */
 void Car_JumpFx(uint8_t* c);                     /* 80078bb8 */
+void Car_PowerSkinFx(uint8_t* c, unsigned changed); /* 800786b0 / 800787d0 (helado / electrocutado) */
+void Car_PowerSkinFree(uint8_t* c);
 void Marks_Init(uint8_t* c, int k);              /* 80075a9c */
 void Marks_Free(uint8_t* c, int k);              /* 80075c08 */
 

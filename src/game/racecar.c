@@ -205,6 +205,7 @@ void Race_FreeCars(void)
         {
             for (int k = 0; k < 4; k++)
                 Marks_Free(c->phys, k);   /* 80075c08 */
+            Car_PowerSkinFree(c->phys);
             Engine_Free(c->phys);   /* 800417ec */
         }
         free(c->phys);
