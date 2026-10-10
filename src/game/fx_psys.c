@@ -258,6 +258,14 @@ FxInst* Psys_Create(uint8_t* t, GfxObj* obj)
     return &ps->h;
 }
 
+/* 800751cc (parte): velocidades de la instancia */
+void Psys_SetSpeed(FxInst* in, int min, int max)
+{
+    Psys* ps = (Psys*)in;
+    ps->speedMax = (int16_t)max;
+    ps->speedMin = (int16_t)min;
+}
+
 /* 80039c34 */
 static void Psys_Free(Psys* ps)
 {

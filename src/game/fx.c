@@ -14,8 +14,8 @@
  *    80036484 (vida +4, intervalo +0x14 con repeticiones +7, temporizador +0xC), tipos 80038998.
  *  - Dibujar 80038ccc. Cola de impactos (25 x 40 bytes en DAT_800b1f38): 8007734c / 800773d4 (tipo 5),
  *    80075130 (3, ruedas), proceso 800774a4 (clase segun el golpe y la superficie).
- * Pendiente: tipos 0x57, 0x58, 0x5A, 0x5C, marcas y humo de las ruedas (80076500 / 80075330), llamas del
- * escape (800780d0), emisores 0x54, nube y rayos de la tormenta. */
+ * Pendiente: tipos 0x57, 0x58, 0x5A, 0x5C, llamas del escape (800780d0), emisores 0x54, nube y rayos de
+ * la tormenta. Marcas y humo de las ruedas en fx_marks.c. */
 #include <stdlib.h>
 #include <string.h>
 #include "nr.h"
@@ -1278,6 +1278,16 @@ static FxImpact* Fx_NewImpact(int kind)
     return q;
 }
 
+/* 80075130 (la espera por superficie va en fx_marks.c) */
+void Fx_QueueWheel(uint8_t* c, int k)
+{
+    FxImpact* q = Fx_NewImpact(3);
+    if (!q)
+        return;
+    q->who = c;
+    q->who2 = (uint8_t)k;
+}
+
 /* 8007734c */
 void Fx_QueueImpact(void* who, int who2, const int* pos, int speed, int id)
 {
@@ -1467,7 +1477,8 @@ static void Fx_ProcessImpacts(void)
             Fx_Spawn(q->who, 0xa2, NULL, 0, NULL);
             break;
         case 3:
-            break;   /* 80075330: humo de las ruedas (pendiente con las marcas) */
+            Fx_WheelSmoke((uint8_t*)q->who, q->who2);   /* 80075330 */
+            break;
         case 4:
             Fx_Spawn(q->who, 4, NULL, 0, NULL);   /* 80077478 */
             break;
@@ -1627,6 +1638,10 @@ void Fx_Draw(int view)
     for (int i = 0; i < g_NumCars; i++)
         if (g_CarPhys[i])
             U8(g_CarPhys[i], 0x445) &= 0xe3;
+    /* 8007567c: marcas de las ruedas de los humanos */
+    for (int i = 0; i < g_NumHumans; i++)
+        if (g_Humans[i] && g_Humans[i]->phys)
+            Marks_Draw(g_Humans[i]->phys, view);
     Psys_DrawAll(s_lists[3], focus, view);
 }
 

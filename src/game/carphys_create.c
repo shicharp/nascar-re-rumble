@@ -10,6 +10,7 @@
 #include "carphys.h"
 #include "carphys_int.h"
 #include "snd.h"
+#include "fx.h"
 
 /* 8004d668: grupo de parametros segun el piloto (personajes especiales 0x21-0x37) y tipo de coche */
 static void Car_ParamIndex(uint8_t* c, int* group, int* car)
@@ -472,9 +473,8 @@ uint8_t* Car_CreatePhys(RaceCar* e, GfxObj* wheels, const void* desc)
     U8(c, 0x3f4) = 0xff;
     for (int k = 0; k < 4; k++)
     {
-        uint8_t* s = B_(c) + 0x4a8 + k * 100;  /* 80075a9c: marcas de las ruedas (pendiente) */
-        memset(s, 0, 100);
-        s[0] = 0x80;
+        memset(B_(c) + 0x4a8 + k * 100, 0, 100);
+        Marks_Init(c, k);   /* 80075a9c: marcas de las ruedas */
         U8(c, 0x63e + k) = 0xf;
         U8(c, 0x63a + k) = 0xf;
     }

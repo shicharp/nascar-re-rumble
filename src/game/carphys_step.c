@@ -635,6 +635,8 @@ void Physics_StepAll(int dt)
             if (touching[i])
                 Car_GroundForces(g_CarPhys[i], comp[i], sdt);
         for (int i = 0; i < n; i++)
+            Car_WheelMarksFx(g_CarPhys[i], sdt);   /* 80076500 */
+        for (int i = 0; i < n; i++)
         {
             uint8_t* c = g_CarPhys[i];
             RaceCar* e = (RaceCar*)ENT(c);

@@ -138,5 +138,11 @@ FxInst*  Psys_Create(uint8_t* t, GfxObj* obj);                                /*
 void     Psys_UpdateAll(FxInst* list, int dt);                                /* 8003b77c */
 void     Psys_DrawAll(FxInst* list, const int* focus, int view);              /* 8003be24 */
 void     Psys_InitSprites(void);                                              /* 8003bd60 */
+void     Psys_SetSpeed(FxInst* in, int min, int max);                        /* 800751cc (+0x80 / +0x82) */
+
+/* fx_marks.c: marcas de las ruedas y su humo */
+void     Fx_QueueWheel(uint8_t* c, int k);                                    /* 80075130 (tipo 3) */
+void     Fx_WheelSmoke(uint8_t* c, int k);                                    /* 80075330 */
+void     Marks_Draw(uint8_t* c, int view);                                    /* 80076a1c */
 
 #endif

@@ -13,6 +13,7 @@
 #include "actor.h"
 #include "powerup.h"
 #include "snd.h"
+#include "fx.h"
 #include "carphys.h"
 #include "carphys_int.h"
 #include "ai.h"
@@ -201,7 +202,11 @@ void Race_FreeCars(void)
     {
         RaceCar* c = &g_Cars[i];
         if (c->phys)
+        {
+            for (int k = 0; k < 4; k++)
+                Marks_Free(c->phys, k);   /* 80075c08 */
             Engine_Free(c->phys);   /* 800417ec */
+        }
         free(c->phys);
         free(c->ctrl);
         c->phys = c->phys2 = c->ctrl = NULL;
