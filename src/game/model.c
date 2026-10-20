@@ -205,8 +205,42 @@ NrAsset* Asset_Find(uint32_t type, int id)
     return NULL;
 }
 
+/* Sombras cuadradas (Pool_Alloc(0x30, 2) en el original: se van con la carrera) */
+#define SHADOW_QUADS 64
+static uint32_t s_shadowQuads[SHADOW_QUADS][12];
+static int      s_numShadowQuads;
+
+/* 8001309c: sombra 3DSD de un rectangulo plano con la planta de la caja del modelo (bbox +8: centro x, y, z, ?,
+ * medio ancho x, ?, medio largo z): 4 vertices y una cara plana (bit 0x80) */
+uint8_t* Model_MakeShadowQuad(const ModelHdr* m)
+{
+    if (!m || !m->bbox || s_numShadowQuads >= SHADOW_QUADS)
+        return NULL;
+    uint8_t* q = (uint8_t*)s_shadowQuads[s_numShadowQuads++];
+    memset(q, 0, 0x30);
+    const int16_t* b = (const int16_t*)(m->bbox + 8);
+    int16_t x0 = (int16_t)(b[0] - b[3]), x1 = (int16_t)(b[0] + b[3]);
+    int16_t z0 = (int16_t)(b[2] - b[5]), z1 = (int16_t)(b[2] + b[5]);
+    const int16_t v[4][2] = { { x0, z0 }, { x0, z1 }, { x1, z1 }, { x1, z0 } };
+    q[8] = 4;    /* vertices */
+    q[9] = 1;    /* caras */
+    *(uint32_t*)(q + 4) = (uint32_t)(uintptr_t)(q + 0x2c);
+    for (int k = 0; k < 4; k++)
+    {
+        int16_t* s = (int16_t*)(q + 0xc + k * 8);
+        s[0] = v[k][0];
+        s[2] = v[k][1];
+    }
+    q[0x2c] = 0x80;
+    q[0x2d] = 1;
+    q[0x2e] = 2;
+    q[0x2f] = 3;
+    return q;
+}
+
 void Asset_ClearRegistry(void)
 {
+    s_numShadowQuads = 0;
     while (s_registry)
     {
         NrAsset* n = s_registry->next;

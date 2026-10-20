@@ -410,7 +410,7 @@ void Obj_Init(GfxObj* o, ModelHdr* m)
             o->envColor = 0x404040;
         }
         if (m->shadow)
-            o->flags |= 0x10;   /* TODO: FUN_8001309c crea una sombra cuadrada si el modelo no trae 3DSD */
+            o->flags |= 0x10;   /* (con la bandera 0x80000 de la entidad, la cuadrada de 8001309c: actor.c) */
     }
     o->shadowN[1] = 0x1000;
     o->light = &g_DefaultLight;
@@ -493,6 +493,33 @@ int Render_SphereInFrustum(const int16_t* c, int r)
     return Camera_SphereInFrustum(c, r);
 }
 
+/* 80016190: vertices (SVECTOR) a pantalla con la matriz cargada; shift = nivel de detalle (lejos, todo >> 4).
+ * s_clip: 1 detras de la camara, 0x40 / 0x80 dentro de la pantalla en x / y */
+static void Render_TransformVerts(const int16_t* v, int n, int shift)
+{
+    if (n > MAX_VERTS)
+        n = MAX_VERTS;
+    for (int i = 0; i < n; i++, v += 4)
+    {
+        Gte_SetV0(v[0] >> shift, v[1] >> shift, v[2] >> shift);
+        doCOP2(GTE_OP_RTPS);
+        uint32_t flag = CFC2(31);
+        uint8_t clip = 1;
+        if ((flag & 0x1c66000) == 0)
+        {
+            uint32_t sxy = MFC2(14);
+            s_scrZ[i] = (int16_t)(MFC2_S(27) >> (4 - shift));
+            s_scrXY[i] = sxy;
+#if USE_PGXP
+            s_preciseX[i] = g_FP_SXYZ2.x;
+            s_preciseY[i] = g_FP_SXYZ2.y;
+#endif
+            clip = (uint8_t)(Wide_OnScreenX((int16_t)sxy) << 6 | ((sxy >> 16) < 2 * 120u) << 7);
+        }
+        s_clip[i] = clip;
+    }
+}
+
 /* 800162d4: visibilidad, vertices a pantalla y color de cada normal */
 static int Render_PrepareObject(GfxObj* o)
 {
@@ -513,30 +540,8 @@ static int Render_PrepareObject(GfxObj* o)
 
     int n;
     const int16_t* v = (const int16_t*)Model_FrameVerts(m, f, &n);
-    if (n > MAX_VERTS)
-        n = MAX_VERTS;
     Gte_SetTrans(o->viewPos[0] >> lod, -o->viewPos[1] >> lod, o->viewPos[2] >> lod);
-
-    /* 80016190 */
-    for (int i = 0; i < n; i++, v += 4)
-    {
-        Gte_SetV0(v[0] >> lod, v[1] >> lod, v[2] >> lod);
-        doCOP2(GTE_OP_RTPS);
-        uint32_t flag = CFC2(31);
-        uint8_t clip = 1;
-        if ((flag & 0x1c66000) == 0)
-        {
-            uint32_t sxy = MFC2(14);
-            s_scrZ[i] = (int16_t)(MFC2_S(27) >> (4 - lod));
-            s_scrXY[i] = sxy;
-#if USE_PGXP
-            s_preciseX[i] = g_FP_SXYZ2.x;
-            s_preciseY[i] = g_FP_SXYZ2.y;
-#endif
-            clip = (uint8_t)(Wide_OnScreenX((int16_t)sxy) << 6 | ((sxy >> 16) < 2 * 120u) << 7);
-        }
-        s_clip[i] = clip;
-    }
+    Render_TransformVerts(v, n, lod);
 
     /* luz: direcciones al espacio del objeto (sin traslacion) */
     Light* l = o->light;
@@ -744,9 +749,145 @@ static void Render_EmitPrims(const GfxObj* o, int mirror)
     }
 }
 
+/* ---------------------------------------------------------------- sombras */
+
+/* 80014c9c: matriz de la sombra. Y = la normal del suelo n (4.12); X y Z = los ejes del objeto aplanados sobre el
+ * plano del suelo: -(n x (n x X)) = X - n (n . X) (dos OP de la GTE, con >> 12) */
+static void Shadow_Matrix(const int16_t* n, const int* rot, int* out)
+{
+    int nx = n[0], ny = n[1], nz = n[2];
+    for (int col = 0; col < 3; col += 2)   /* X (columna 0) y Z (columna 2) */
+    {
+        int ax = rot[col * 3] >> 4, ay = rot[col * 3 + 1] >> 4, az = rot[col * 3 + 2] >> 4;
+        /* t = n x a; u = n x t */
+        int tx = (ny * az - nz * ay) >> 12, ty = (nz * ax - nx * az) >> 12, tz = (nx * ay - ny * ax) >> 12;
+        int ux = (ny * tz - nz * ty) >> 12, uy = (nz * tx - nx * tz) >> 12, uz = (nx * ty - ny * tx) >> 12;
+        out[col * 3] = -ux << 4;
+        out[col * 3 + 1] = -uy << 4;
+        out[col * 3 + 2] = -uz << 4;
+    }
+    out[3] = nx << 4;
+    out[4] = ny << 4;
+    out[5] = nz << 4;
+}
+
+/* 80014d90: la sombra 3DSD del modelo aplanada sobre el suelo (altura +0x4C * 16, normal +0x4E), en gris
+ * sustractivo (modo 0xE1000640): mas clara cuanto mas alto esta el objeto y nada a mas de 0x400 sobre el suelo.
+ * 3DSD: +4 caras, +8 n vertices, +9 n caras, +0xC vertices; cara = 4 indices (bits 0-5), bit 0x80 del primero
+ * plana, bit 0x40 de cada uno: ese vertice oscuro (si no, negro = sin restar, el borde se difumina). */
+static void Obj_DrawShadow(GfxObj* o)
+{
+    const uint8_t* sh = o->model->shadow;
+    int h = (int)((uint32_t)(o->pos[1] - o->shadowY * 0x10) * 0x1000) >> 16;
+    if (h < -0x10)
+        return;
+    int k = 0x60 - (h * 0x180 >> 11);
+    if (k < 0)
+        return;
+    uint32_t g = (uint32_t)(k >> 1);
+    g |= g << 8 | g << 16;
+    int m[12], v[12];
+    Shadow_Matrix(o->shadowN, o->rot, m);
+    m[9] = o->pos[0] - g_Camera.pos[0];
+    m[10] = o->shadowY * 0x10 - g_Camera.pos[1];
+    m[11] = o->pos[2] - g_Camera.pos[2];
+    Gte_LoadColumns(g_Camera.view);
+    Gte_RotateVectors(m, v, 4);
+    Gte_LoadColumns(v);
+    int shift = v[11] + o->radius >= 0x7000 ? 4 : 0;
+    Gte_SetTrans(v[9] >> shift, -v[10] >> shift, v[11] >> shift);
+    int nv = sh[8], nf = sh[9];
+    Render_TransformVerts((const int16_t*)(sh + 0xc), nv, shift);
+    const uint8_t* f = (const uint8_t*)(uintptr_t)*(const uint32_t*)(sh + 4);
+    for (int fi = 0; fi < nf; fi++, f += 4)
+    {
+        int i0 = f[0] & 0x3f, i1 = f[1] & 0x3f, i2 = f[2] & 0x3f, i3 = f[3] & 0x3f;
+        if (i0 >= nv || i1 >= nv || i2 >= nv || i3 >= nv)
+            continue;
+        uint8_t fl = s_clip[i0] | s_clip[i1] | s_clip[i2] | s_clip[i3];
+        if ((fl & 1) || fl != 0xc0)
+            continue;
+        int depth = ((int)s_scrZ[i0] + s_scrZ[i1] + s_scrZ[i2] + s_scrZ[i3]) >> 2;
+        uint32_t p0 = s_scrXY[i0], p1 = s_scrXY[i1], p2 = s_scrXY[i2], p3 = s_scrXY[i3];
+        int quad = i2 != i3;
+        const int order[4] = { i0, i1, i3, i2 };
+        for (int j = 0; j < 4; j++)
+            StorePreciseXY(j, order[j]);
+        if (f[0] & 0x80)
+        {
+            if (!quad)
+            {
+                POLY_F3* p = (POLY_F3*)Gfx_AllocPrim(sizeof(POLY_F3));
+                if (!p)
+                    return;
+                setPolyF3(p);
+                setSemiTrans(p, 1);
+                setXY3(p, SX(p0), SY(p0), SX(p1), SY(p1), SX(p3), SY(p3));
+                APPLY_PRECISE3(p);
+                setRGB0(p, g & 0xff, g & 0xff, g & 0xff);
+                Gfx_AddPrimDepthPgxp(depth, p, 0xffff);
+            }
+            else
+            {
+                POLY_F4* p = (POLY_F4*)Gfx_AllocPrim(sizeof(POLY_F4));
+                if (!p)
+                    return;
+                setPolyF4(p);
+                setSemiTrans(p, 1);
+                setXY4(p, SX(p0), SY(p0), SX(p1), SY(p1), SX(p3), SY(p3), SX(p2), SY(p2));
+                APPLY_PRECISE4(p);
+                setRGB0(p, g & 0xff, g & 0xff, g & 0xff);
+                Gfx_AddPrimDepthPgxp(depth, p, 0xffff);
+            }
+        }
+        else
+        {
+            uint32_t c0 = f[0] & 0x40 ? g : 0, c1 = f[1] & 0x40 ? g : 0, c2 = f[2] & 0x40 ? g : 0;
+            uint32_t c3 = f[3] & 0x40 ? g : 0;
+            if (!quad)
+            {
+                POLY_G3* p = (POLY_G3*)Gfx_AllocPrim(sizeof(POLY_G3));
+                if (!p)
+                    return;
+                setPolyG3(p);
+                setSemiTrans(p, 1);
+                setXY3(p, SX(p0), SY(p0), SX(p1), SY(p1), SX(p3), SY(p3));
+                APPLY_PRECISE3(p);
+                setRGB0(p, c0 & 0xff, c0 & 0xff, c0 & 0xff);
+                setRGB1(p, c1 & 0xff, c1 & 0xff, c1 & 0xff);
+                setRGB2(p, c3 & 0xff, c3 & 0xff, c3 & 0xff);
+                Gfx_AddPrimDepthPgxp(depth, p, 0xffff);
+            }
+            else
+            {
+                POLY_G4* p = (POLY_G4*)Gfx_AllocPrim(sizeof(POLY_G4));
+                if (!p)
+                    return;
+                setPolyG4(p);
+                setSemiTrans(p, 1);
+                setXY4(p, SX(p0), SY(p0), SX(p1), SY(p1), SX(p3), SY(p3), SX(p2), SY(p2));
+                APPLY_PRECISE4(p);
+                setRGB0(p, c0 & 0xff, c0 & 0xff, c0 & 0xff);
+                setRGB1(p, c1 & 0xff, c1 & 0xff, c1 & 0xff);
+                setRGB2(p, c3 & 0xff, c3 & 0xff, c3 & 0xff);
+                setRGB3(p, c2 & 0xff, c2 & 0xff, c2 & 0xff);
+                Gfx_AddPrimDepthPgxp(depth, p, 0xffff);
+            }
+        }
+        /* modo sustractivo delante en la tabla (se dibuja antes que el poligono) */
+        DR_TPAGE* t = (DR_TPAGE*)Gfx_AllocPrim(sizeof(DR_TPAGE));
+        if (!t)
+            return;
+        setDrawTPage(t, 1, 1, 0x40);
+        Gfx_AddPrimDepth(depth, t);
+    }
+}
+
 /* 80015f4c + 80015280: matrices respecto a la camara (si esta a menos de 0x70000) y dibujo */
 void Render_DrawList(int mirror)
 {
+    GfxObj* near[64];
+    int numNear = 0;
     for (int k = 0; k < s_listCount; k++)
     {
         GfxObj* o = s_list[k];
@@ -771,7 +912,12 @@ void Render_DrawList(int mirror)
         Gte_SetTrans(o->viewPos[0], -o->viewPos[1], o->viewPos[2]);
         if (Render_PrepareObject(o))
             Render_EmitPrims(o, mirror ? -1 : 0);
+        near[numNear++] = o;
     }
+    /* 80014c24: las sombras de los cercanos que la tienen (bandera 0x10), visibles o no */
+    for (int k = 0; k < numNear; k++)
+        if ((near[k]->flags & 0x10) && near[k]->model->shadow)
+            Obj_DrawShadow(near[k]);
 }
 
 void Render_LoadObjectMatrix16(const int* rot, const int* pos)

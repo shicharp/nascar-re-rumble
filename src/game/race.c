@@ -139,14 +139,23 @@ void Race_DrawProgress(void)
 static void Cars_RegisterModels(void)
 {
     for (int i = 0; i < g_RaceGrid.count; i++)
+    {
+        uint8_t* quad = NULL;   /* 8001309c con la caja del primer modelo, para los que no traen 3DSD */
         for (int k = 1; k < 5; k++)
         {
             NrAsset* a = Asset_Find(ASSET_Cobj, 10000 + i * 10 + k);
             if (!a || a->obj)
                 continue;
-            a->obj = Model_Register(a->data, a->size, -0xe - g_RaceGrid.car[i].playerNum);
-            /* TODO: Model_MakeShadowQuad 8001309c para los que no traen 3DSD */
+            ModelHdr* m = Model_Register(a->data, a->size, -0xe - g_RaceGrid.car[i].playerNum);
+            a->obj = m;
+            if (!m)
+                continue;
+            if (!quad)
+                quad = Model_MakeShadowQuad(m);
+            if (!m->shadow)
+                m->shadow = quad;
         }
+    }
     for (int id = 20001; id < 20010; id++)
     {
         NrAsset* a = Asset_Find(ASSET_Cobj, id);

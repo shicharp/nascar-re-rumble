@@ -301,6 +301,14 @@ static void Actor_InitCommon(Actor* a, const ActorDef* d)
     {
         Obj_Init(&a->obj, Actor_ResModel(a, 0));
         a->model2 = Actor_ResModel(a, 1);
+        /* 800138f0: con 0x80000 tiene sombra aunque el modelo no la traiga (cuadrada) */
+        if ((a->flags2c & 0x80000) && a->obj.model)
+        {
+            if (!a->obj.model->shadow)
+                a->obj.model->shadow = Model_MakeShadowQuad(a->obj.model);
+            if (a->obj.model->shadow)
+                a->obj.flags |= 0x10;
+        }
     }
     memcpy(a->obj.pos, t + 8, sizeof(a->obj.pos));
     a->tpos.seg = 0xff;
