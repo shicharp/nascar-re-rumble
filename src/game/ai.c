@@ -6,7 +6,7 @@
  *   (< 0 freno), +0x1C/+0x1E velocidad maxima (0xB4), +0x20 velocidad deseada, +0x22 rumbo al objetivo,
  *   +0x24..+0x2E nodos (anterior, salida, destino y los 3 siguientes), +0x30 tiempo en el tramo, +0x34 marcha
  *   atras, +0x38 tiempo lento, +0x3C tiempo hasta la proxima burla, +0x40 fisica, +0x44 ruedas, +0x274 objetivo.
- * Pendiente: actores y poderes (8002d4b0 solo devuelve "nada"). */
+ * Actores cercanos (cajas de poder y obstaculos): Ai_FindActors 8002d4b0. */
 #include <stdlib.h>
 #include <string.h>
 #include "nr.h"
@@ -23,6 +23,7 @@
 #include "snd.h"
 #include "pause.h"
 #include "tvcam.h"
+#include "actor.h"
 
 static inline int Min_(int a, int b) { return a < b ? a : b; }
 
@@ -52,6 +53,17 @@ static int Wrap12(int a)
     if (a > 0x800)
         a -= 0x1000;
     return a;
+}
+
+/* num / den en 16.16 como el original (num * (2^31 / (den >> 1)) >> 16, con los signos aparte) */
+static int Ai_Frac(int num, int den)
+{
+    int neg = (num < 0) != (den < 0);
+    uint32_t n = (uint32_t)(num < 0 ? -num : num), d = (uint32_t)(den < 0 ? -den : den) >> 1;
+    if (!d)
+        return 0;
+    uint32_t r = (uint32_t)(((uint64_t)n * (0x80000000u / d)) >> 16);
+    return neg ? -(int)r : (int)r;
 }
 
 /* 0x80000000 / (n >> 1): inverso para normalizar con un producto >> 16 */
@@ -416,7 +428,62 @@ static RaceCar* Ai_FindCars(RaceCar* e, RaceCar** ahead, RaceCar** behind, int* 
     return *ahead;
 }
 
-/* 8002de7c: objetivo de la IA: la trazada, o adelantar / bloquear a otro coche */
+/* 8002d4b0: entre los actores de la celda del coche y las dos siguientes (curva >> 2), a menos de 0x18000 en el
+ * plano y a +-0xFF de su rumbo: la caja de poder libre mas cercana (+0xF4 < 0, sin el bit 1 de +0xF6, y solo si no
+ * lleva poder) y el obstaculo mas cercano: un objeto soltado por los poderes (0xD) que no es suyo o ya esta armado
+ * (+0xE4 dueno, +0xE2 seguro; con las ruedas grandes, 0x33A & 4, no) o un objeto de la pista que choca (0xB con
+ * 0x2000). El original recorre las listas por celda (80061c40); el port, todos los actores. */
+static void Ai_FindActors(const uint8_t* c, Actor** box, int* boxD, Actor** obst, int* obstD)
+{
+    const RaceCar* e = (const RaceCar*)ENT(c);
+    *box = *obst = NULL;
+    if (!e || e->tpos.curve < 0)
+        return;
+    int cells = g_Track && g_Track->numCurve > 0 ? (g_Track->numCurve >> 2) + 1 : 1;
+    int base = e->tpos.curve >> 2;
+    for (int k = 0; k < 3; k++)
+    {
+        int cell = base + k >= cells ? base + k - cells : base + k;
+        for (Actor* a = g_Actors; a; a = a->next)
+        {
+            if (a->handle <= 0 || a->tpos.seg == 0xff || (a->tpos.curve >> 2) != cell)
+                continue;
+            int t = a->type;
+            if (t != 0x16 && t != 0x0d && t != 0x0b)
+                continue;
+            int d[2] = { a->obj.pos[0] - e->obj.pos[0], a->obj.pos[2] - e->obj.pos[2] };
+            int dist = Vec_ApproxLen2(d);
+            if (dist > 0x18000)
+                continue;
+            if (dist > 1)
+            {
+                int ang = (I16(c, 0x432) - (Math_Atan2(d[0], d[1]) & 0xfff)) & 0xfff;
+                if (ang > 0x800)
+                    ang -= 0x1000;
+                if (Abs_(ang) > 0xff)
+                    continue;
+            }
+            if (t == 0x0d || t == 0x0b)
+            {
+                int hit = t == 0x0d ? !(U16(c, 0x33a) & 4) && (A32(a, 0xe4) != e->handle || A16(a, 0xe2) < 1)
+                                    : (a->flags2c & 0x2000) != 0;
+                if (hit && (!*obst || dist < *obstD))
+                {
+                    *obst = a;
+                    *obstD = dist;
+                }
+            }
+            else if (A16(a, 0xf4) < 0 && I8(c, 0x338) < 0 && !(AU16(a, 0xf6) & 1) && (!*box || dist < *boxD))
+            {
+                *box = a;
+                *boxD = dist;
+            }
+        }
+    }
+}
+
+/* 8002de7c: objetivo de la IA: una caja de poder cercana, esquivar un obstaculo, la trazada, o adelantar / bloquear
+ * a otro coche */
 static void Ai_UpdateTarget(RaceCar* e, int dt)
 {
     uint8_t* ctrl = CTRL(e);
@@ -429,11 +496,82 @@ static void Ai_UpdateTarget(RaceCar* e, int dt)
         return;
     const uint8_t* node = NODEP(net, to);
     int lane = (NR_Read16(node + 4) & 0x3f) << 9;
-    /* 8002d4b0 (poderes y actores cercanos): pendiente, sin actores */
+    Actor *box, *obst;
+    int boxD = 0, obstD = 0;
+    Ai_FindActors(c, &box, &boxD, &obst, &obstD);   /* 8002d4b0 */
+    if (box && boxD > 0x83 && boxD < (int)((unsigned)U8(ctrl, 0xd) << 6 | 0x8000))
+    {
+        /* a por la caja (0x8000) */
+        if (I8(c, 0x338) != 0 && I16(c, 0x33c) > 0x40)
+            I16(c, 0x33c) = (int16_t)(Rand_A() & 0x3f);
+        I32(ctrl, 0x274) = box->obj.pos[0];
+        I32(ctrl, 0x278) = (int)(int16_t)NR_Read16(node + 8) << 8;
+        I32(ctrl, 0x27c) = box->obj.pos[2];
+        U32(ctrl, 4) |= 0x8000;
+        return;
+    }
     U32(ctrl, 4) &= 0xffff0bff;
+    if (obst && obstD > 0x83 && U8(ctrl, 0xc) == 0 && obstD < U8(ctrl, 0xd) * 0x40 + 0x6666)
+    {
+        int d[2] = { obst->obj.pos[0] - e->obj.pos[0], obst->obj.pos[2] - e->obj.pos[2] };
+        int ang = ((Math_Atan2(d[0], d[1]) & 0xfff) - I16(c, 0x432)) & 0xfff;
+        if (ang > 0x800)
+            ang -= 0x1000;
+        if (Abs_(ang) < 0x1b8)
+        {
+            /* esquivar (0x4000): el punto de la trazada a la distancia del obstaculo, desplazado hacia el lado
+             * contrario medio carril. Como en el original, el objetivo queda relativo al coche (no se le suma su
+             * posicion: parece un fallo del juego) */
+            int r[2] = { ((int)(int16_t)NR_Read16(node + 6) << 8) - e->obj.pos[0],
+                         ((int)(int16_t)NR_Read16(node + 10) << 8) - e->obj.pos[2] };
+            int len = Vec_ApproxLen2(r);
+            int k = Ai_Frac(obstD, len);
+            r[0] = (int)(((int64_t)r[0] * k) >> 16);
+            r[1] = (int)(((int64_t)r[1] * k) >> 16);
+            int side = lane >> 4, ox = side, oz = side;
+            if (obst->obj.pos[0] - r[0] > 0)
+                ox = -side;
+            if (obst->obj.pos[2] - r[1] > 0)
+                oz = -side;
+            I32(ctrl, 0x274) = r[0] + ox;
+            I32(ctrl, 0x278) = (int)(int16_t)NR_Read16(node + 8) << 8;
+            I32(ctrl, 0x27c) = r[1] + oz;
+            U32(ctrl, 4) |= 0x4000;
+            return;
+        }
+    }
     RaceCar *ahead, *behind;
     int aheadD = 0, behindD = 0;
     RaceCar* other = Ai_FindCars(e, &ahead, &behind, &aheadD, &behindD);
+    if (other)
+    {
+        /* cuando usar el poder que lleva (+0x338; cuenta atras +0x33C): pronto si su objetivo (el de detras con 0 / 4,
+         * el de delante con 7, el mas cercano con 9 / 10 si esta a menos de 0xF5B) no es de su equipo; si lo es, lo
+         * retrasa 0x5DC */
+        int mode = -1;
+        switch (I8(c, 0x338))
+        {
+        case 0:
+        case 4:
+        case 7:
+        {
+            RaceCar* t = I8(c, 0x338) == 7 ? ahead : behind;
+            mode = !t || t->team != e->team ? 0 : 1;
+            break;
+        }
+        case 9:
+        case 10:
+            if (other->team != e->team)
+                mode = Abs_(other == ahead ? aheadD : behindD) > 0xf5b ? -1 : 0;
+            else
+                mode = 1;
+            break;
+        }
+        if (mode == 0 && I16(c, 0x33c) > 0x80)
+            I16(c, 0x33c) = (int16_t)(Rand_A() & 0x7f);
+        else if (mode == 1 && I16(c, 0x33c) < 300)
+            I16(c, 0x33c) = (int16_t)(I16(c, 0x33c) + 0x5dc);
+    }
     if (other && !(node[0] & 1))
     {
         if (ahead == other)
