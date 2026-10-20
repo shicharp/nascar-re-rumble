@@ -113,7 +113,8 @@ void Actors_PostUpdate(void);                           /* 80048e84: mensaje 4 a
 int  Actors_OnScriptPool(NrAsset* as);                  /* 80049628: el RPNS de la pista */
 void Actors_Activate(void);                             /* 80049b74: sonidos de ambiente y guion del cercano */
 void Actors_RunOrders(void);                            /* 80048f78: ordenes genericas de los guiones */
-int  Actor_PushCmd(Actor* a, int cmd, int arg);         /* 80049788 */
+int  Actor_PushCmd(Actor* a, int cmd, int arg);         /* 80049788 (llena: a la cola de reintento) */
+void Actors_RetryOrders(int dt);                        /* 800497f4 */
 
 /* Mensaje 0xE: dano directo (orden 0x3C) */
 typedef struct

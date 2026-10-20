@@ -4,6 +4,9 @@
 #include "carphys_int.h"
 #include "snd.h"
 #include "hud.h"
+#include "cnet.h"
+#include "actor.h"
+#include "racecar.h"
 
 /* ---------------------------------------------------------------- controles del coche */
 
@@ -247,6 +250,31 @@ static void Pad_Edge(uint32_t bits, uint8_t* bind)
         *st = 3;
 }
 
+/* 8005fed8: ordenes de los guiones al coche humano (grupo 0xFF): 0x15 / 0x14 apagan / encienden el nodo arg de la
+ * red de la salida (DAT_800af7d4; bit 1: la IA solo toma esos nodos con habilidad > 0x37). Las mandan los guiones
+ * de casi todas las pistas, p. ej. al romper un obstaculo que abre un atajo. */
+static void Human_Orders(RaceCar* e)
+{
+    const uint8_t* net = g_NumNets > 0 ? g_Nets[0] : NULL;
+    for (int i = 0; i < 4;)
+    {
+        int c = e->pad14[i * 2], arg = e->pad14[i * 2 + 1];
+        if (c == 0)
+            return;
+        if (c != 0x14 && c != 0x15)
+        {
+            i++;
+            continue;
+        }
+        if (net && arg < Cnet_Count(net))
+        {
+            uint8_t* n = (uint8_t*)net + 4 + arg * 12;
+            n[0] = (uint8_t)(c == 0x15 ? n[0] | 2 : n[0] & 0xfd);
+        }
+        Actor_RemoveCmd((Actor*)e, i);   /* (la cola esta en +0x14 tambien en los coches) */
+    }
+}
+
 /* Humans_Update 8005ffbc (parte): tiempo con un poder sin usar (+0x68, para el aviso del marcador), R2 (+0x34,
  * usar el poder) y arriba en la cruceta (+0x4C, la bocina 80041be8(5)) */
 void Human_UpdateButtons(RaceCar* e, int dt)
@@ -254,6 +282,8 @@ void Human_UpdateButtons(RaceCar* e, int dt)
     uint8_t* ctrl = e->ctrl;
     if (I32(ctrl, 0x68) >= 0)
         I32(ctrl, 0x68) += dt;
+    if (e->pad14[0])
+        Human_Orders(e);   /* 8005fed8 */
     Pad_Edge(U32(ctrl, 8), B_(ctrl) + 0x34);
     Pad_Edge(U32(ctrl, 8), B_(ctrl) + 0x4c);
     if (I32(ctrl, 0x50) == 0 && I32(PTR(ctrl, 0), 0x330) == 0)

@@ -432,42 +432,105 @@ int Actors_OnScriptPool(NrAsset* as)
     return 1;
 }
 
-/* 80049788: la orden entra en el primer hueco libre de la cola (+0x14). Llena, el original la guarda en
- * DAT_800b5980 (16 huecos, 600 tics) para reintentarla; el port la pierde y lo apunta */
-int Actor_PushCmd(Actor* a, int cmd, int arg)
+/* Cola de reintento de las ordenes (DAT_800b5980, mascara DAT_800af878): 16 huecos {orden, argumento, 600 tics,
+ * entidad, su numero}. El original guarda el puntero y mira si su numero sigue siendo el mismo; el port busca la
+ * entidad por el numero (la memoria de una liberada no se puede leer). */
+typedef struct
 {
+    uint8_t cmd, arg;
+    int16_t timer;
+    int     handle;
+} CmdRetry;
+
+static CmdRetry s_retry[16];
+static uint32_t s_retryMask;
+
+/* las entidades vivas con ese numero: actores y coches (en el original estan en la misma lista) */
+static uint8_t* Ent_ByHandle(int handle)
+{
+    for (Actor* a = g_Actors; a; a = a->next)
+        if (a->handle == handle)
+            return (uint8_t*)a;
+    for (int i = 0; i < g_NumCars; i++)
+        if (g_Cars[i].handle == handle)
+            return (uint8_t*)&g_Cars[i];
+    return NULL;
+}
+
+/* 80049788: la orden entra en el primer hueco libre de la cola (+0x14, comun a actores y coches). Llena, con
+ * 'retry' va a la cola de reintento (8004971c), que la vuelve a intentar cada 600 tics. */
+static int Ent_PushCmd(uint8_t* e, int cmd, int arg, int retry)
+{
+    uint8_t* q = e + 0x14;
     for (int i = 0; i < 4; i++)
-        if (a->cmds[i * 2] == 0)
+        if (q[i * 2] == 0)
         {
-            a->cmds[i * 2] = (uint8_t)cmd;
-            a->cmds[i * 2 + 1] = (uint8_t)arg;
+            q[i * 2] = (uint8_t)cmd;
+            q[i * 2 + 1] = (uint8_t)arg;
             return 1;
         }
-    NR_Log("[guion] cola de ordenes llena en el actor %d (orden 0x%x %d)\n", a->id, cmd, arg);
-    return 0;
+    if (!retry || s_retryMask == 0xffff)
+        return 0;
+    int k = 0;
+    while (s_retryMask & (1u << k))
+        k++;
+    s_retry[k].cmd = (uint8_t)cmd;
+    s_retry[k].arg = (uint8_t)arg;
+    s_retry[k].timer = 600;
+    s_retry[k].handle = *(const int*)(e + 0xc);
+    s_retryMask |= 1u << k;
+    if (Script_LogOn())
+        NR_Log("[guion] cola llena en la entidad %d: orden 0x%x %d al reintento %d\n", NR_Read16(e + 0x1c), cmd, arg, k);
+    return 1;
 }
 
-/* 800498e4 (0x69 no hace nada; 0x7E va a la tabla de los Cfun, DAT_800af858, pendiente) */
+/* 800497f4 (Race_UpdateTime): reintenta cada 600 tics; suelta el hueco si entra o si la entidad ya no existe */
+void Actors_RetryOrders(int dt)
+{
+    for (int k = 0; k < 16; k++)
+    {
+        if (!(s_retryMask & (1u << k)))
+            continue;
+        CmdRetry* r = &s_retry[k];
+        r->timer = (int16_t)(r->timer - dt);
+        if (r->timer < 1)
+        {
+            r->timer = (int16_t)(r->timer + 600);
+            uint8_t* e = Ent_ByHandle(r->handle);
+            if (!e || Ent_PushCmd(e, r->cmd, r->arg, 0))
+                s_retryMask ^= 1u << k;
+        }
+    }
+}
+
+int Actor_PushCmd(Actor* a, int cmd, int arg)
+{
+    return Ent_PushCmd((uint8_t*)a, cmd, arg, 1);
+}
+
+/* 800498e4 (0x69: 8003938c, vacia; 0x7E: indice de la tabla de los Cfun 80046ab4, pero ningun fichero del disco
+ * trae assets Cfun ni hay guiones que la usen: no hace nada) */
 void Actors_CmdById(int id, int cmd, int arg)
 {
-    if (cmd == 0x69)
+    if (cmd == 0x69 || cmd == 0x7e)
         return;
-    if (cmd == 0x7e)
-    {
-        NR_Log("[guion] orden 0x7e (Cfun %d = %d) pendiente\n", id, arg);
-        return;
-    }
     for (Actor* a = g_Actors; a; a = a->next)
         if (a->id == (uint16_t)id && a->handle)
-            Actor_PushCmd(a, cmd, arg);
+            Ent_PushCmd((uint8_t*)a, cmd, arg, 1);
+    for (int i = 0; i < g_NumCars; i++)
+        if (g_Cars[i].id == (uint16_t)id && g_Cars[i].handle)
+            Ent_PushCmd((uint8_t*)&g_Cars[i], cmd, arg, 1);
 }
 
-/* 800499b4 */
+/* 800499b4 (los coches: grupo 0xFF los humanos, 0 la IA) */
 void Actors_CmdByGroup(int group, int cmd, int arg)
 {
     for (Actor* a = g_Actors; a; a = a->next)
         if (a->unk23 == (uint8_t)group && a->handle)
-            Actor_PushCmd(a, cmd, arg);
+            Ent_PushCmd((uint8_t*)a, cmd, arg, 1);
+    for (int i = 0; i < g_NumCars; i++)
+        if (g_Cars[i].unk23 == (uint8_t)group && g_Cars[i].handle)
+            Ent_PushCmd((uint8_t*)&g_Cars[i], cmd, arg, 1);
 }
 
 /* 80049a40 */
@@ -475,7 +538,10 @@ void Actors_CmdByTeam(int team, int cmd, int arg)
 {
     for (Actor* a = g_Actors; a; a = a->next)
         if (a->team == (uint8_t)team && a->handle)
-            Actor_PushCmd(a, cmd, arg);
+            Ent_PushCmd((uint8_t*)a, cmd, arg, 1);
+    for (int i = 0; i < g_NumCars; i++)
+        if (g_Cars[i].team == (uint8_t)team && g_Cars[i].handle)
+            Ent_PushCmd((uint8_t*)&g_Cars[i], cmd, arg, 1);
 }
 
 /* Solo en el port (depuracion): NR_TRIGTEST=1 hace que el coche humano toque cada disparador a los 5 s de carrera
@@ -800,6 +866,7 @@ void Actors_Free(void)
     g_Actors = s_tail = NULL;
     s_nextHandle = 0;
     s_numCsac = 0;                  /* 800605a4 / 800605cc */
+    s_retryMask = 0;                /* 80048d28 */
     Pickup_Reset();
 }
 
