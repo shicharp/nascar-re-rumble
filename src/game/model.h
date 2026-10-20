@@ -16,7 +16,7 @@ typedef struct
     uint32_t  tag;          /* +0x00 'IGD5'; en el garaje, equipo << 4 | clase */
     uint32_t* animTex;      /* +0x04 chunk 4DTA (texturas animadas) */
     uint8_t   pad08[3];
-    int8_t    envCount;     /* +0x0B pasadas de reflejo */
+    uint8_t   envCount;     /* +0x0B normales con reflejo (las primeras; lbu en 800162d4) */
     uint32_t  flags;        /* +0x0C bits 22-23 nivel de mip, 24 4DTA, 25 puntos 3DHS, 30 sombra */
     uint32_t* anim;         /* +0x10 3DTL / AnmD */
     uint8_t*  shadow;       /* +0x14 3DSD */

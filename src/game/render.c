@@ -8,6 +8,7 @@
 #include "gte.h"
 #include "render.h"
 #include "globals.h"
+#include "texslot.h"
 #include "PsyX/PsyX_public.h"
 
 Camera3D g_Camera;
@@ -28,6 +29,7 @@ static uint32_t s_scrXY[MAX_VERTS];
 static int16_t  s_scrZ[MAX_VERTS];
 static uint8_t  s_clip[MAX_VERTS];
 static uint32_t s_color[MAX_VERTS]; /* DAT_800af56c + 0xB18: color iluminado de cada normal */
+static uint16_t s_envUV[MAX_VERTS]; /* DAT_800af56c + 0x800: uv del reflejo de cada normal (u | v << 8) */
 #if USE_PGXP
 /* Coordenadas de pantalla precisas (coma flotante de la GTE emulada): sin el temblor de PS1 */
 static VERTTYPE s_preciseX[MAX_VERTS], s_preciseY[MAX_VERTS];
@@ -520,8 +522,37 @@ static void Render_TransformVerts(const int16_t* v, int n, int shift)
     }
 }
 
+/* 80015a88: uv del mapa de reflejos (pagina 8) de las n primeras normales. d = del objeto a la camara en el espacio
+ * del objeto (4.12); r = 2 (d . n) n - d (el reflejo) pasa al mundo con la rotacion del objeto (la matriz que
+ * carga Gte_LoadColumns) mas 0x1000: u = x / 64 + desplazamiento (1 o 0x81: las dos mitades del mapa), v = z / 64
+ * + 0x81 (la mitad de abajo de la pagina) */
+static void Render_EnvMapUV(const int16_t* nrm, int n, const int16_t* d, int uoff, const int* rot)
+{
+    /* filas de la matriz de la GTE (Gte_LoadColumns: columnas 16.16 con la fila Y negada) */
+    int r0[3] = { rot[0] >> 4, rot[3] >> 4, rot[6] >> 4 }, r2[3] = { rot[2] >> 4, rot[5] >> 4, rot[8] >> 4 };
+    if (n > MAX_VERTS)
+        n = MAX_VERTS;
+    for (int i = 0; i < n; i++, nrm += 4)
+    {
+        int dot = (d[0] * nrm[0] + d[1] * nrm[1] + d[2] * nrm[2]) >> 11;   /* IR0 */
+        int rv[3];
+        for (int k = 0; k < 3; k++)
+        {
+            /* GPL con sf: (-d << 12) + IR0 * n, >> 12; IR con limite de 16 bits */
+            int v = ((-d[k] << 12) + dot * nrm[k]) >> 12;
+            rv[k] = v < -0x8000 ? -0x8000 : v > 0x7fff ? 0x7fff : v;
+        }
+        /* MVMVA (sf, lm): R * r >> 12 + TR (0x1000); lm deja los negativos en 0 */
+        int x = ((r0[0] * rv[0] + r0[1] * rv[1] + r0[2] * rv[2]) >> 12) + 0x1000;
+        int z = ((r2[0] * rv[0] + r2[1] * rv[1] + r2[2] * rv[2]) >> 12) + 0x1000;
+        x = x < 0 ? 0 : x > 0x1f7f ? 0x1f7f : x;
+        z = z < 0 ? 0 : z > 0x1f7f ? 0x1f7f : z;
+        s_envUV[i] = (uint16_t)((uint8_t)((x >> 6) + uoff) | (uint8_t)((z >> 6) - 0x7f) << 8);
+    }
+}
+
 /* 800162d4: visibilidad, vertices a pantalla y color de cada normal */
-static int Render_PrepareObject(GfxObj* o)
+static int Render_PrepareObject(GfxObj* o, int env)
 {
     ModelHdr* m = o->model;
     int f = o->frame;
@@ -585,6 +616,27 @@ static int Render_PrepareObject(GfxObj* o)
         for (int k = 0; k < 3 && i + k < nn; k++)
             s_color[i + k] = MFC2(20 + k);
     }
+    /* reflejos (solo la vista principal con un jugador): las primeras m->envCount normales */
+    if (env && m->envCount > 0)
+    {
+        int len = (int)sqrt((double)c[0] * c[0] + (double)c[1] * c[1] + (double)c[2] * c[2]);   /* Vec_NormalizeShort */
+        SVECTOR cn = { 0, 0, 0, 0 };
+        if (len > 0)
+        {
+            cn.vx = (short)(c[0] * 0x1000 / len);
+            cn.vy = (short)(c[1] * 0x1000 / len);
+            cn.vz = (short)(c[2] * 0x1000 / len);
+        }
+        int16_t d[3];
+        Gte_LoadRows(o->viewRot);
+        Gte_SetTrans(0, 0, 0);
+        Gte_TransformShort(&cn, d, 0, 0);
+        d[0] = (int16_t)-d[0];
+        d[1] = (int16_t)-d[1];
+        d[2] = (int16_t)-d[2];
+        const uint32_t* n0 = (const uint32_t*)(uintptr_t)m->normals[1];
+        Render_EnvMapUV((const int16_t*)(n0 + 1), m->envCount, d, (o->flags & 0x80) ? 0x81 : 1, o->rot);
+    }
     return 2;
 }
 
@@ -634,8 +686,16 @@ static void StorePreciseXY(int k, int v) { (void)k; (void)v; }
 #define SY(v) ((int16_t)((v) >> 16))
 
 /* 80015b74: una primitiva FT3/FT4/GT3/GT4 por cara visible. mirror = -1 invierte la orientacion. */
-static void Render_EmitPrims(const GfxObj* o, int mirror)
+static void Render_EmitPrims(const GfxObj* o, int mirror, uint32_t env)
 {
+    uint32_t envClut = 0, envTPage = 0;
+    if (env && (o->flags & 0x40))
+    {
+        envClut = g_EnvMapUV[o->flags >> 7] >> 16;
+        envTPage = g_EnvMapUV[o->flags >> 7] & 0xffff;
+    }
+    else
+        env = 0;
     const uint32_t* face = o->model->faces + 1;
     int n = (int)o->model->faces[0];
     for (int fi = 0; fi < n; fi++, face += 6)
@@ -745,6 +805,44 @@ static void Render_EmitPrims(const GfxObj* o, int mirror)
                 setcode(p, code);
                 Gfx_AddPrimDepthPgxp(depth, p, pgxp);
             }
+            if (env && (w0 & 0x10000))
+            {
+                /* reflejo: FT3 / FT4 aditiva (pagina 8, tpage 0x2D) con el color +0x54 (doble con el bit 18) y las uv de
+                 * las normales de la cara; despues en la tabla para dibujarse encima de la cara */
+                uint32_t ec = env << ((w0 >> 18) & 1);
+                uint16_t e0 = s_envUV[w5 & 0xff], e1 = s_envUV[(w5 >> 8) & 0xff];
+                uint16_t e2 = s_envUV[w5 >> 24], e3 = s_envUV[(w5 >> 16) & 0xff];
+                if (!quad)
+                {
+                    POLY_FT3* p = (POLY_FT3*)Gfx_AllocPrim(sizeof(POLY_FT3));
+                    if (!p)
+                        return;
+                    setPolyFT3(p);
+                    setSemiTrans(p, 1);
+                    setXY3(p, SX(p0), SY(p0), SX(p1), SY(p1), SX(p3), SY(p3));
+                    APPLY_PRECISE3(p);
+                    setUV3(p, e0 & 0xff, e0 >> 8, e1 & 0xff, e1 >> 8, e2 & 0xff, e2 >> 8);
+                    p->clut = (u_short)envClut;
+                    p->tpage = (u_short)envTPage;
+                    setRGB0(p, ec & 0xff, (ec >> 8) & 0xff, (ec >> 16) & 0xff);
+                    Gfx_AddPrimDepthPgxp(depth, p, pgxp);
+                }
+                else
+                {
+                    POLY_FT4* p = (POLY_FT4*)Gfx_AllocPrim(sizeof(POLY_FT4));
+                    if (!p)
+                        return;
+                    setPolyFT4(p);
+                    setSemiTrans(p, 1);
+                    setXY4(p, SX(p0), SY(p0), SX(p1), SY(p1), SX(p3), SY(p3), SX(p2), SY(p2));
+                    APPLY_PRECISE4(p);
+                    setUV4(p, e0 & 0xff, e0 >> 8, e1 & 0xff, e1 >> 8, e2 & 0xff, e2 >> 8, e3 & 0xff, e3 >> 8);
+                    p->clut = (u_short)envClut;
+                    p->tpage = (u_short)envTPage;
+                    setRGB0(p, ec & 0xff, (ec >> 8) & 0xff, (ec >> 16) & 0xff);
+                    Gfx_AddPrimDepthPgxp(depth, p, pgxp);
+                }
+            }
         }
     }
 }
@@ -813,6 +911,12 @@ static void Obj_DrawShadow(GfxObj* o)
         const int order[4] = { i0, i1, i3, i2 };
         for (int j = 0; j < 4; j++)
             StorePreciseXY(j, order[j]);
+        /* modo sustractivo (0xE1000640) antes en la tabla: se dibuja antes que el poligono */
+        DR_TPAGE* t = (DR_TPAGE*)Gfx_AllocPrim(sizeof(DR_TPAGE));
+        if (!t)
+            return;
+        setDrawTPage(t, 1, 1, 0x40);
+        Gfx_AddPrimDepth(depth, t);
         if (f[0] & 0x80)
         {
             if (!quad)
@@ -874,12 +978,6 @@ static void Obj_DrawShadow(GfxObj* o)
                 Gfx_AddPrimDepthPgxp(depth, p, 0xffff);
             }
         }
-        /* modo sustractivo delante en la tabla (se dibuja antes que el poligono) */
-        DR_TPAGE* t = (DR_TPAGE*)Gfx_AllocPrim(sizeof(DR_TPAGE));
-        if (!t)
-            return;
-        setDrawTPage(t, 1, 1, 0x40);
-        Gfx_AddPrimDepth(depth, t);
     }
 }
 
@@ -910,8 +1008,9 @@ void Render_DrawList(int mirror)
 
         Gte_LoadColumns(o->viewRot);
         Gte_SetTrans(o->viewPos[0], -o->viewPos[1], o->viewPos[2]);
-        if (Render_PrepareObject(o))
-            Render_EmitPrims(o, mirror ? -1 : 0);
+        int env = !mirror && !g_SplitScreen;   /* (DAT_800af708) */
+        if (Render_PrepareObject(o, env))
+            Render_EmitPrims(o, mirror ? -1 : 0, env && o->model->envCount > 0 ? o->envColor : 0);
         near[numNear++] = o;
     }
     /* 80014c24: las sombras de los cercanos que la tienen (bandera 0x10), visibles o no */
