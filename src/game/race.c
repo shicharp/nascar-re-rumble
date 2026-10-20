@@ -309,6 +309,7 @@ void Race_MainLoop(void)
             g_PrevRaceTime = g_RaceTime;
             g_RaceTime += dt;          /* Race_UpdateTime 800269c0 */
             Actors_RetryOrders(dt);    /* 800497f4 */
+            Model_AnimateTextures(dt); /* 8001364c */
             Track_Animate(dt);         /* 80061e94 */
             Script_Tick(dt);           /* 80067834 */
             Actors_Activate();         /* 80049b74 */

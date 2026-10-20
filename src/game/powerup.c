@@ -31,8 +31,11 @@ static int Power_LogOn(void)
     return s_on;
 }
 
+int g_TornadoCount;   /* DAT_800af7bc: tornados en la pista (Race_ResetGlobals 8002cfb0 lo pone a 0) */
+
 void Pickup_Reset(void)
 {
+    g_TornadoCount = 0;
     s_projModel[0] = s_projModel[1] = NULL;
     s_twisterModel = NULL;
 }
@@ -595,8 +598,9 @@ static int Weather_Create(Actor* a, const ActorDef* d)
     WX_PROG(a) = 0;
     if (WX_KIND(a) == 1)
     {
-        a->flags2c |= 0x10000;   /* siempre visible (contador DAT_800af7bc pendiente) */
+        a->flags2c |= 0x10000;   /* siempre visible */
         Fx_QueueImpact(a, 2, NULL, 0, 0x404);   /* tornado: anillos de humo 0x1C */
+        g_TornadoCount++;
     }
     else if (WX_KIND(a) == 2)
         Fx_QueueImpact(a, 2, NULL, 0, 0x417);   /* helada: 0x2F */
@@ -879,8 +883,10 @@ static int Weather_Handler(int msg, Actor* a, intptr_t p1, intptr_t p2)
     case 2:
         return Weather_Create(a, (const ActorDef*)p1);
     case 5:
-        Storm_Free(WX_STORM(a));   /* 80071de4; el tornado descuenta DAT_800af7bc (pendiente) */
+        Storm_Free(WX_STORM(a));   /* 80071de4 */
         WX_STORM(a) = NULL;
+        if (WX_KIND(a) == 1)
+            g_TornadoCount--;
         break;
     case 6:
         Weather_Update(a, (int)p1);

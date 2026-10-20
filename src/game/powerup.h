@@ -24,6 +24,7 @@ struct Actor;
 #define POWER_MYSTERY  8
 
 int  Pickup_Handler(int msg, struct Actor* a, intptr_t p1, intptr_t p2);   /* 8003203c */
+extern int g_TornadoCount;                               /* DAT_800af7bc */
 void Pickup_Reset(void);                                 /* modelos globales DAT_800af7d0 / 7c8 / 7c0 */
 
 int  Power_Duration(int type);                           /* 800aa90c */

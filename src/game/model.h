@@ -48,6 +48,7 @@ NrAsset* Asset_Find(uint32_t type, int id);       /* 80018788 */
 void     Asset_ClearRegistry(void);
 
 int Cobj_OnLoaded(NrAsset* a);                    /* 80013374 */
-uint8_t* Model_MakeShadowQuad(const ModelHdr* m);  /* 8001309c: sombra cuadrada para los modelos sin 3DSD */
+uint8_t* Model_MakeShadowQuad(const ModelHdr* m);
+void Model_AnimateTextures(int dt);                /* 8001364c */  /* 8001309c: sombra cuadrada para los modelos sin 3DSD */
 
 #endif

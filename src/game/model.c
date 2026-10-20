@@ -6,6 +6,7 @@
 #include "frontend.h"
 #include "model.h"
 #include "race.h"
+#include "powerup.h"
 
 static_assert(sizeof(void*) == 4, "los modelos guardan punteros de 32 bits (compilar en Win32)");
 
@@ -203,6 +204,56 @@ NrAsset* Asset_Find(uint32_t type, int id)
         if (a->type == type && a->id == id)
             return a;
     return NULL;
+}
+
+/* 8001364c (Race_UpdateTime): texturas animadas 4DTA. Cada modelo con 4DTA esta en la lista DAT_800af564:
+ * +4 sus caras, +8 n entradas y entradas de 16 bytes: +0 desplazamiento (nivel de mip de la pagina), +1 bits
+ * (1 vaiven), +2 paso en U, +3 fotograma, +4 ultimo fotograma, +5 sentido, +6 cara (bytes desde +4), +8 tics por
+ * fotograma, +0xA cuenta, +0xC las U de sus 4 vertices. Al cambiar de fotograma, U = base + fotograma * paso >> mip.
+ * La tabla de 36 entradas (la del tornado) solo se mueve si hay alguno en la pista. */
+void Model_AnimateTextures(int dt)
+{
+    for (uint32_t* a = s_animTexList; a; a = (uint32_t*)(uintptr_t)a[0])
+    {
+        int n = (int)a[2];
+        if (n == 0x24 && g_TornadoCount == 0)
+            continue;
+        uint8_t* e = (uint8_t*)(a + 3);
+        for (int i = 0; i < n; i++, e += 16)
+        {
+            uint16_t period = *(uint16_t*)(e + 8);
+            *(uint16_t*)(e + 0xa) = (uint16_t)(*(uint16_t*)(e + 0xa) + dt);
+            if (*(uint16_t*)(e + 0xa) <= period)
+                continue;
+            int f = 0;
+            while (period < *(uint16_t*)(e + 0xa))
+            {
+                *(uint16_t*)(e + 0xa) = (uint16_t)(*(uint16_t*)(e + 0xa) - period);
+                f = e[3] + (int8_t)e[5];
+                if (!(e[1] & 1))
+                {
+                    if (f < 0)
+                        f = e[4];
+                    else if (f > e[4])
+                        f = 0;
+                }
+                else if (f < 0 || f > e[4])
+                {
+                    f = f < 0 ? 1 : e[4] - 1;
+                    e[5] = (uint8_t)-(int8_t)e[5];
+                }
+                e[3] = (uint8_t)f;
+                if (period == 0)
+                    break;   /* (solo en el port: el original no sale con un periodo 0) */
+            }
+            uint8_t* face = (uint8_t*)(uintptr_t)a[1] + *(uint16_t*)(e + 6);
+            uint8_t c = (uint8_t)((f * e[2]) >> (e[0] & 31));
+            face[4] = (uint8_t)(e[0xc] + c);
+            face[8] = (uint8_t)(e[0xd] + c);
+            face[0xc] = (uint8_t)(e[0xe] + c);
+            face[0xe] = (uint8_t)(e[0xf] + c);
+        }
+    }
 }
 
 /* Sombras cuadradas (Pool_Alloc(0x30, 2) en el original: se van con la carrera) */
