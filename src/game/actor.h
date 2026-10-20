@@ -8,11 +8,10 @@
  * La entidad conserva la disposicion del original (cabecera de 0xE0 bytes comun con los coches; despues, los
  * datos de cada tipo) porque el codigo portado accede a ella por desplazamientos.
  * Tipos creados: 0x06 objetos que giran (800339b4), 0x0B objetos de la pista (8003421c) y 0x16 cajas de poder
- * (80031854); los poderes crean 0xD (objetos que se sueltan) y 8 (clima) en powerup.c. Pendientes: 0x05
- * (80034e6c, vehiculos que siguen una red, 8004bc80), 0x0E disparadores (80034894); el 0x54 son las camaras de
- * TV (tvcam.c),
- * los generadores Csac (800605f0) y los guiones (80048f78, 80067890). Los objetos sueltos (cuerpos con la fisica
- * de los coches al golpearlos) estan en body.c. */
+ * (80031854), 0x0E disparadores (80034894) y 0x05 vehiculos que siguen una red (80034e6c, vehicle.c); los
+ * poderes crean 0xD (objetos que se sueltan) y 8 (clima) en powerup.c. El 0x54 son las camaras de TV (tvcam.c).
+ * Pendientes: los generadores Csac (800605f0). Los objetos sueltos (cuerpos con la fisica de los coches al
+ * golpearlos) estan en body.c. */
 #ifndef NR_ACTOR_H
 #define NR_ACTOR_H
 
@@ -101,6 +100,8 @@ Actor* Actor_Create(const ActorDef* d);                 /* Entity_Create 800491e
 void   Actor_Destroy(Actor* a);                         /* 80049688 (marca; se libera en Actors_Free) */
 int    Actor_DefaultHandler(int msg, Actor* a, intptr_t p1, intptr_t p2);   /* 8002c894 */
 ModelHdr* Actor_ResModel(const Actor* a, int i);        /* modelo i de la aRSL */
+void   Actor_RemoveCmd(Actor* a, int i);                /* 8002c1a8: quita la orden i de la cola */
+void   Actor_FindTrackPos(Actor* a);                    /* 8002c1e8 */
 void   Actor_UpdateCenter(Actor* a);                    /* 80015928 + 80016784: centro de la caja (+0x64) */
 
 int  Cact_OnLoaded(NrAsset* a);                         /* 8004942c */

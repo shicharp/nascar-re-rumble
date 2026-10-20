@@ -18,6 +18,7 @@
 #include "script.h"
 #include "snd.h"
 #include "globals.h"
+#include "vehicle.h"
 
 static const uint8_t* s_pool;     /* DAT_800af6d8: RPNS de la pista (guiones de las entidades) */
 static int            s_poolSize;
@@ -87,7 +88,7 @@ void Anim_Init(const uint32_t* anim, AnimState* s, int forward, int seq)
 }
 
 /* 8002c1a8: quita la orden i de la cola del guion */
-static void Actor_RemoveCmd(Actor* a, int i)
+void Actor_RemoveCmd(Actor* a, int i)
 {
     for (; i < 3; i++)
     {
@@ -250,7 +251,7 @@ void Actor_UpdateCenter(Actor* a)
 }
 
 /* 8002c1e8: punto de la pista bajo el actor (si no hay suelo, el del nodo de la red mas cercano) */
-static void Actor_FindTrackPos(Actor* a)
+void Actor_FindTrackPos(Actor* a)
 {
     Track_FindSurface(&a->tpos, a->obj.pos, NULL, 1);
     if (a->tpos.curve == -1 && g_NumNets > 0)
@@ -664,7 +665,7 @@ static int Trigger_Match(int kind, int value, const uint8_t* e)
         value &= 1 << (v & 31);
         break;
     case 7:
-        return 0;   /* vehiculos de tipo 2 con ruta (+0x108): pendientes */
+        return 0;   /* entidades de tipo 2 con ruta (+0x108): no hay manejador de ese tipo en este juego */
     case 8:
         v = e[0x22] == 0x12 ? 1 : e[0x22];
         break;
@@ -711,8 +712,7 @@ static int Trigger_Hit(Actor* a, const uint8_t* other)
 {
     TR_TIME(a) = g_RaceTime;
     int otherType = other[0x22];
-    if (TR_FLAGS(a) & 8)
-        NR_Log("[guion] disparador %d: cambio de ruta pendiente\n", a->id);
+    /* 8 (cambio de ruta: el filtro 7 solo acepta entidades de tipo 2, que este juego no crea) no llega a pasar */
     if ((TR_FLAGS(a) & 1) && otherType != 1 && otherType != 0x11)
     {
         Actor* o = (Actor*)other;
@@ -1051,7 +1051,8 @@ static ActorFn Actor_HandlerFor(int type)
     case 0x0b: return Prop_Handler;     /* 800343dc */
     case 0x16: return Pickup_Handler;   /* 8003203c */
     case 0x0e: return Trigger_Handler;  /* 80034894 */
-    default:   return NULL;             /* 5 80034e6c (8 y 0xD los crean los poderes) */
+    case 0x05: return Vehicle_Handler;  /* 80034e6c (vehicle.c) */
+    default:   return NULL;             /* (8 y 0xD los crean los poderes) */
     }
 }
 
@@ -1094,7 +1095,7 @@ int Cact_OnLoaded(NrAsset* as)
     }
     ActorFn fn = Actor_HandlerFor(type);
     if (!fn)
-        return 1;                       /* el tipo 5: pendiente */
+        return 1;
     uint8_t* rb = Cact_FindBlock(as, NR_TAG('a', 'R', 'S', 'L'));
     uint32_t* res = NULL;
     if (rb)

@@ -51,13 +51,13 @@ los coches recogen un poder segun su puesto y lo usan (la IA sola, el jugador co
 turbo, ruedas grandes, embestida, onda expansiva, objetos que se sueltan en la pista, tormenta, helada y
 tornado que persiguen a los rivales) e iconos y avisos en el marcador. Sonido: efectos, motores, bocina, musica
 de la sede y comentarista. Efectos visuales: chispas, destellos y trozos de los choques, humo del escape y
-anillos de humo del tornado, marcas y humo de las ruedas, ondas y cupulas de luz, restos de los objetos, rayos, estelas, coche helado o electrocutado y llamas del escape la nube de la tormenta con su lluvia y sus rayos, las cupulas de las ruedas grandes y de la embestida, y el nivel de detalle de la PS1 (opcional). Sonido de los golpes con su roce en bucle y del turbo. Camaras de TV de la pista al cruzar la meta (orbita y cambios de camara). `--shot` guarda el frame N y sale; `--press "185:down,205:right"` simula
+anillos de humo del tornado, marcas y humo de las ruedas, ondas y cupulas de luz, restos de los objetos, rayos, estelas, coche helado o electrocutado y llamas del escape la nube de la tormenta con su lluvia y sus rayos, las cupulas de las ruedas grandes y de la embestida, y el nivel de detalle de la PS1 (opcional). Sonido de los golpes con su roce en bucle y del turbo. Camaras de TV de la pista al cruzar la meta (orbita y cambios de camara). Vehiculos de la pista que siguen su red (el dirigible de EA Sports, los contenedores de MC3). `--shot` guarda el frame N y sale; `--press "185:down,205:right"` simula
 pulsaciones (para verificar sin intervención; botones: up, down, left, right, cross, circle, triangle, square,
 start, select, l1, r1, l2, r2).
 Variables de depuracion: `NR_LAPS=n` vueltas, `NR_CAMCAR=n` camara en el coche n, `NR_POWER=n` poder n en la
 mano del jugador al salir, `NR_POWERLOG=1` cajas recogidas y poderes usados en el log, `NR_SNDLOG=1` sonidos,
 `NR_FXLOG=1` efectos creados, `NR_FXTEST=clase[,golpe]` crea un efecto en el coche del jugador cada segundo,
-`NR_BODYLOG=1` golpes a los objetos sueltos, `NR_SCRIPTLOG=1` guiones, `NR_TRIGTEST=1` el coche humano toca todos los disparadores,
+`NR_BODYLOG=1` golpes a los objetos sueltos, `NR_SCRIPTLOG=1` guiones, `NR_TRIGTEST=1` el coche humano toca todos los disparadores, `NR_VEHLOG=1` nodos que cruzan los vehiculos de la pista,
 `NR_POWERUPS=n` / `NR_CLASS=n` fuerzan los poderes y la clase de la carrera, `NR_TVLOG=1` camaras de TV, `NR_TVCAM=1` empieza con las camaras de TV (`vN`: la virtual N), `NR_PSXLOD=1`
 niveles de detalle de la PS1 (por defecto, todo con el detalle completo).
 `--viewer` es el visor de páginas Cpag (flechas para cambiar de página).

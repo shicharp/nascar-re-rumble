@@ -7,7 +7,7 @@
  *    cambia nunca a una virtual, 2 rumbo relativo a la direccion del desplazamiento, 4 lateral por el lado
  *    contrario (tipo 6), 0x100 << k excluye la virtual k + 2, 0x1000000 virtual.
  *  - 80072278 + 80071e4c: 8 virtuales en DAT_800af928 (la lista se llena al reves): 0 tipo 8 (en el coche),
- *    1 tipo 9 (helicoptero: sigue a la primera entidad de tipo 5, sin uso), 2 tipo 11 (lateral fija), 3 tipo 10
+ *    1 tipo 9 (helicoptero: entre el coche y la primera entidad de tipo 5), 2 tipo 11 (lateral fija), 3 tipo 10
  *    (perseguidora con muelle; tambien cuando el coche vuela o vuelca), 4 tipo 7 (grua), 5 tipo 3 (rueda
  *    delantera), 6 tipo 6 (lateral), 7 tipo 5 (orbita, la de la llegada).
  *  - 80074118 elige: la camara de pista cuya zona contiene al coche mas cercana (800746a0 / 800739bc / 80074628)
@@ -29,6 +29,7 @@
 #include "ai.h"
 #include "carphys_int.h"
 #include "tvcam.h"
+#include "vehicle.h"
 
 #define TV_VIRTUAL 0x1000000u
 #define TV_NUM_VIRTUAL 8
@@ -51,7 +52,7 @@ typedef struct TvCam
         int32_t i[6];
         int16_t s[12];
     } u;
-    void*    ent;             /* +0x30 del tipo 9 (entidad de tipo 5; el port no las tiene) */
+    void*    ent;             /* +0x30 del tipo 9 (entidad de tipo 5, vehicle.c) */
 } TvCam;
 
 typedef struct
@@ -146,7 +147,7 @@ static TvCam* TvCam_New(const uint8_t* def)
         c->pitch = -0x300;
         break;
     case 9:
-        c->ent = NULL;   /* 80071f10: primera entidad de tipo 5 */
+        c->ent = Vehicle_First();   /* 80071f10: primera entidad de tipo 5 */
         break;
     }
     return c;
@@ -688,12 +689,18 @@ static int TvCam_Chase(int view, TvCam* c, int dt)
     return TvCam_TimeUp(c);
 }
 
-/* 80072c30 (tipo 9): entre la entidad de tipo 5 y el coche (sin ella no mueve la camara) */
+/* 80072c30 (tipo 9): a medio camino entre el vehiculo de tipo 5 y el coche, mirando al coche (sin vehiculo no
+ * mueve la camara). El port vuelve a buscar el vehiculo cada vez: el original guarda el puntero aunque muera. */
 static int TvCam_Heli(int view, TvCam* c)
 {
-    if (!c->ent)
+    Actor* e = c->ent ? Vehicle_First() : NULL;
+    RaceCar* t = TvCam_Target(view);
+    if (!e || !t)
         return 0;
-    (void)view;
+    int eye[3];
+    for (int k = 0; k < 3; k++)
+        eye[k] = e->obj.pos[k] + ((t->obj.pos[k] - e->obj.pos[k]) >> 1);
+    Camera_LookAt(eye, t->obj.pos);
     return TvCam_TimeUp(c);
 }
 
