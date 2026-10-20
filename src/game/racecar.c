@@ -286,13 +286,24 @@ void Race_RestoreCarModels(void)
     }
 }
 
+/* 8005e6f4: el coche que sigue la camara no se ve con la vista dentro del coche (tipo 2) ni con la camara de TV
+ * pegada a el (tipo 8) */
+int RaceCam_CarVisible(int view, const RaceCar* c)
+{
+    if (c != RaceCam_GetTarget(view))
+        return 1;
+    if (TvCam_IsActive(view))
+        return TvCam_CurrentType(view) != 8;
+    return !RaceCam_IsInCar(view);
+}
+
 void Race_AddCarsToDrawList(void)
 {
     Physics_PlaceWheelsAll(0);
     for (int i = 0; i < g_NumCars; i++)
     {
         RaceCar* c = &g_Cars[i];
-        if (!c->obj.model)
+        if (!c->obj.model || !RaceCam_CarVisible(0, c))
             continue;
         GfxObj* wheels = Car_Wheels(c);
         /* 80060190 / 80030f84: modelo segun el nivel de detalle (80013db0); las ruedas solo en los niveles 0 y 1,
@@ -370,8 +381,8 @@ RaceCar* RaceCam_GetTarget(int view)
     return s_views[view & 1].target;
 }
 
-/* 8005ed10 (parte): siguiente vista de persecucion (la de dentro del coche, tipo 2, pendiente). Desde las camaras
- * de TV vuelve a la de persecucion sin avanzar si se pasaria del principio o del final de la lista */
+/* 8005ed10 (parte): siguiente vista (3 de persecucion y la de dentro del coche). Desde las camaras de TV vuelve a
+ * la vista sin avanzar si se pasaria del principio o del final de la lista */
 void RaceCam_CycleView(int view, int dir)
 {
     int m = s_viewMode[view & 1];
@@ -381,12 +392,8 @@ void RaceCam_CycleView(int view, int dir)
         if ((dir == 1 && m == 0) || (dir == -1 && m == 3))
             dir = 0;
     }
-    for (int i = 0; dir && i < 4; i++)
-    {
+    if (dir)
         m = (m + dir + 4) % 4;
-        if (s_presets[m].type == 3)
-            break;
-    }
     s_viewMode[view & 1] = m;
     memset(s_views[view & 1].vel, 0, sizeof(s_views[view & 1].vel));
 }
@@ -461,9 +468,38 @@ static void RaceCam_Desired(const RaceCar* c, const CamPreset* p, int* out)
     out[2] = c->obj.pos[2] + off[1];
 }
 
+/* RaceCam_AvoidWalls 8005d6b8 con limite < 5000 (la cuerda de la persecucion): rayos del coche a dos puntos a
+ * +-0x300 a los lados del ojo (perpendiculares a la direccion coche-ojo); si uno cruza un muro, el ojo avanza hacia
+ * dentro lo que le falta hasta el. Nada si el ojo esta a mas de 0x6000 del coche. */
+static int RaceCam_AvoidWalls(RaceCamView* v, const RaceCar* c)
+{
+    int n[3] = { c->obj.pos[0] - v->eye[0], c->obj.pos[1] - v->eye[1], c->obj.pos[2] - v->eye[2] };
+    if (Vec_ApproxLenMax(n) > 0x6000)
+        return 0;
+    Vec_Normalize(n);
+    int sx = Fix_Mul16(n[2], 0x300), sz = Fix_Mul16(n[0], 0x300);
+    int p[2][3] = { { v->eye[0] - sx, v->eye[1], v->eye[2] + sz }, { v->eye[0] + sx, v->eye[1], v->eye[2] - sz } };
+    int k = 0, w[3], hit[6];   /* Track_RayWall: normal del muro y sus dos extremos */
+    if (!Track_RayWall(c->obj.pos, p[0], w, hit))
+    {
+        k = 1;
+        if (!Track_RayWall(c->obj.pos, p[1], w, hit))
+            return 0;
+    }
+    int e[3] = { hit[0] - c->obj.pos[0], hit[1] - c->obj.pos[1], hit[2] - c->obj.pos[2] };
+    if (Vec_Dot16(e, w) > 0)
+        for (int j = 0; j < 3; j++)
+            w[j] = -w[j];
+    int f[3] = { hit[0] - p[k][0], hit[1] - p[k][1], hit[2] - p[k][2] };
+    Vec_Scale(Vec_Dot16(f, w), w);
+    for (int j = 0; j < 3; j++)
+        v->eye[j] += w[j];
+    return 1;
+}
+
 /* 8005dc98: muelle hacia la posicion deseada, a la distancia de la cuerda y nunca por debajo de suelo +
- * altura. Durante la cuenta atras (y lejos) gira alrededor del coche. Pendiente: techo (80065844) y paredes
- * (8005d6b8). */
+ * altura. Durante la cuenta atras (y lejos) gira alrededor del coche. Al final aparta el ojo de los muros
+ * (8005d6b8). Pendiente: el techo (80065844). */
 static void RaceCam_Spring(RaceCamView* v, const RaceCar* c, int rest, int height, const int* desired, int dt)
 {
     int start = g_RaceTime < 900;
@@ -543,9 +579,10 @@ static void RaceCam_Spring(RaceCamView* v, const RaceCar* c, int rest, int heigh
         for (int k = 0; k < 3; k++)
             v->eye[k] = c->obj.pos[k] + Fix_Mul16(rest, r[k]);
     }
+    RaceCam_AvoidWalls(v, c);   /* 8005d6b8 (limite = la cuerda, < 5000) */
 }
 
-/* 8005f034 (vista de persecucion; la de dentro del coche, tipo 2, pendiente) */
+/* 8005f034: vista de persecucion (muelle) o dentro del coche (tipo 2) */
 void RaceCam_Update(int view, int dt)
 {
     RaceCamView* v = &s_views[view];
@@ -568,6 +605,19 @@ void RaceCam_Update(int view, int dt)
         return;
     }
     const CamPreset* p = &s_presets[s_viewMode[view]];
+    if (p->type == 2)
+    {
+        /* dentro del coche: su matriz (la vista es la traspuesta, 8001802c) y su posicion 0x100 mas alta, nunca a
+         * menos de 0x380 sobre el suelo */
+        int y = c->obj.pos[1] + 0x100, floor = c->obj.shadowY * 0x10 + 0x380;
+        for (int j = 0; j < 3; j++)
+            for (int k = 0; k < 3; k++)
+                g_Camera.view[3 * k + j] = c->obj.rot[3 * j + k];
+        g_Camera.pos[0] = c->obj.pos[0];
+        g_Camera.pos[1] = y < floor ? floor : y;
+        g_Camera.pos[2] = c->obj.pos[2];
+        return;
+    }
     int desired[3];
     RaceCam_Desired(c, p, desired);
     if (!v->init)

@@ -15,6 +15,7 @@ static inline int Fix_Mul16(int a, int b)
 int  Math_SquareRoot12(int x);                  /* sqrt(x) en 20.12 = sqrt(x * 4096) */
 int  Vec_ApproxLen2(const int* v);              /* 8001957c: |(v[0], v[1])| aproximada */
 int  Vec_ApproxLen3(const int* v);              /* 80019608 */
+int  Vec_ApproxLenMax(const int* v);            /* 800194a0: la mayor + (las otras dos) / 4 */
 int  Vec_LenSq16(const int* v);                 /* 80019518: (x*x + y*y + z*z) >> 16 */
 int  Vec_NormalizeLen(int* v);                  /* 80019644: a 16.16 y devuelve la longitud */
 void Vec_Normalize(int* v);                     /* 800184b0: a 16.16 */

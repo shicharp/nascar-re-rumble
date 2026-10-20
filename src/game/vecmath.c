@@ -32,6 +32,24 @@ int Vec_ApproxLen3(const int* v)
     return Vec_ApproxLen2(t);
 }
 
+int Vec_ApproxLenMax(const int* v)
+{
+    int a = abs(v[0]), b = abs(v[1]), d = abs(v[2]);
+    if (a < b)
+    {
+        int t = a;
+        a = b;
+        b = t;
+    }
+    if (a < d)
+    {
+        int t = a;
+        a = d;
+        d = t;
+    }
+    return a + ((b + d) >> 2);
+}
+
 int Vec_LenSq16(const int* v)
 {
     return (int)(((int64_t)v[0] * v[0]) >> 16) + (int)(((int64_t)v[1] * v[1]) >> 16) +

@@ -219,25 +219,6 @@ static void TvCam_SetMatrix(const int* m, const int* pos)
     memcpy(g_Camera.pos, pos, sizeof(g_Camera.pos));
 }
 
-/* 800194a0 */
-static int TvCam_ApproxLen(const int* v)
-{
-    int a = Abs_(v[0]), b = Abs_(v[1]), d = Abs_(v[2]);
-    if (a < b)
-    {
-        int t = a;
-        a = b;
-        b = t;
-    }
-    if (a < d)
-    {
-        int t = a;
-        a = d;
-        d = t;
-    }
-    return a + ((b + d) >> 2);
-}
-
 /* 80074628: mayor * 15/16 + (los otros) * 6/16 */
 static unsigned TvCam_Dist(int x, int y, int z)
 {
@@ -379,7 +360,7 @@ static void TvCam_Shake(uint8_t* phys, int amp, int view, int* pos, int dt)
 }
 
 /* RaceCam_AvoidWalls 8005d6b8 (con limite >= 5000): aparta el ojo de las paredes que cruza un triangulo de
- * 0x400 a su alrededor */
+ * 0x400 a su alrededor (con menos, la de la persecucion: racecar.c) */
 static int TvCam_AvoidWalls(int view, int lim)
 {
     TvView* v = &s_tv[view];
@@ -387,7 +368,7 @@ static int TvCam_AvoidWalls(int view, int lim)
     if (t)
     {
         int d[3] = { t->obj.pos[0] - v->eye[0], t->obj.pos[1] - v->eye[1], t->obj.pos[2] - v->eye[2] };
-        if (TvCam_ApproxLen(d) > 0x6000)
+        if (Vec_ApproxLenMax(d) > 0x6000)
             return 0;
     }
     int e[3][3] = {
@@ -882,6 +863,13 @@ void TvCam_Leave(int view)
 int TvCam_IsActive(int view)
 {
     return s_tv[view & 1].active;
+}
+
+/* tipo de la camara de TV de la vista (-1 sin ninguna; 8 = pegada al coche) */
+int TvCam_CurrentType(int view)
+{
+    const TvView* v = &s_tv[view & 1];
+    return v->active && v->cur ? v->cur->type : -1;
 }
 
 /* 80074264 */

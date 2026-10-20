@@ -5,7 +5,8 @@
  * 8002cfbc, Race_CreateCars 8003132c, salida tACT tipo 0x55 Race_SetStart 800317a0, camaras RaceCam_Init
  * 8005d4c8 / RaceCam_Update 8005f034 (RaceCam_Desired 8005e8b0, RaceCam_Spring 8005dc98), presets 800ab408.
  * Fisica en carphys*.c (Physics_StepAll 80056c6c), IA, vueltas y posiciones en ai.c, choques en
- * collide.c. Pendiente: poderes y paredes de la camara (RaceCam_AvoidWalls 8005d6b8). */
+ * collide.c, poderes en powerup.c. La camara tiene 3 vistas de persecucion y una dentro del coche, y se aparta de
+ * los muros (RaceCam_AvoidWalls 8005d6b8). */
 #ifndef NR_RACECAR_H
 #define NR_RACECAR_H
 
@@ -80,6 +81,7 @@ int  RaceCam_GetSegment(int view);        /* camara +0x6C (0xFF si no hay suelo 
 int  RaceCam_GetViewMode(int view);       /* DAT_800af8c0 */
 int  RaceCam_IsInCar(int view);           /* 8005e840 */
 RaceCar* RaceCam_GetTarget(int view);     /* DAT_800b6188 + vista * 0x40 */
+int  RaceCam_CarVisible(int view, const RaceCar* c);   /* 8005e6f4 */
 void RaceCam_CycleView(int view, int dir); /* 8005ed10 */
 
 #endif

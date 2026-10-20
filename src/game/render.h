@@ -5,7 +5,7 @@
  * seno/coseno 800176c0 (tabla 800a9c98), look-at de camara 80016bfc/80017a68.
  * Convencion del juego: Y hacia arriba, mano izquierda; las matrices son 3 columnas (ejes X, Y, Z del
  * objeto) en 16.16 y al cargarlas en la GTE se niega la fila Y (la pantalla crece hacia abajo).
- * Pendiente: sombras 3DSD (80014c24/80014d90), reflejos (80015a88) y texturas animadas 4DTA. */
+ * Sombras 3DSD (80014c24 / 80014d90) y reflejos (80015a88) en render.c; texturas animadas 4DTA en model.c. */
 #ifndef NR_RENDER_H
 #define NR_RENDER_H
 

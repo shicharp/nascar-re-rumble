@@ -1,7 +1,7 @@
 /* Pantalla 1200: eleccion de piloto y coche (carrusel de miniaturas, clase, compañero de equipo y
  * rivales) y lo que necesita: atlas de miniaturas del Crle, tabla de pilotos y coches del garaje, que
  * llegan por secciones del FE.TRK (libreia Cpag al slot 9 + hueco y modelo Cobj) y se dibujan en 3D.
- * Pendiente: sombra del coche (3DSD) y reflejos de los cristales. */
+ * La sombra y los reflejos del coche los pone Render_DrawList (render.c). */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
