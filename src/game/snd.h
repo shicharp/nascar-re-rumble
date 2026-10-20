@@ -66,6 +66,7 @@ void Music_Update(void);
 void Speech_SetToc(const uint8_t* toc, int size);         /* 8002b810: tabla de secciones de la pista */
 int  Speech_Pick(int cat, int wait);                      /* 8002b920 */
 int  Speech_Queue(int section, const void* entity, int onlyIfIdle);   /* 8002b0f4 */
+int  Speech_QueueOnEntity(int section, const void* ent, int force);  /* 8002b2d8: frase pegada a la entidad */
 void Speech_Say(int cat, int wait, const void* entity, int onlyIfIdle);
 void Speech_Reset(void);
 void Music_SetDuck(int on);

@@ -156,7 +156,7 @@ int Script_Run(const uint8_t* code, int arg, int init, void* ent)
         case 0xc: Speech_Queue(a, NULL, 0); push = 0; break;   /* 8002b0f4 */
         case 0xd: Speech_Queue(a, NULL, 0); push = 0; break;   /* 8002b1d0 (en el original, delante de la cola) */
         case 0xe:
-        case 0xf: v = Speech_Queue(a, self, op == 0xe); break;   /* 8002b2d8 (frase que sigue a la entidad) */
+        case 0xf: v = Speech_QueueOnEntity(a, self, op == 0xf); break;   /* 8002b2d8 (frase que sigue a la entidad) */
         case 0x10: v = *GI(a); break;
         case 0x11: v = *GameVar(a); break;
         case 0x12: v = *Timer(a) / 5; break;

@@ -6,8 +6,10 @@
  * sacar de la cola 8002b4c0, el stream lee la seccion y sus VAGB van al buffer de voz de la SPU (80022e50, 0xC000
  * bytes), y 800233e8 / 80023258 la tocan con una voz de streaming a 0x400 (11025 Hz) con el volumen de las voces;
  * mientras suena los demas sonidos bajan 1/8 (8003d708 / 8003d7ac); dura bytes / 0x15 tics (80022f24 / 80023088).
- * En el port la seccion se lee directamente del .AV (sin el stream de CD compartido con la musica). Pendiente: las
- * frases que siguen a un coche (8003d288 / 8003d320, cola de tipo 1 8002b2d8). */
+ * Frases pegadas a una entidad (codigos 0xE / 0xF de los guiones, 8002b2d8: sonidos de animales y otros de la
+ * pista): al sacarlas, 8003d288 apunta la entidad y su numero; mientras suenan, el volumen y el panorama salen de
+ * su posicion (8003d320, cada frame en 80022f24) sin bajar los demas sonidos, y se cortan si la entidad desaparece.
+ * En el port la seccion se lee directamente del .AV (sin el stream de CD compartido con la musica). */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,6 +26,7 @@
 #include "snd_lib.h"
 #include "carphys_int.h"
 #include "pause.h"
+#include "actor.h"
 
 #define NUM_CATS 0x37
 
@@ -35,7 +38,9 @@ typedef struct
 typedef struct
 {
     int section;
-    const void* entity;
+    const void* entity;         /* +8 coche (pantalla partida) */
+    int attach;                 /* +2 / +4: numero de la entidad a la que va pegada (0 ninguna) */
+    int x, z;                   /* solo en el port: donde estaba al encolar */
 } SpeechReq;                    /* DAT_800b1164 (8 x 0xC) */
 
 static SpeechCat s_cats[NUM_CATS];
@@ -48,6 +53,10 @@ static int        s_playing;            /* DAT_800b09f0 */
 static unsigned   s_endTime;            /* DAT_800b09f8 */
 static int        s_spuAddr = -1;       /* DAT_800af14c */
 static uint8_t*   s_clip;
+static int        s_attach;             /* DAT_800b0a00 + DAT_800b3ad4 / 3ad8: entidad de la frase que suena */
+static int        s_attachX, s_attachZ; /* (-1 en s_attach: la entidad ya no existia al empezar, suena donde estaba) */
+
+void Speech_Stop(void);
 
 void Speech_SetSpuBuffer(int addr)
 {
@@ -116,7 +125,61 @@ int Speech_Queue(int section, const void* entity, int onlyIfIdle)
     SpeechReq* r = &s_queue[(s_qHead + s_qCount) & 7];
     r->section = section;
     r->entity = entity;
+    r->attach = 0;
     s_qCount++;
+    return 1;
+}
+
+/* 8002b2d8: frase pegada a la entidad (codigos 0xE / 0xF de los guiones). Sin 'force', solo con la cola vacia y
+ * sin frase sonando; con 'force' y cola, corta la que suena (8002b7c8) y se pone la primera. */
+int Speech_QueueOnEntity(int section, const void* ent, int force)
+{
+    if (section < 0 || !ent)
+        return 0;
+    if (!force && (s_qCount > 0 || s_playing))
+        return 0;
+    if (g_GameState > 4)
+        return 0;
+    SpeechReq* r;
+    if (!force || s_qCount < 1)
+    {
+        if (s_qCount > 7)
+            return 0;
+        r = &s_queue[(s_qHead + s_qCount) & 7];
+        s_qCount++;
+    }
+    else
+    {
+        Speech_Stop();
+        s_qHead = (s_qHead + 7) & 7;
+        r = &s_queue[s_qHead];
+        if (s_qCount < 8)
+            s_qCount++;
+    }
+    r->section = section;
+    r->entity = NULL;
+    r->attach = *(const int*)((const uint8_t*)ent + 0xc);
+    r->x = *(const int*)((const uint8_t*)ent + 0x58);
+    r->z = *(const int*)((const uint8_t*)ent + 0x60);
+    return 1;
+}
+
+/* 8003d3ec + 8003d320: la entidad de la frase (si sigue viva) y su volumen y panorama. Si murio antes de empezar
+ * la frase, el original la da por buena (su numero ya era 0 al sacarla) y suena en su ultima posicion; si muere
+ * mientras suena, se corta. */
+static int Speech_AttachedPan(SndPan* o)
+{
+    if (s_attach == -1)
+    {
+        Snd_SpeechAt(s_attachX, s_attachZ, NULL, o);
+        return 1;
+    }
+    const uint8_t* e = s_attach ? Ent_ByHandle(s_attach) : NULL;
+    if (!e)
+        return 0;
+    s_attachX = *(const int*)(e + 0x58);
+    s_attachZ = *(const int*)(e + 0x60);
+    Snd_SpeechAt(s_attachX, s_attachZ, NULL, o);
     return 1;
 }
 
@@ -135,9 +198,11 @@ void Speech_Stop(void)
         if (Handle_Valid(&s_voice))
             SndLib_ReleaseRaw(s_voice.v->lib);
         s_playing = 0;
-        Snd_Duck(0);   /* 8003d7ac */
+        if (!s_attach)
+            Snd_Duck(0);   /* 8003d7ac */
     }
     Handle_Free(&s_voice);
+    s_attach = 0;
 }
 
 void Speech_ClearQueue(void)
@@ -215,19 +280,41 @@ static void Speech_Start(void)
     if (!v)
         return;
     Handle_Set(&s_voice, v);
+    s_attach = r.attach;   /* 8003d288 / 800233e8 */
+    s_attachX = r.x;
+    s_attachZ = r.z;
+    if (s_attach && !Ent_ByHandle(s_attach))
+        s_attach = -1;
     int vol = Snd_SpeechVolume(), pan = 0x40;
-    if (g_SplitScreen && r.entity)
+    if (s_attach)
     {
-        const RaceCar* e = (const RaceCar*)r.entity;
-        pan = e->ctrl && e->ctrl[0x59] == 0 ? 0 : 0x7f;   /* 8003d220 */
+        /* pegada a una entidad: como un sonido de la pista (sin bajar los demas); si ya no existe, no suena */
+        SndPan o;
+        if (!Speech_AttachedPan(&o))
+        {
+            Handle_Free(&s_voice);
+            s_attach = 0;
+            return;
+        }
+        vol = o.vol;
+        pan = o.pan;
     }
-    if (vol)
-        Snd_Duck(1);   /* 8003d708 */
+    else
+    {
+        if (g_SplitScreen && r.entity)
+        {
+            const RaceCar* e = (const RaceCar*)r.entity;
+            pan = e->ctrl && e->ctrl[0x59] == 0 ? 0 : 0x7f;   /* 8003d220 */
+        }
+        if (vol)
+            Snd_Duck(1);   /* 8003d708 */
+    }
     SndLibParams p = { 0x400, vol, pan };
     if (SndLib_PlayRaw(v->lib, &p, s_spuAddr) < 0)
     {
         Handle_Free(&s_voice);
-        Snd_Duck(0);
+        if (!s_attach)
+            Snd_Duck(0);
         return;
     }
     SndLib_KeyOn(v->lib);
@@ -237,7 +324,8 @@ static void Speech_Start(void)
     s_endTime = s_tick + (unsigned)dur;
     s_playing = 1;
     if (Snd_LogOn())
-        NR_Log("[snd] comentarista: seccion %d (%d bytes, %d tics) vol %d\n", r.section, bytes, dur, vol);
+        NR_Log("[snd] comentarista: seccion %d (%d bytes, %d tics) vol %d pan %d%s\n", r.section, bytes, dur, vol, pan,
+               s_attach ? " (pegada a una entidad)" : "");
 }
 
 /* 80022f24 (y la parte de 8002be4c que saca la siguiente) */
@@ -245,6 +333,18 @@ void Speech_Update(void)
 {
     if (s_playing && (int)(s_tick - s_endTime) > 0)
         Speech_Stop();
+    if (s_playing && s_attach)
+    {
+        /* la frase pegada sigue a su entidad; si desaparece, se corta */
+        SndPan o;
+        if (!Speech_AttachedPan(&o) || !Handle_Valid(&s_voice))
+            Speech_Stop();
+        else
+        {
+            SndLibParams p = { 0x400, o.vol, o.pan };
+            SndLib_Update(s_voice.v->lib, &p);
+        }
+    }
     if (!s_playing && s_qCount > 0 && !g_RacePaused)
         Speech_Start();
 }

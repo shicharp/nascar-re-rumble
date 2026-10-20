@@ -102,6 +102,7 @@ int    Actor_DefaultHandler(int msg, Actor* a, intptr_t p1, intptr_t p2);   /* 8
 ModelHdr* Actor_ResModel(const Actor* a, int i);        /* modelo i de la aRSL */
 void   Actor_RemoveCmd(Actor* a, int i);                /* 8002c1a8: quita la orden i de la cola */
 void   Actor_FindTrackPos(Actor* a);                    /* 8002c1e8 */
+uint8_t* Ent_ByHandle(int handle);                     /* solo en el port: actor o coche vivo con ese numero */
 void   Actor_UpdateCenter(Actor* a);                    /* 80015928 + 80016784: centro de la caja (+0x64) */
 
 int  Cact_OnLoaded(NrAsset* a);                         /* 8004942c */

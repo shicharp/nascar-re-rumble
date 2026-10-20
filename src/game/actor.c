@@ -454,7 +454,7 @@ static CmdRetry s_retry[16];
 static uint32_t s_retryMask;
 
 /* las entidades vivas con ese numero: actores y coches (en el original estan en la misma lista) */
-static uint8_t* Ent_ByHandle(int handle)
+uint8_t* Ent_ByHandle(int handle)
 {
     for (Actor* a = g_Actors; a; a = a->next)
         if (a->handle == handle)
@@ -552,8 +552,8 @@ void Actors_CmdByTeam(int team, int cmd, int arg)
             Ent_PushCmd((uint8_t*)&g_Cars[i], cmd, arg, 1);
 }
 
-/* Solo en el port (depuracion): NR_KILLTEST=id deja sin vida al actor con ese id a los 5 s de carrera (muere como
- * al romperlo: mensaje 4 y su guion de muerte) */
+/* Solo en el port (depuracion): NR_KILLTEST=id rompe el actor con ese id a los 5 s de carrera: un golpe del coche
+ * humano con toda su vida (mensaje 0xE: su guion de golpe) y despues muere (mensaje 4: su guion de muerte) */
 static void Actors_KillTest(void)
 {
     static int s_id = -2, s_done;
@@ -566,7 +566,10 @@ static void Actors_KillTest(void)
         if (a->handle > 0 && a->id == s_id)
         {
             NR_Log("[guion] prueba: muere el actor %d (tipo 0x%02x)\n", a->id, a->type);
-            a->hp = -1;
+            DamageMsg m = { g_Humans[0] ? (uint32_t)g_Humans[0]->id : 0u, (int16_t)(a->hp >= 0 ? a->hp + 1 : 1), 1, 0, 0 };
+            a->handler(0xe, a, (intptr_t)&m, 0);
+            if (a->hp >= 0)
+                a->hp = -1;   /* (invulnerable: muere igual) */
         }
 }
 

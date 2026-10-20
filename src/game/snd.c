@@ -147,6 +147,23 @@ void Snd_PlayUiVol(int id, const void* entity, int vol)
         Snd_PlayDef(0, 0, d, (const RaceCar*)entity, 1, 0x10000, id, -1, vol);
 }
 
+/* 8003d320 (parte): volumen y panorama de una frase del comentarista pegada a algo en (x, z), como un sonido de la
+ * pista: al doble, con el tope del volumen de los efectos (0x70 mientras habla el comentarista); fuera de alcance,
+ * volumen 0 */
+void Snd_SpeechAt(int x, int z, const void* car, SndPan* o)
+{
+    memset(o, 0, sizeof(*o));
+    if (!Snd_Listen(x, z, o, (const RaceCar*)car, 0))
+    {
+        o->vol = 0;
+        o->pan = 0x40;
+        return;
+    }
+    Snd_PanFinish(o);
+    int v = o->vol * 2, cap = s_duck ? 0x70 : s_sfxVolEff;
+    o->vol = (int8_t)(v > cap ? cap : v);
+}
+
 int Snd_SpeechVolume(void)
 {
     return s_speechVol;   /* 8003d674 */

@@ -126,6 +126,7 @@ int       Handle_Valid(const SndHandle* h);                                     
 int       Handle_Free(SndHandle* h);                                            /* 8003fcf8 */
 void      Snd_Duck(int on);                                                     /* 8003d708 / 8003d7ac */
 int       Snd_SpeechVolume(void);                                               /* 8003d674 */
+void      Snd_SpeechAt(int x, int z, const void* car, SndPan* o);              /* 8003d320 */
 int       Def_FromId(int id);                                                   /* 8003d89c */
 SndVoice* Voice_Alloc(int vol, int cls, int list, int def);                     /* 8003f550 */
 void      Voice_Free(SndVoice* v);                                              /* 8003f0c8 */
