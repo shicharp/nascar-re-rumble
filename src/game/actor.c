@@ -28,6 +28,9 @@ Actor* g_Actors;            /* DAT_800af87c */
 static Actor* s_tail;       /* DAT_800af880 */
 static int    s_nextHandle; /* DAT_800af870 */
 
+static void Csacs_OnFreed(const Actor* a);
+static int  s_numCsac;      /* generadores Csac (mas abajo) */
+
 /* ---------------------------------------------------------------- animacion de modelos */
 
 /* 80013aa4: fotograma del modelo (y su radio y caja aproximada) */
@@ -761,6 +764,8 @@ static void Actors_Reap(void)
         Actor* next = a->next;
         if (a->handle == 0)
         {
+            if (a->flags2c & 0x10000000)
+                Csacs_OnFreed(a);
             a->handler(5, a, 0, 0);
             if (prev)
                 prev->next = next;
@@ -794,6 +799,7 @@ void Actors_Free(void)
     Actors_Reap();
     g_Actors = s_tail = NULL;
     s_nextHandle = 0;
+    s_numCsac = 0;                  /* 800605a4 / 800605cc */
     Pickup_Reset();
 }
 
@@ -1072,6 +1078,20 @@ static uint8_t* Cact_FindBlock(NrAsset* as, uint32_t tag)
     return NULL;
 }
 
+/* aRSL del asset resuelta en el sitio: +8 numero de entradas y {tipo, id} -> {tipo, NrAsset*} */
+static const uint32_t* Cact_ResolveRes(NrAsset* as)
+{
+    uint8_t* rb = Cact_FindBlock(as, NR_TAG('a', 'R', 'S', 'L'));
+    if (!rb)
+        return NULL;
+    uint32_t* res = (uint32_t*)(rb + 8);
+    res[0] = (NR_Read32(rb + 4) - 0xc) >> 3;
+    for (uint32_t i = 0; i < res[0]; i++)
+        if (res[2 + i * 2] != 0)
+            res[2 + i * 2] = (uint32_t)(uintptr_t)Asset_Find(res[1 + i * 2], (int)res[2 + i * 2]);
+    return res;
+}
+
 /* 8004942c: tACT tipo 0x55 = salida; el resto crea la entidad con su lista de recursos aRSL (en el sitio:
  * +8 numero de entradas y {tipo, id} -> {tipo, NrAsset*}) */
 int Cact_OnLoaded(NrAsset* as)
@@ -1096,19 +1116,159 @@ int Cact_OnLoaded(NrAsset* as)
     ActorFn fn = Actor_HandlerFor(type);
     if (!fn)
         return 1;
-    uint8_t* rb = Cact_FindBlock(as, NR_TAG('a', 'R', 'S', 'L'));
-    uint32_t* res = NULL;
-    if (rb)
-    {
-        res = (uint32_t*)(rb + 8);
-        res[0] = (NR_Read32(rb + 4) - 0xc) >> 3;
-        for (uint32_t i = 0; i < res[0]; i++)
-            if (res[2 + i * 2] != 0)
-                res[2 + i * 2] = (uint32_t)(uintptr_t)Asset_Find(res[1 + i * 2], (int)res[2 + i * 2]);
-    }
-    ActorDef d = { fn, res, def, as };
+    ActorDef d = { fn, Cact_ResolveRes(as), def, as };
     Actor_Create(&d);
     return 1;
+}
+
+/* ---------------------------------------------------------------- generadores Csac */
+
+/* Bloque tSAC (en el sitio): +0xC periodo en tics (el fichero lo da / 5; negativo: el primer intervalo es el periodo
+ * y no uno al azar), +0xE maximo de entidades vivas, +0x10 banderas (1 apagado; bits 8-11 y 12-15 intentos pedidos
+ * por la orden 0x47), +0x12 las que quedan (0 agotado, negativo sin limite), +0x14 cuenta atras, +0x16 vivas.
+ * El original guarda {manejador, aRSL, tACT, asset} en +0x20..+0x2C; el port, en Csac. Hay 21 en las pistas
+ * (BL2, BL3, MC2, MG3, SE1, SE3): vehiculos de tipo 5 que salen cada pocos segundos por una red y desaparecen al
+ * final, y disparadores. La condicion de la cabecera (en MG3, segun el ajuste de poderes) se vuelve a mirar en
+ * cada intento. */
+typedef struct
+{
+    NrAsset* as;
+    uint8_t* sac;
+    ActorDef def;
+} Csac;
+
+#define CSAC_MAX 0x80   /* Pool_Alloc(0x204) de 800605a4 */
+static Csac s_csac[CSAC_MAX];   /* DAT_800af8d0 */
+
+#define SAC16(c, o) (*(int16_t*)((c)->sac + (o)))
+#define SACU16(c, o) (*(uint16_t*)((c)->sac + (o)))
+
+/* 800605f0 */
+int Csac_OnLoaded(NrAsset* as)
+{
+    Asset_Register(as);
+    if (s_numCsac >= CSAC_MAX)
+        return 1;
+    uint8_t* sac = Cact_FindBlock(as, NR_TAG('t', 'S', 'A', 'C'));
+    uint8_t* tb = Cact_FindBlock(as, NR_TAG('t', 'A', 'C', 'T'));
+    if (!sac || !tb)
+        return 1;
+    Csac* c = &s_csac[s_numCsac++];
+    c->as = as;
+    c->sac = sac;
+    int16_t p = (int16_t)(SAC16(c, 0xc) * 5);
+    SAC16(c, 0x16) = 0;
+    SAC16(c, 0xc) = p;
+    if (p < 0)
+        SAC16(c, 0xc) = SAC16(c, 0x14) = (int16_t)-p;
+    else
+        SAC16(c, 0x14) = p ? (int16_t)((uint32_t)Rand_A() % (uint32_t)p) : 0;
+    c->def.handler = Actor_HandlerFor(tb[8 + 4]);   /* (sin manejador en el port: no crea nada) */
+    c->def.res = Cact_ResolveRes(as);
+    c->def.def = tb + 8;
+    c->def.asset = as;
+    return 1;
+}
+
+/* 80060800: si se cumple la condicion de la cabecera, crea la entidad (marcada 0x10000000) y ejecuta el segundo
+ * guion */
+static void Csac_Spawn(Csac* c)
+{
+    const uint8_t* scr = c->as->hdrScr;
+    if (!Script_Run(scr, 0, -1, NULL))
+        return;
+    if (SAC16(c, 0x12) > 0)
+        SAC16(c, 0x12)--;
+    SAC16(c, 0x16)++;
+    if (c->def.handler)
+    {
+        Actor* a = Actor_Create(&c->def);   /* 800492c0 */
+        if (a)
+            a->flags2c |= 0x10000000;
+        if (Script_LogOn())
+            NR_Log("[csac] %d crea la entidad %d (tipo 0x%02x), vivas %d\n", c->as->id, a ? a->handle : 0, c->def.def[4],
+                   SAC16(c, 0x16));
+    }
+    Script_Run(scr ? scr + c->as->hdrLen1 : NULL, 0, -1, NULL);
+}
+
+/* 80060a60: los intentos pedidos y, encendido y por debajo del maximo, uno cada periodo */
+void Csacs_Update(int dt)
+{
+    for (int i = 0; i < s_numCsac; i++)
+    {
+        Csac* c = &s_csac[i];
+        for (int n = SACU16(c, 0x10) >> 8 & 0xf; n > 0; n--)
+            Csac_Spawn(c);
+        for (int n = SACU16(c, 0x10) >> 12; n > 0; n--)
+            Csac_Spawn(c);
+        uint16_t fl = SACU16(c, 0x10);
+        SACU16(c, 0x10) = fl & 0xff;
+        if (SAC16(c, 0x16) < SAC16(c, 0xe) && SAC16(c, 0x12) != 0 && !(fl & 1))
+        {
+            SAC16(c, 0x14) = (int16_t)(SACU16(c, 0x14) - dt);
+            if (SAC16(c, 0x14) < 0)
+            {
+                SAC16(c, 0x14) = (int16_t)(SAC16(c, 0x14) + SAC16(c, 0xc));
+                Csac_Spawn(c);
+            }
+        }
+    }
+}
+
+/* 8006087c: ordenes 0x46 (1 encender y crear ya, 0 apagar) y 0x47 (crear una: 1 / 0 dos contadores distintos que
+ * hacen lo mismo) */
+static void Csac_Command(Csac* c, int cmd, int arg)
+{
+    uint16_t fl = SACU16(c, 0x10);
+    if (cmd == 0x46)
+    {
+        if (arg != 0)
+        {
+            if (!(fl & 1))
+                return;
+            SACU16(c, 0x10) = fl & 0xfffe;
+            SAC16(c, 0x14) = 0;
+            return;
+        }
+        SACU16(c, 0x10) = fl | 1;
+    }
+    else if (cmd == 0x47)
+    {
+        if (SAC16(c, 0x16) >= SAC16(c, 0xe) || SAC16(c, 0x12) == 0)
+            return;
+        if (arg != 0)
+            SACU16(c, 0x10) = (uint16_t)((fl & 0xf0ff) | (((fl >> 8 & 0xf) + 1) << 8));
+        else
+            SACU16(c, 0x10) = (uint16_t)((fl & 0xfff) | ((fl & 0xf000) + 0x1000));
+    }
+}
+
+/* 8006094c: el primero cuyo tACT tenga ese id */
+void Csacs_CmdById(int id, int cmd, int arg)
+{
+    for (int i = 0; i < s_numCsac; i++)
+        if (NR_Read32(s_csac[i].def.def) == (uint32_t)id)
+        {
+            Csac_Command(&s_csac[i], cmd, arg);
+            return;
+        }
+}
+
+/* 800609c0: todos los del grupo (tACT +0x1D) */
+void Csacs_CmdByGroup(int group, int cmd, int arg)
+{
+    for (int i = 0; i < s_numCsac; i++)
+        if (s_csac[i].def.def[0x1d] == (uint32_t)group)
+            Csac_Command(&s_csac[i], cmd, arg);
+}
+
+/* 8006079c (desde Entity_Reap 80049360): muere una entidad creada por un generador */
+static void Csacs_OnFreed(const Actor* a)
+{
+    for (int i = 0; i < s_numCsac; i++)
+        if (NR_Read32(s_csac[i].def.def) == a->id)
+            SAC16(&s_csac[i], 0x16)--;
 }
 
 /* Solo en el port: resumen de lo creado (con NR_POWERLOG, tambien donde esta cada actor) */

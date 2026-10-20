@@ -1,5 +1,6 @@
 #include "script.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "mem.h"
 #include "file.h"
@@ -177,6 +178,18 @@ static void Stream_BeginAsset(const uint8_t* chunk)
     a->size = (int)NR_Read32(chunk + 0x20);
     for (int k = 0; k < 3; k++)
         a->scr[k] = NR_Read32(chunk + 0x24 + k * 4);
+    if (a->type == NR_TAG('C', 's', 'a', 'c'))
+    {
+        /* el original guarda la cabecera entera en el asset; el generador ejecuta los guiones en cada intento */
+        uint32_t len1 = NR_Read32(chunk + 0x30), len2 = NR_Read32(chunk + 0x34);
+        if (len1 + len2 < 0x1000)
+        {
+            a->hdrScr = (uint8_t*)calloc(1, len1 + len2 + 2);
+            if (a->hdrScr)
+                memcpy(a->hdrScr, chunk + 0x38, len1 + len2);
+            a->hdrLen1 = len1;
+        }
+    }
     memcpy(a->section, s_section, sizeof(a->section));
     a->data = a->size ? (uint8_t*)Pool_Alloc(a->size, a->pool) : NULL;
     s_curFill = 0;
@@ -301,6 +314,7 @@ void Asset_Free(NrAsset* a)
     if (!a)
         return;
     Pool_Free(a->data);
+    free(a->hdrScr);
     Mem_Free(a);
 }
 

@@ -342,6 +342,8 @@ void Race_MainLoop(void)
         Snd_SetListenerCount(1);       /* 8003d48c */
         Snd_Update();                  /* 8003e848 */
 
+        if (!g_RacePaused)
+            Csacs_Update(dt);          /* 80060a60 */
         Asset_DispatchAll();
         Gfx_Flip(GFX_FLIP_FULL);
         Race_UpdateState(dt);          /* 80027e90 */

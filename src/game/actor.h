@@ -10,8 +10,8 @@
  * Tipos creados: 0x06 objetos que giran (800339b4), 0x0B objetos de la pista (8003421c) y 0x16 cajas de poder
  * (80031854), 0x0E disparadores (80034894) y 0x05 vehiculos que siguen una red (80034e6c, vehicle.c); los
  * poderes crean 0xD (objetos que se sueltan) y 8 (clima) en powerup.c. El 0x54 son las camaras de TV (tvcam.c).
- * Pendientes: los generadores Csac (800605f0). Los objetos sueltos (cuerpos con la fisica de los coches al
- * golpearlos) estan en body.c. */
+ * Los generadores Csac (800605f0) crean entidades durante la carrera. Los objetos sueltos (cuerpos con la fisica
+ * de los coches al golpearlos) estan en body.c. */
 #ifndef NR_ACTOR_H
 #define NR_ACTOR_H
 
@@ -128,6 +128,12 @@ void Actors_CmdById(int id, int cmd, int arg);          /* 800498e4 */
 void Actors_CmdByGroup(int group, int cmd, int arg);    /* 800499b4 (+0x23) */
 void Actors_CmdByTeam(int team, int cmd, int arg);      /* 80049a40 (+0x24) */
 void Actors_AddToDrawList(int view);                    /* 80061a0c + 80061b28 */
+
+/* Generadores Csac (crean entidades de un tACT cada cierto tiempo, ver actor.c) */
+int  Csac_OnLoaded(NrAsset* as);                        /* 800605f0 */
+void Csacs_Update(int dt);                              /* 80060a60 */
+void Csacs_CmdById(int id, int cmd, int arg);           /* 8006094c */
+void Csacs_CmdByGroup(int group, int cmd, int arg);     /* 800609c0 */
 void Actors_CollideCars(void);                          /* coches contra actores en 80061808 */
 
 /* Animacion de modelos */

@@ -32,6 +32,8 @@ typedef struct NrAsset
     uint8_t* data;
     void*    obj;       /* solo en el port: lo que crea el manejador (p. ej. el ModelHdr de un Cobj) */
     uint32_t scr[3];    /* SHDR +0x24..+0x2C: guiones del asset (desplazamientos en el RPNS de la pista) */
+    uint8_t* hdrScr;    /* solo los Csac: copia de los guiones de la cabecera (+0x38: condicion y despues) */
+    uint32_t hdrLen1;   /* SHDR +0x30: longitud del primero */
 } NrAsset;
 
 typedef struct
