@@ -13,6 +13,8 @@
 #include "fe_internal.h"
 #include "snd.h"
 #include "snd_int.h"
+#include "savegame.h"
+#include "memcard.h"
 
 /* ---------------------------------------------------------------- primitivas 2D */
 
@@ -903,6 +905,7 @@ void Fe_Screen400(void)
         int r = Fe_MsgBox(0, 100, Fe_GetString(fe->popup == 0 ? 0x8fc : 0x8fd), &g_Settings.yesNo, -1);
         if (r == 1)
         {
+            Save_ClearRecords(fe->popup);   /* 800931d8: 0 pista, 1 copas */
             fe->marquee = 1;
             fe->popup = (short)(fe->popup + 10);
         }
@@ -1037,4 +1040,233 @@ void Fe_Screen500(void)
         stop = 1;
     if (stop)
         Handle_Free(&s_testVoice);   /* 8003f48c */
+}
+
+/* ---------------------------------------------------------------- pantalla 800: tarjeta de memoria */
+
+static int8_t s_cardMsgActive;   /* fe +0x99E: hay un cuadro de mensaje (no se pinta el estado) */
+static int8_t s_cardSaveReq;     /* fe +0x9AC: guardar al estar lista (al llegar desde otra pantalla) */
+
+/* 8007d32c: Load / Save / salir. Las dos primeras se apagan sin tarjeta lista (y Load sin partida); el recuadro
+ * muestra el estado (textos 0x965..0x975) y los cuadros piden formatear (0x960), sobrescribir (0x961) o cargar
+ * (0x962). Una partida nueva se escribe sin preguntar. */
+void Fe_Screen800(void)
+{
+    FrontendState* fe = g_Frontend;
+    MenuItem* items = fe->loadSaveMenu;
+    SaveState* s = &g_SaveState;
+    char text[96] = "";
+
+    if (fe->firstFrame)
+    {
+        Fe_SetBackground(0);
+        Save_Init();     /* 8009347c */
+        Save_Start();    /* 80093540 */
+        fe->popup = 0;
+        s_cardMsgActive = 0;
+        fe->cursor = fe->prevCursor = 2;
+        s->shownPrev = s->shown = 0;
+        s->res = 0;
+    }
+    int port = g_Settings.numPlayers != 1 ? -1 : 0;
+    int disabled = 2;
+    if (Save_Poll() == 0 && s->mode == 1)
+        disabled = s->exists != 1;
+    int interactive = (((s->res == 0 || s->res == 3 || s->res == 4) && s->mode != -2) || s->mode == 0) &&
+                      s->last != -2;
+
+    Fe_DrawBackground(20000);
+    Fe_DrawHelp(0, items[fe->cursor].help, 0x21, 0xd5, 0x23, 0x109, 0);
+    for (int i = 0; i < 3; i++)
+    {
+        int r = -1, g = -1, b = -1;
+        if (i < disabled)
+        {
+            if (i == fe->cursor)
+                fe->cursor = fe->prevCursor = (uint8_t)(i + 1);
+        }
+        else
+            Fe_ItemColor(&r, &g, &b, interactive && i == fe->cursor);
+        Fe_DrawMenuItem(r, g, b, items, i, 3);
+    }
+    Fe_DrawBox(100, 100, 100, 0xa7, 0x5c, 0x116, 0x8d, 1);
+    Fe_DrawBox(0, 0, 0, 0xa7, 0x5c, 0x116, 0x66, 0);
+    Font_Select(0);
+    Fe_DrawTextRgb(0x1d, 0x1d, 0, Fe_GetString(0x964), 0xde, 0x5b, 1);
+    Fe_DrawLine(0x28786e6e, 0xa7, 0x65, 0x116, 0x65, 1);
+    Fe_DrawFrame(0xa0, 0xa0, 0xaa, 0xa6, 0x5b, 0x116, 0x8d);
+    if (g_FadeDir == 0 && !s_cardMsgActive)
+    {
+        int id = 0;
+        if (s->mode == -1 || (s->mode == 0 && s->last == -1))
+            id = 0x966;
+        else if (s->mode == -2)
+            id = 0x968;
+        else if (s->mode != 1)
+            id = s->last == -2 ? 0x967 : s->res == -3 ? 0x96c : s->res == -4 ? 0x96d : s->res == -10 ? 0x96b :
+                 s->res == -2 ? 0x974 : 0x965;
+        else
+        {
+            int v = s->res != 0 || s->shownPrev >= -1 ? s->res : s->shownPrev;
+            switch (v)
+            {
+            case 0: case 3: case 4: id = 0x975; break;
+            case 1: id = 0x969; fe->popup = 2; break;   /* leyendo / escribiendo: "no quites la tarjeta" */
+            case 2: id = 0x96a; fe->popup = 2; break;
+            case -10: id = 0x973; break;
+            case -9: id = 0x972; break;
+            case -8: id = 0x971; break;
+            case -7: id = 0x970; break;
+            case -6: id = 0x96f; break;
+            case -5: id = 0x96e; break;
+            case -4: id = 0x96d; break;
+            case -3: id = 0x96c; break;
+            case -2: id = 0x974; break;
+            case -1: id = 0x967; break;
+            default: break;
+            }
+        }
+        if (id)
+            snprintf(text, sizeof(text), "%s", Fe_GetString(id));
+        Font_Select(4);
+        Font_DrawWrapped(0xab, strlen(text) > 0x10 ? 0x6b : 0x6f, 0x116, 0x8d, text, 0x11);
+    }
+    if (fe->popup != 0)
+    {
+        Font_Select(0);
+        Font_DrawWrapped(0x5a, 0x96, 0xe6, 200, Fe_GetString(0x963), 9);
+        fe->popup--;
+    }
+    Fe_ReadPads();
+    if (!interactive)
+        for (int i = 0; i < g_Settings.numPlayers && i < 2; i++)
+            fe->pad[i] = 0;   /* mientras trabaja la tarjeta, sin mandos */
+    s_cardMsgActive = 0;
+
+    if (s->mode == -1)
+    {
+        /* tarjeta sin formato: formatear (y despues guardar) */
+        int r = Fe_MsgBox(0, 99, Fe_GetString(0x960), &g_Settings.yesNo, port);
+        if (r == 0)
+            s->mode = 0;
+        else if (r == 1)
+            s->mode = Card_Format() == 0 ? -2 : 0;
+        s_cardMsgActive = 1;
+    }
+    else if (s->mode != 1)
+    {
+        if (s->last != -2)
+            s_cardSaveReq = 0;
+        Fe_MenuNavigate(items, 3);
+        if (fe->cursor != fe->prevCursor && fe->cursor < disabled)
+            fe->cursor = fe->prevCursor;
+    }
+    else
+    {
+        int save = 0, clamp = 0;
+        switch (s->res)
+        {
+        case -8:
+        case -7:
+            s->res = 0;
+            break;
+        case -6: case -5: case -4: case -3:
+            s->res = 0;
+            fe->popup = 0x3c;
+            break;
+        case -2:
+            s->mode = 0;
+            break;
+        case -1:
+            /* mira si hay partida y si cabe una nueva */
+            if (!Card_FindFile(SAVE_FILE_NAME))
+            {
+                if (!Card_AllocBlocks(0x1dec))
+                {
+                    s->res = -2;   /* llena */
+                    break;
+                }
+                s->exists = -1;
+                if (!s_cardSaveReq)
+                {
+                    s->res = -8;
+                    break;
+                }
+            }
+            else
+            {
+                s->exists = 1;
+                if (!s_cardSaveReq)
+                {
+                    s->res = -7;
+                    break;
+                }
+            }
+            save = 1;
+            break;
+        case 0:
+            if (s_cardSaveReq)
+            {
+                save = 1;
+                break;
+            }
+            if (Fe_MenuNavigate(items, 3) == -1)
+            {
+                Snd_PlayUi(0x48, NULL);
+                if (fe->cursor == 0 && s->exists == 1)
+                {
+                    s->res = 4;            /* cargar: confirmar */
+                    g_Settings.yesNo = 0;
+                }
+                else if (fe->cursor == 1)
+                    save = 1;
+            }
+            clamp = 1;
+            break;
+        case 3:
+        case 4:
+        {
+            int r = Fe_MsgBox(0, 99, Fe_GetString(s->res == 3 ? 0x961 : 0x962), &g_Settings.yesNo, port);
+            if (r == -1)
+                s_cardMsgActive = 1;
+            else if (r != 0)
+            {
+                if (s->res == 3)
+                    Save_Write();
+                else
+                    Save_Read();
+            }
+            else
+            {
+                s->shownPrev = s->res == 3 ? -9 : -10;
+                s->res = 0;
+                s->shown = 0;
+            }
+            break;
+        }
+        default:
+            break;
+        }
+        if (save)
+        {
+            /* LAB_8007dca0: nueva se escribe ya; si hay una, confirmar sobrescribir */
+            s_cardSaveReq = 0;
+            if (s->exists == -1)
+                Save_Write();
+            else
+            {
+                s->res = 3;
+                g_Settings.yesNo = 0;
+            }
+            clamp = 1;
+        }
+        if (clamp && fe->cursor != fe->prevCursor && fe->cursor < disabled)
+            fe->cursor = fe->prevCursor;
+    }
+    Fe_PadRepeatReset();
+    if (fe->fadeDone)
+    {
+        s_cardSaveReq = 0;
+        Save_Stop();     /* 80093568 */
+    }
 }

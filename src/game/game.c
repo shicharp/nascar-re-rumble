@@ -18,6 +18,7 @@
 #include "font.h"
 #include "game.h"
 #include "snd.h"
+#include "savegame.h"
 #include "script.h"
 #include "race.h"
 #include "render.h"
@@ -59,13 +60,14 @@ void Movie_Play(const char* name, int a, int b, int c, int w, int h)
  * presentar) y siempre se puede saltar con Start/X. */
 void Legal_Show(int skippable)
 {
-    (void)skippable;
     Lsc_LoadToVram("CW\\Opening\\Legal.lsc", 1);
     Timer_Update();
     int end = g_Ticks + (g_Options.skipLegal ? 150 : 1500);   /* 1500 ticks = 5 s */
     while (g_Ticks < end)
     {
         Timer_Update();
+        if (!skippable)
+            Save_BootLoad();   /* 8009347c / 80093540 / 8009358c / 80093938: la partida de la tarjeta */
         Pad_ReadAll();
         if ((g_PadButtons[0] | g_PadButtons[1]) & (PADB_START | PADB_CROSS))
             break;
@@ -73,6 +75,8 @@ void Legal_Show(int skippable)
         Fe_DrawBackground(0);
         Gfx_Flip(GFX_FLIP_FULL);
     }
+    if (!skippable)
+        Save_BootEnd();
 }
 
 /* 800285e4: espera a que avance el tiempo de juego y calcula el delta del frame (maximo 30 ticks) */

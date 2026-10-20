@@ -92,6 +92,9 @@ static int Asset_Dispatch(NrAsset* a)
         return g_IsFrontend ? 0 : Cact_OnLoaded(a);   /* 8004942c */
     case NR_TAG('R', 'P', 'N', 'S'):
         return Actors_OnScriptPool(a);                /* 80049628 */
+    case NR_TAG('M', 'c', 'I', 'c'):
+        Asset_Register(a);         /* icono de la tarjeta (front-end +0x1DC) */
+        return 1;
     case NR_TAG('C', 's', 'a', 'c'):
         return g_IsFrontend ? 0 : Csac_OnLoaded(a);   /* 800605f0 */
     case NR_TAG('C', 's', 'h', 'd'):

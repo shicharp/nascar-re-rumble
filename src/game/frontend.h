@@ -312,6 +312,7 @@ void Fe_Screen200(void);                                                  /* 800
 void Fe_Screen300(void);                                                  /* 8007f4a0 */
 void Fe_Screen400(void);                                                  /* 8007bf00 */
 void Fe_Screen500(void);                                                  /* 8007c540 */
+void Fe_Screen800(void);                                                  /* 8007d32c: tarjeta de memoria */
 int  Fe_DecodeGmdc(int index, int x, int y);                              /* 8008e21c */
 void Fe_Screen1200(void);                                                 /* 80081a9c */
 void Fe_Screen1300(void);                                                 /* 800838f8 */
