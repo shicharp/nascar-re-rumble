@@ -15,6 +15,13 @@
 #include "fx.h"
 #include "body.h"
 #include "tvcam.h"
+#include "script.h"
+#include "snd.h"
+#include "globals.h"
+
+static const uint8_t* s_pool;     /* DAT_800af6d8: RPNS de la pista (guiones de las entidades) */
+static int            s_poolSize;
+static int            s_nextNear; /* DAT_800af874 */
 
 Actor* g_Actors;            /* DAT_800af87c */
 static Actor* s_tail;       /* DAT_800af880 */
@@ -263,7 +270,9 @@ static void Actor_InitCommon(Actor* a, const ActorDef* d)
     const uint8_t* t = d->def;
     a->body = NULL;
     memset(a->cmds, 0, sizeof(a->cmds));
-    memset(a->script, 0, sizeof(a->script));   /* asset +0x24..+0x2C (guiones): pendiente */
+    /* asset +0x24..+0x2C: guiones (golpe, muerte, cercania) en el RPNS de la pista (Asset_Dispatch les suma su base) */
+    for (int k = 0; k < 3; k++)
+        a->script[k] = d->asset && s_pool && d->asset->scr[k] < (uint32_t)s_poolSize ? (void*)(s_pool + d->asset->scr[k]) : NULL;
     a->visible = 1;
     a->team = t[0x1c];
     a->id = *(const uint16_t*)t;
@@ -346,6 +355,21 @@ int Actor_DefaultHandler(int msg, Actor* a, intptr_t p1, intptr_t p2)
         {
             a->hp = (int16_t)(a->hp - dmg);
             a->flags2c |= 0x2000000;
+            if (a->script[0])   /* guion de golpe: argumento 1 si la mata, valor inicial el id del otro */
+                Script_Run((const uint8_t*)a->script[0], a->hp < 0, o ? (int)(o->id & 0x7fff) : 0, a);
+        }
+        return 0;
+    }
+    case 0xe:
+    {
+        /* dano directo (orden 0x3C): {id, dano} */
+        const DamageMsg* m = (const DamageMsg*)p1;
+        if (m && !(a->flags2c & 0x80) && m->dmg > 0)
+        {
+            a->hp = (int16_t)(a->hp - m->dmg);
+            a->flags2c |= 0x2000000;
+            if (a->script[0])
+                Script_Run((const uint8_t*)a->script[0], a->hp < 0, (int)(m->id & 0x7fff), a);
         }
         return 0;
     }
@@ -354,7 +378,6 @@ int Actor_DefaultHandler(int msg, Actor* a, intptr_t p1, intptr_t p2)
     case 9:
     case 0xc:
     case 0xd:
-    case 0xe:
         return 0;
     default:
         return -1;
@@ -381,10 +404,352 @@ Actor* Actor_Create(const ActorDef* d)
     return a;
 }
 
-/* 80049688 (sin guiones ni sonidos): la entidad muere y se libera en Actors_Reap */
+/* Entity_Kill 80049688: el guion de muerte (+0xD4; argumento 1 si muere sola, 0 si la mata una orden: 0x4000000;
+ * 0x8000000 sin guion), fuera su sonido de ambiente, y se libera en Actors_Reap */
 void Actor_Destroy(Actor* a)
 {
+    if (!a->handle)
+        return;
+    if (!(a->flags2c & 0x8000000) && a->script[1])
+        Script_Run((const uint8_t*)a->script[1], (int)((a->flags2c >> 26 ^ 1) & 1), -1, a);
+    if (a->flags2c & 0x400000)
+        Snd_SourceKill(a->handle, (int8_t)a->unk27);
     a->handle = 0;
+}
+
+/* ---------------------------------------------------------------- guiones de las entidades */
+
+/* 80049628 */
+int Actors_OnScriptPool(NrAsset* as)
+{
+    Asset_Register(as);
+    s_pool = as->data;
+    s_poolSize = as->size;
+    return 1;
+}
+
+/* 80049788: la orden entra en el primer hueco libre de la cola (+0x14). Llena, el original la guarda en
+ * DAT_800b5980 (16 huecos, 600 tics) para reintentarla; el port la pierde y lo apunta */
+int Actor_PushCmd(Actor* a, int cmd, int arg)
+{
+    for (int i = 0; i < 4; i++)
+        if (a->cmds[i * 2] == 0)
+        {
+            a->cmds[i * 2] = (uint8_t)cmd;
+            a->cmds[i * 2 + 1] = (uint8_t)arg;
+            return 1;
+        }
+    NR_Log("[guion] cola de ordenes llena en el actor %d (orden 0x%x %d)\n", a->id, cmd, arg);
+    return 0;
+}
+
+/* 800498e4 (0x69 no hace nada; 0x7E va a la tabla de los Cfun, DAT_800af858, pendiente) */
+void Actors_CmdById(int id, int cmd, int arg)
+{
+    if (cmd == 0x69)
+        return;
+    if (cmd == 0x7e)
+    {
+        NR_Log("[guion] orden 0x7e (Cfun %d = %d) pendiente\n", id, arg);
+        return;
+    }
+    for (Actor* a = g_Actors; a; a = a->next)
+        if (a->id == (uint16_t)id && a->handle)
+            Actor_PushCmd(a, cmd, arg);
+}
+
+/* 800499b4 */
+void Actors_CmdByGroup(int group, int cmd, int arg)
+{
+    for (Actor* a = g_Actors; a; a = a->next)
+        if (a->unk23 == (uint8_t)group && a->handle)
+            Actor_PushCmd(a, cmd, arg);
+}
+
+/* 80049a40 */
+void Actors_CmdByTeam(int team, int cmd, int arg)
+{
+    for (Actor* a = g_Actors; a; a = a->next)
+        if (a->team == (uint8_t)team && a->handle)
+            Actor_PushCmd(a, cmd, arg);
+}
+
+/* Solo en el port (depuracion): NR_TRIGTEST=1 hace que el coche humano toque cada disparador a los 5 s de carrera
+ * (los mismos mensajes 10 y 0xB que el choque) */
+static void Actors_TriggerTest(void)
+{
+    static int s_on = -1, s_done;
+    if (s_on < 0)
+        s_on = getenv("NR_TRIGTEST") != NULL;
+    if (!s_on || s_done || g_RaceTime < 1500 || !g_Humans[0])
+        return;
+    s_done = 1;
+    for (Actor* a = g_Actors; a; a = a->next)
+        if (a->handle > 0 && a->type == 0x0e)
+        {
+            int ok = a->handler(10, a, (intptr_t)g_Humans[0], 0);
+            NR_Log("[guion] prueba: disparador %d filtro %d valor %d -> %d\n", a->id, A8(a, 0xe1), A16(a, 0xe2), ok);
+            if (ok)
+                a->handler(0xb, a, (intptr_t)g_Humans[0], 1);
+        }
+}
+
+/* 80049b74: las entidades a menos de 0x22000 del coche de la vista suenan (sonido de ambiente +0x26 en la
+ * fuente +0x27); cada 300 tics la mas cercana con 0x100000 (y tipo distinto de 0x24) ejecuta su guion +0xD8
+ * (80049b2c). Se borra la marca de golpe 0x2000000 */
+void Actors_Activate(void)
+{
+    Actors_TriggerTest();
+    RaceCar* t = RaceCam_GetTarget(0);
+    if (!t)
+        return;
+    int tick = 0;
+    if (s_nextNear <= g_RaceTime)
+    {
+        tick = 1;
+        s_nextNear = g_RaceTime + 300;
+    }
+    Actor* best = NULL;
+    int bestD = 0x40000000;
+    for (Actor* a = g_Actors; a; a = a->next)
+    {
+        if (a->handle <= 0)
+            continue;
+        int dx = Abs_(a->obj.pos[0] - t->obj.pos[0]), dz = Abs_(a->obj.pos[2] - t->obj.pos[2]);
+        int d = dx + dz - (dz < dx ? dz : dx) / 2;
+        uint32_t f = a->flags2c;
+        a->flags2c = (f & 0xfdffffff) | 0x20000000;
+        if (d < 0x22000)
+        {
+            if (tick && (f & 0x100000) && a->type != 0x24 && d < bestD)
+            {
+                bestD = d;
+                best = a;
+            }
+            if (a->unk26)
+            {
+                if (!(a->flags2c & 0x400000))
+                {
+                    int src = Snd_SourceCreate(a->unk26, a->handle, a->obj.pos[0], a->obj.pos[2], -1, 0, NULL);
+                    a->unk27 = (uint8_t)src;
+                    if (src >= 0)
+                        a->flags2c |= 0x400000;
+                }
+                else
+                    Snd_SourceMove(a->handle, a->obj.pos[0], a->obj.pos[2], -1, 0, NULL, (int8_t)a->unk27);
+            }
+        }
+        else if (a->flags2c & 0x400000)
+        {
+            Snd_SourceKill(a->handle, (int8_t)a->unk27);
+            a->flags2c &= 0xffbfffff;
+        }
+    }
+    if (best && best->script[2] && *(const uint8_t*)best->script[2])
+        Script_Run((const uint8_t*)best->script[2], best->hp < 0, -1, best);
+}
+
+/* 80048f78: ordenes genericas (0x38..0x65) de la cola; las demas son del manejador de cada tipo */
+void Actors_RunOrders(void)
+{
+    for (Actor* a = g_Actors; a; a = a->next)
+    {
+        if (a->handle <= 0)
+            continue;
+        for (int i = 0; i < 4 && a->cmds[i * 2];)
+        {
+            int c = a->cmds[i * 2], arg = a->cmds[i * 2 + 1];
+            switch (c)
+            {
+            case 0x38: case 0x3b: case 0x40: case 0x41: case 0x42: case 0x43: case 0x45:
+                break;
+            case 0x39:
+                /* otro sonido de ambiente */
+                if (a->flags2c & 0x400000)
+                {
+                    Snd_SourceKill(a->handle, (int8_t)a->unk27);
+                    a->flags2c &= 0xffbfffff;
+                }
+                a->unk26 = (uint8_t)arg;
+                break;
+            case 0x3a:
+                a->unk1e = (int16_t)arg;   /* dano que hace */
+                break;
+            case 0x3c:
+            {
+                /* danarse (0 / 1: toda la vida) */
+                a->flags2c &= 0xfeffff7f;
+                DamageMsg m = { 0, (int16_t)(arg >= 2 ? arg : (a->hp >= 0 ? a->hp + 1 : 0)), 1, 0, 0 };
+                if (m.dmg > 0)
+                    a->handler(0xe, a, (intptr_t)&m, 0);
+                break;
+            }
+            case 0x3d:
+                /* morir (1: sin guion de muerte) */
+                a->flags2c |= arg == 1 ? 0xc000000 : 0x4000000;
+                Actor_Destroy(a);
+                break;
+            case 0x3f:
+                if (arg == 0)
+                    a->flags2c &= 0xfeffff7f;
+                else
+                    a->flags2c |= 0x1000080;   /* invulnerable */
+                break;
+            case 100:
+                Fx_Spawn(a, arg, NULL, 0, NULL);   /* 80039330 -> 80039a80 */
+                break;
+            case 0x65:
+                Fx_Stop(a, arg);                   /* 800391b0 */
+                break;
+            default:
+                i++;
+                continue;
+            }
+            Actor_RemoveCmd(a, i);
+        }
+    }
+}
+
+/* ---------------------------------------------------------------- disparadores (tipo 0xE) */
+
+/* Campos (0xE8 bytes): +0xE0 banderas (1 mata al que entra, 2 no desaparece al tocarlo (guion +0xD0), 8 cambia la
+ * ruta del vehiculo, 0x10 apagado, 0x20 al encenderse ejecuta +0xD8), +0xE1 filtro, +0xE2 valor, +0xE4 tiempo */
+#define TR_FLAGS(a) A8(a, 0xe0)
+#define TR_KIND(a)  A8(a, 0xe1)
+#define TR_VALUE(a) A16(a, 0xe2)
+#define TR_TIME(a)  A32(a, 0xe4)
+
+/* 80034548: zona de radio tACT +0x24, filtro +0x29 / +0x2A, banderas +0x28, modo de suelo +0x26 */
+static int Trigger_Create(Actor* a, const ActorDef* d)
+{
+    Actor_DefaultHandler(2, a, (intptr_t)d, 0);
+    const uint8_t* t = d->def;
+    int16_t r = *(const int16_t*)(t + 0x24);
+    a->obj.radius = r << 4;
+    a->obj.bb10 = a->obj.bb16 = r;
+    TR_KIND(a) = t[0x29];
+    TR_VALUE(a) = *(const int16_t*)(t + 0x2a);
+    TR_FLAGS(a) = t[0x28];
+    TR_TIME(a) = 0;
+    if (a->flags2c & 0x80000)
+        a->obj.flags &= 0xef;
+    int mode = *(const int16_t*)(t + 0x26);
+    int g = mode == 0 ? -1 : mode == 1 ? -2 : mode - 2;
+    int y = Track_GroundHeight(&a->tpos, a->obj.pos, g);
+    a->obj.unk34[1] = y;
+    a->obj.pos[1] = y;
+    a->flags2c |= 0xa00011;
+    if (TR_FLAGS(a) & 8)
+        TR_KIND(a) = 7;
+    return 0;
+}
+
+/* 80034438: el filtro del disparador (1 tipo, 2 id, 3 grupo +0x23, 4 equipo, 5 equipo en mascara, 7 vehiculo con
+ * ruta, 8 tipo con 0x12 como 1) sobre una entidad (coche o actor: los campos +0x1C..+0x24 coinciden) */
+static int Trigger_Match(int kind, int value, const uint8_t* e)
+{
+    int v;
+    switch (kind)
+    {
+    case 1: v = e[0x22]; break;
+    case 2:
+        if (e[0x22] == 0x15)
+            return 0;
+        v = NR_Read16(e + 0x1c);
+        break;
+    case 3: v = e[0x23]; break;
+    case 4: v = e[0x24]; break;
+    case 5:
+        v = e[0x24];
+        value &= 1 << (v & 31);
+        break;
+    case 7:
+        return 0;   /* vehiculos de tipo 2 con ruta (+0x108): pendientes */
+    case 8:
+        v = e[0x22] == 0x12 ? 1 : e[0x22];
+        break;
+    default:
+        v = 0;   /* (registro sin iniciar en el original) */
+        break;
+    }
+    return v == (int16_t)value;
+}
+
+/* 80034660: ordenes 0x78 valor, 0x79 filtro, 0x7A encender / apagar */
+static void Trigger_Orders(Actor* a)
+{
+    for (int i = 0; i < 4 && a->cmds[i * 2];)
+    {
+        int c = a->cmds[i * 2], arg = a->cmds[i * 2 + 1];
+        if (c == 0x79)
+            TR_KIND(a) = (uint8_t)arg;
+        else if (c == 0x78)
+            TR_VALUE(a) = (int16_t)arg;
+        else if (c == 0x7a)
+        {
+            if (arg == 0)
+                TR_FLAGS(a) |= 0x10;
+            else
+            {
+                uint8_t f = TR_FLAGS(a);
+                TR_FLAGS(a) = f & 0xef;
+                if ((f & 0x20) && a->script[2] && *(const uint8_t*)a->script[2])
+                    Script_Run((const uint8_t*)a->script[2], 0, -1, a);
+            }
+        }
+        else
+        {
+            i++;
+            continue;
+        }
+        Actor_RemoveCmd(a, i);
+    }
+}
+
+/* 8003477c: algo entro en la zona */
+static int Trigger_Hit(Actor* a, const uint8_t* other)
+{
+    TR_TIME(a) = g_RaceTime;
+    int otherType = other[0x22];
+    if (TR_FLAGS(a) & 8)
+        NR_Log("[guion] disparador %d: cambio de ruta pendiente\n", a->id);
+    if ((TR_FLAGS(a) & 1) && otherType != 1 && otherType != 0x11)
+    {
+        Actor* o = (Actor*)other;
+        o->flags2c |= 0x4000000;
+        Actor_Destroy(o);
+    }
+    if (!(TR_FLAGS(a) & 2))
+        Actor_Destroy(a);   /* de un solo uso: su guion de muerte */
+    else if (a->script[0])
+        Script_Run((const uint8_t*)a->script[0], 0, NR_Read16(other + 0x1c) & 0x7fff, a);
+    return 0;
+}
+
+/* 80034894 */
+static int Trigger_Handler(int msg, Actor* a, intptr_t p1, intptr_t p2)
+{
+    switch (msg)
+    {
+    case 1:
+        return 0xe8;
+    case 2:
+        return Trigger_Create(a, (const ActorDef*)p1);
+    case 6:
+        if (a->cmds[0])
+            Trigger_Orders(a);
+        return 0;
+    case 10:
+        if (!(TR_FLAGS(a) & 0x10))
+            return Trigger_Match(TR_KIND(a), TR_VALUE(a), (const uint8_t*)p1);
+        return 0;
+    case 3: case 4: case 5: case 7: case 8: case 9: case 0xc: case 0xd:
+        return 0;
+    case 0xb:
+        return Trigger_Hit(a, (const uint8_t*)p1);
+    default:
+        return Actor_DefaultHandler(msg, a, p1, p2);
+    }
 }
 
 /* 80049360: libera las muertas (mensaje 5) */
@@ -685,7 +1050,8 @@ static ActorFn Actor_HandlerFor(int type)
     case 0x06: return Turret_Handler;   /* 80034198 */
     case 0x0b: return Prop_Handler;     /* 800343dc */
     case 0x16: return Pickup_Handler;   /* 8003203c */
-    default:   return NULL;             /* 5 80034e6c, 0xE 80034894 (8 y 0xD los crean los poderes) */
+    case 0x0e: return Trigger_Handler;  /* 80034894 */
+    default:   return NULL;             /* 5 80034e6c (8 y 0xD los crean los poderes) */
     }
 }
 
@@ -728,7 +1094,7 @@ int Cact_OnLoaded(NrAsset* as)
     }
     ActorFn fn = Actor_HandlerFor(type);
     if (!fn)
-        return 1;                       /* los tipos 5 y 0xE: pendientes */
+        return 1;                       /* el tipo 5: pendiente */
     uint8_t* rb = Cact_FindBlock(as, NR_TAG('a', 'R', 'S', 'L'));
     uint32_t* res = NULL;
     if (rb)

@@ -10,6 +10,15 @@ int      g_NumNets;
 
 #define NODE(net, i) ((net) + 4 + (i) * 12)
 
+/* 8004a168 (orden 0x3B de los guiones): bit 1 del primer byte del nodo */
+void Cnet_SetNodeOff(int net, int node, int mode)
+{
+    if (net < 0 || net >= g_NumNets || !g_Nets[net] || node < 0 || node >= Cnet_Count(g_Nets[net]) || (unsigned)mode > 1)
+        return;
+    uint8_t* n = NODE(g_Nets[net], node);
+    n[0] = (uint8_t)(mode ? n[0] | 2 : n[0] & 0xfd);
+}
+
 void Cnet_Reset(void)
 {
     g_NumNets = 0;

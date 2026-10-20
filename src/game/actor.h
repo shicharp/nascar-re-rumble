@@ -109,6 +109,23 @@ void Actors_Free(void);                                 /* 80048d5c */
 int  Ent_NewHandle(void);                               /* ++DAT_800af870 */
 void Actors_Update(int dt);                             /* 80048dec(6, dt) */
 void Actors_PostUpdate(void);                           /* 80048e84: mensaje 4 a las de vida < 0 */
+int  Actors_OnScriptPool(NrAsset* as);                  /* 80049628: el RPNS de la pista */
+void Actors_Activate(void);                             /* 80049b74: sonidos de ambiente y guion del cercano */
+void Actors_RunOrders(void);                            /* 80048f78: ordenes genericas de los guiones */
+int  Actor_PushCmd(Actor* a, int cmd, int arg);         /* 80049788 */
+
+/* Mensaje 0xE: dano directo (orden 0x3C) */
+typedef struct
+{
+    uint32_t id;
+    int16_t  dmg;
+    uint8_t  kind;
+    uint8_t  pad;
+    uint32_t extra;
+} DamageMsg;
+void Actors_CmdById(int id, int cmd, int arg);          /* 800498e4 */
+void Actors_CmdByGroup(int group, int cmd, int arg);    /* 800499b4 (+0x23) */
+void Actors_CmdByTeam(int team, int cmd, int arg);      /* 80049a40 (+0x24) */
 void Actors_AddToDrawList(int view);                    /* 80061a0c + 80061b28 */
 void Actors_CollideCars(void);                          /* coches contra actores en 80061808 */
 

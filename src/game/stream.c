@@ -175,6 +175,8 @@ static void Stream_BeginAsset(const uint8_t* chunk)
     a->type = NR_Read32(chunk + 0x18);
     a->id   = (int)NR_Read32(chunk + 0x1c);
     a->size = (int)NR_Read32(chunk + 0x20);
+    for (int k = 0; k < 3; k++)
+        a->scr[k] = NR_Read32(chunk + 0x24 + k * 4);
     memcpy(a->section, s_section, sizeof(a->section));
     a->data = a->size ? (uint8_t*)Pool_Alloc(a->size, a->pool) : NULL;
     s_curFill = 0;

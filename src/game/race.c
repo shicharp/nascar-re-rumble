@@ -301,6 +301,8 @@ void Race_MainLoop(void)
             g_RaceTime += dt;          /* Race_UpdateTime 800269c0 */
             Track_Animate(dt);         /* 80061e94 */
             Script_Tick(dt);           /* 80067834 */
+            Actors_Activate();         /* 80049b74 */
+            Actors_RunOrders();        /* 80048f78 */
             Power_ClearAlerts();       /* Race_Frame1P: aviso de clima */
             Actors_Update(dt);         /* 80048dec(6) */
             Race_UpdateCars(dt);

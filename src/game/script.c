@@ -25,6 +25,7 @@
 #include "carphys_int.h"
 #include "snd.h"
 #include "pause.h"
+#include "cnet.h"
 #include "script.h"
 
 #define STACK_MAX 64
@@ -214,10 +215,23 @@ int Script_Run(const uint8_t* code, int arg, int init, void* ent)
         case 0x35: *GI(0x27 + a) -= b; break;
         case 0x36: *Timer(a) -= b * 5; break;
         case 0x37: *Counter(a) -= b; break;
-        case 0x38: case 0x39: case 0x3a: case 0x3b: case 0x3c: case 0x3d:
-            /* ordenes a una entidad (80049788 / 800498e4 / 800499b4 / 80049a40 / 8004a168 / 8006094c / 800609c0) */
+        case 0x38:
+            /* orden b (argumento a) a la propia entidad (c == 0, 80049788) o a las de id c (800498e4) */
+            if (c == 0)
+            {
+                if (self)
+                    Actor_PushCmd(self, b, a);
+            }
+            else
+                Actors_CmdById(c, b, a);
+            push = 0;
+            break;
+        case 0x39: Actors_CmdByGroup(c, b, a); push = 0; break;   /* 800499b4 */
+        case 0x3a: Actors_CmdByTeam(c, b, a); push = 0; break;    /* 80049a40 */
+        case 0x3b: Cnet_SetNodeOff(c, a, b); push = 0; break;     /* 8004a168: nodo a de la red c */
+        case 0x3c: case 0x3d:
+            /* generadores Csac (8006094c / 800609c0) */
             Script_Pending(op);
-            (void)c;
             push = 0;
             break;
         default:
