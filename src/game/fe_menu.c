@@ -15,6 +15,8 @@
 #include "snd_int.h"
 #include "savegame.h"
 #include "memcard.h"
+#include "password.h"
+#include "exe.h"
 
 /* ---------------------------------------------------------------- primitivas 2D */
 
@@ -1269,4 +1271,201 @@ void Fe_Screen800(void)
         s_cardSaveReq = 0;
         Save_Stop();     /* 80093568 */
     }
+}
+
+/* ---------------------------------------------------------------- pantalla 700: contrasena */
+
+static char     s_pwText[12];        /* fe +0x951: lo escrito */
+static char     s_pwCurrent[12];     /* fe +0x9B9: la del progreso actual */
+static short    s_pwX, s_pwY;        /* fe +0x968 / +0x96C: tecla (fila 4: espacio, borrar, hecho de 3 de ancho) */
+static const char* s_pwMsg;          /* fe +0x9C8 */
+static int      s_pwAsk;             /* fe +0xB6: el mensaje pregunta Si / No (cargar la contrasena) */
+static uint32_t s_pwWords[2];        /* fe +0x9CC */
+
+/* 8008ec2c: texto en una caja centrada en x (estilo 2: caja gris oscura con marco) */
+static void Fe_DrawTextBox(int style, const char* text, int x, int y)
+{
+    FrontendState* fe = g_Frontend;
+    short screen = fe->screen;
+    fe->screen = -1;
+    Font_Select(0);
+    int w, h;
+    Font_Measure(text, &w, &h);
+    if (w < 0x10)
+        w = 0x10;
+    w /= 2;
+    int bx = 0xa0, fr = 0xa0, fb = 0xaa, tr = 1, tg = 1, tb = 1, semi = 1;
+    int frg = 0xa0;
+    if (style == 1)
+    {
+        bx = 0x28; fr = 0xa0; frg = 0xa0; fb = 0xaa; tr = 0x1e; tg = 0x19; tb = 0x15; semi = 0;
+    }
+    else if (style == 2 || style == 3)
+    {
+        bx = 0x1e; fr = frg = fb = 0x6e; tr = tg = 0x1d; tb = 0; semi = 0;
+    }
+    int y0 = style == 3 ? y - 4 : y - 2, y1 = style == 3 ? y + 0xe : y + 0xc;
+    Fe_DrawBox(bx, bx, bx, x - w - 2, y0, x + w + 3, y1, semi);
+    Fe_DrawFrame(fr, frg, fb, x - w - 3, y0, x + w + 3, y1);
+    Fe_DrawTextRgb(tr, tg, tb, text, x, y, 1);
+    fe->screen = screen;
+}
+
+/* 8008f19c: mueve el cursor del teclado (en la fila 4 de 3 en 3) */
+static void Fe_PwMove(void)
+{
+    int x = s_pwX, y = s_pwY, dy = 0, dx = 0;
+    if (Fe_PadPressed(PADB_UP, -1, 1))
+        dy = -1;
+    else if (Fe_PadPressed(PADB_DOWN, -1, 1))
+        dy = 1;
+    if (Fe_PadPressed(PADB_LEFT, -1, 1))
+        dx = -1;
+    else if (Fe_PadPressed(PADB_RIGHT, -1, 1))
+        dx = 1;
+    if (dy)
+        y = Fe_Clamp(y + dy, 0, 4);
+    if (dx)
+        x = Fe_Clamp(x + (y == 4 ? dx * 3 : dx), 0, 8);
+    if (y == 4)
+        x = x / 3 * 3;
+    if (x != s_pwX || y != s_pwY)
+    {
+        s_pwX = (short)x;
+        s_pwY = (short)y;
+        if (dx)
+            Snd_PlayUi(0x47, NULL);
+        if (dy)
+            Snd_PlayUi(0x46, NULL);
+    }
+}
+
+/* 8007cb6c: teclado de 4 x 9 (DAT_800abe7c) mas espacio / borrar / hecho; abajo la contrasena del progreso actual.
+ * Hecho con 10 caracteres la comprueba (8008fb60) y, si se acepta, aplica (80090008) y vuelve atras. */
+void Fe_Screen700(void)
+{
+    FrontendState* fe = g_Frontend;
+    if (fe->firstFrame)
+    {
+        Fe_SetBackground(4);
+        Fe_DecodeGmdc(4, 0x300, 0x100);
+        Fe_DecodeGmdc(1, 0x300, 0x110);   /* el teclado */
+        Pw_Encode(s_pwCurrent);           /* 8008f344 */
+        s_pwMsg = NULL;
+        s_pwAsk = 0;
+        s_pwX = s_pwY = 0;
+        s_pwText[0] = 0;
+    }
+    int r, g, b;
+    Fe_ItemColor(&r, &g, &b, 1);
+    Fe_DrawBackground(0x800);
+    Fe_DrawHelp(0, Fe_GetString(0xbbc), 0x21, 0xd5, 0x23, 300, 0);   /* DAT_800b6e88 */
+    int len = (int)strlen(s_pwText);
+    char line[64];
+    snprintf(line, sizeof(line), "%s%s", Fe_GetString(0x837), s_pwCurrent);
+    Fe_DrawTextBox(2, line, 0xa0, 0xbb);
+    Fe_DrawFrame(0x8a, 0x8a, 0x94, 0x4c, 0x20, 0xf4, 0xae);
+    Font_Select(2);
+    Fe_DrawTextRgb(0x1b, 0x1b, 5, Fe_GetString(0x838), 0xa0, 0x22, 1);
+    Fe_DrawVramRect(0x300, 0x110, 0x7f, 0x4c, 0x61, 0x3c, 0, 0);
+    if (!s_pwMsg)
+    {
+        int w = s_pwY < 4 ? 1 : 3;
+        Fe_DrawOutline(r << 3, g << 3, b << 3, s_pwX * 0xe + 0x61, s_pwY * 0xf + 0x3c,
+                       s_pwX * 0xe + w * 0xe + 0x61, s_pwY * 0xf + 0x4b, 2);
+    }
+    Font_Select(1);
+    Fe_DrawBox(0x5a, 0x5a, 0x3c, 0x5b, 0x91, 0xe6, 0xa4, 0);
+    Fe_DrawOutline(0x80, 0x80, 0x14, 0x5b, 0x90, 0xe5, 0xa4, 1);
+    for (int i = 0; i < 10; i++)
+    {
+        Fe_DrawBox(200, 200, 200, 0x60 + i * 0xd, 0x93, 0x6c + i * 0xd, 0xa2, 0);
+        Fe_DrawOutline(0x32, 0x32, 0x32, 0x5f + i * 0xd, 0x93, 0x6c + i * 0xd, 0xa1, 1);
+        if (i < len)
+        {
+            char c[2] = { s_pwText[i], 0 };
+            int adv = (int8_t)Font_GetGlyph((uint8_t)c[0])[8];
+            Fe_DrawTextRgb(0, 0, 0, c, i * 0xd + 0x65 + ((adv & 1) == 0), 0x8f, 1);
+        }
+    }
+    if (len < 10 && !s_pwMsg)
+        Fe_DrawBox(r * 2, g * 2, b * 2 + 0x37, len * 0xd + 0x61, 0x95, len * 0xd + 0x6b, 0xa0, 0);
+    Fe_ReadPads();
+
+    if (s_pwMsg)
+    {
+        int res = Fe_MsgBox(0, 0x47, s_pwMsg, s_pwAsk ? &g_Settings.yesNo : NULL, -1);
+        if (res != -1)
+        {
+            if (s_pwAsk && res != 0)
+            {
+                Pw_Apply(s_pwWords);   /* 80090008 */
+                fe->nextScreen = 0;
+            }
+            s_pwAsk = 0;
+            s_pwMsg = NULL;
+        }
+    }
+    else if (Fe_PadPressed(PADB_CROSS, -1, 1))
+    {
+        if (s_pwY != 4)
+        {
+            if (len < 10)
+            {
+                const uint8_t* keys = Exe_Ptr(0x800abe7cu);
+                char c = keys ? (char)keys[s_pwX + s_pwY * 9] : '?';
+                if (!(c > 0x2f && c < 0x3a))
+                    c = (char)(c - 0x20);   /* las letras, en mayusculas */
+                s_pwText[len] = c;
+                s_pwText[len + 1] = 0;
+                Snd_PlayUi(0x48, NULL);
+            }
+            else
+                Snd_PlayUi(0x4c, NULL);
+        }
+        else if (s_pwX == 0)
+        {
+            if (len < 10)
+            {
+                s_pwText[len] = ' ';
+                s_pwText[len + 1] = 0;
+                Snd_PlayUi(0x57, NULL);
+            }
+            else
+                Snd_PlayUi(0x4c, NULL);
+        }
+        else if (s_pwX == 3)
+        {
+            if (len > 0)
+            {
+                s_pwText[len - 1] = 0;
+                Snd_PlayUi(0x5c, NULL);
+            }
+        }
+        else if (s_pwX == 6)
+        {
+            if (len < 10)
+            {
+                s_pwMsg = Fe_GetString(0x836);   /* incompleta */
+                Snd_PlayUi(0x4c, NULL);
+            }
+            else if (!Pw_Decode(s_pwText, s_pwWords))
+            {
+                s_pwMsg = Fe_GetString(0x834);   /* no vale */
+                Snd_PlayUi(0x4c, NULL);
+            }
+            else
+            {
+                g_Settings.yesNo = 0;
+                s_pwAsk = 1;
+                s_pwMsg = Fe_GetString(0x835);   /* cargar? */
+                Snd_PlayUi(0x4d, NULL);
+            }
+        }
+    }
+    else if (Fe_PadPressed(PADB_TRIANGLE, -1, 1))
+        fe->nextScreen = 0;
+    else
+        Fe_PwMove();
+    Fe_PadRepeatReset();
 }

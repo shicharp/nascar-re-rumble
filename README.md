@@ -36,7 +36,7 @@ Estado actual: arranque real del juego. `main` → `Game_Init` → pantalla lega
 software) → vídeos (omitidos) → `Level_Run("Fe.trk")` → pantalla de carga `Feld.lsc` mientras llega
 `FE.TRK` por streaming hasta el `Cctr` → `Frontend_MainLoop` (pantalla 2000 con fundido → **menús**
 navegables: principal (100), tipo de carrera (200), opciones de carrera (300), opciones de juego (400) y
-audio (500), con cuadros de mensaje, la selección de piloto/coche (1200) con el coche 3D que llega por
+audio (500), la contraseña (700) y la tarjeta de memoria (800, emulada en `memcard1.mcd`), con cuadros de mensaje, la selección de piloto/coche (1200) con el coche 3D que llega por
 secciones del FE.TRK y la elección de sede/pista (1300) con el trazado en 3D; al confirmar se monta la
 parrilla y se carga la carrera (GlblData.psx + un coche por sección + el .trk, con su pantalla de carga y barra
 de progreso). La pista se dibuja como el original (segmentos visibles, mips por distancia, subdivisión de las caras
@@ -89,7 +89,10 @@ mostrando mas escenario a los lados; el marcador se ancla a los bordes.
 |---|---|
 | `src/game/game.c` | main 800792a8, Game_Init 80079470, Legal_Show 80090d98, Level_Run 80029be4, Level_Load 80024684, Frontend_Load 80024080, Level_WaitLoaded 800252b0, Frontend_MainLoop 8002865c, Level_Unload 80025448, Frame_Wait 800285e4 |
 | `src/game/frontend.c` | Frontend_Update 8007a994 (pantallas + fundidos), pantalla 2000 80089240, Fe_GetString 80090984, Fe_DrawVramRect 8008c86c, Fe_DrawBackground 8008b79c, Crle 80092e08, TxtR 80092dec |
-| `src/game/fe_menu.c` | widgets del front-end (8008e614, 80079784, 8008e51c, 8008e75c, 8008b338, 8008d064, 8008d5f4, 8008b6b4), mando (8008a7f4, 8008a994, 8008aa90, 8008a66c), menús (8007a684, 8007a780, 8008abf8, 8008ac5c) cuadro de mensaje (8008cb88) y pantallas 100 (8007b2ac), 200 (8007b7fc), 300 (8007f4a0), 400 (8007bf00), 500 (8007c540) |
+| `src/game/fe_menu.c` | widgets del front-end (8008e614, 80079784, 8008e51c, 8008e75c, 8008b338, 8008d064, 8008d5f4, 8008b6b4), mando (8008a7f4, 8008a994, 8008aa90, 8008a66c), menús (8007a684, 8007a780, 8008abf8, 8008ac5c) cuadro de mensaje (8008cb88) y pantallas 100 (8007b2ac), 200 (8007b7fc), 300 (8007f4a0), 400 (8007bf00), 500 (8007c540), 700 (8007cb6c), 800 (8007d32c) |
+| `src/game/memcard.c` | driver de la tarjeta de memoria (8001f560, 8001f578, 8001fa3c, 8001fae8, 8001fd88, 8001f910) emulado sobre un .mcd |
+| `src/game/savegame.c` | partida guardada: 8009358c, 80093938, 800937f8, 800939fc, 80093f6c, Clear Records 800931d8 |
+| `src/game/password.c` | contraseña del progreso: 8008f344, 8008fb60, 80090008 |
 | `src/game/fe_select.c` | pantalla 1200 (80081a9c): tabla de pilotos 800aa5ec, atlas de miniaturas (80092f5c, 8008e2ec, RLE 8009307c), carrusel (8008b9d4, 8008bc34), coches del garaje (800923cc, 80090a88, 80090674), 8008aee4, 8008dc1c, 8008efec |
 | `src/game/fe_track.c` | pantalla 1300 (800838f8), trazado TkFE (8001893c, 80018ef0), 80090718, 80090860, 8008e13c, 8008c308, 8008b80c, montaje de la carrera Fe_StartRace 8008927c |
 | `src/game/race.c` | Race_Load 80024284, Race_NextCar 80023ef4, barra 80024f08, Ctrk 80062680, Cars_RegisterModels 800134f0, Race_MainLoop 800299a8 (provisional) |

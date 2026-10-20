@@ -320,11 +320,12 @@ void Frontend_Update(void)
     case 300:  Fe_Screen300(); break;
     case 400:  Fe_Screen400(); break;
     case 500:  Fe_Screen500(); break;
+    case 700:  Fe_Screen700(); break;
     case 800:  Fe_Screen800(); break;
     case 1200: Fe_Screen1200(); break;
     case 1300: Fe_Screen1300(); break;
     case 2000: Fe_Screen2000(); break;
-    /* 600 FUN_80088edc, 700 FUN_8007cb6c, 900 FUN_8007ddb4, 1000 FUN_8007f810,
+    /* 600 FUN_80088edc, 900 FUN_8007ddb4, 1000 FUN_8007f810,
      * 1100 FUN_80080cbc, 1400 FUN_800855a0, 1500 FUN_80085d90,
      * 1600 FUN_8007ea64, 1700 FUN_80087130, 1800 FUN_80087fa8, 1900 FUN_8008a52c */
     default: Fe_ScreenPending(); break;

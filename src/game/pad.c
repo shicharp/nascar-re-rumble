@@ -8,7 +8,7 @@
 
 uint32_t g_PadButtons[2];
 
-#define MAX_SCRIPT 64
+#define MAX_SCRIPT 256
 static struct { int frame, len; uint32_t mask; } s_script[MAX_SCRIPT];   /* --press "N:boton[*frames]" */
 static int s_scriptCount;
 
