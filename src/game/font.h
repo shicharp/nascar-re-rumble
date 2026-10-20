@@ -38,6 +38,7 @@ int  Font_Select(int index);
 int  Font_Count(void);
 
 const uint8_t* Font_GetGlyph(int c);
+void Font_AdjustAdvance(int c, int delta);
 int  Font_DrawChar(int c, int x, int y, unsigned color);
 void Font_DrawString(const char* s, int x, int y, unsigned color);
 void Font_DrawClipped(const char* s, int x, int y, int clipX0, int clipX1, unsigned color);

@@ -12,6 +12,7 @@
 #include "frontend.h"
 #include "fe_internal.h"
 #include "snd.h"
+#include "snd_int.h"
 
 /* ---------------------------------------------------------------- primitivas 2D */
 
@@ -560,6 +561,8 @@ int Fe_MsgBox(int x, int y, const char* text, uint8_t* yesNo, int port)
 
 /* Lo que repiten todas las pantallas de menu: descripcion (con zoom), ayuda, opciones y sus valores.
  * valueOf(i) devuelve el texto del valor de la opcion i (o NULL); descIndex elige la descripcion. */
+static int s_narrowR;   /* solo el menu principal: la r de la fuente 1 un pixel mas estrecha en las opciones */
+
 static void Fe_DrawMenuScreen(MenuItem* items, int count, const char* (*valueOf)(int), int descIndex)
 {
     FrontendState* fe = g_Frontend;
@@ -570,6 +573,11 @@ static void Fe_DrawMenuScreen(MenuItem* items, int count, const char* (*valueOf)
         const MenuValue* v = &items[fe->cursor].values[descIndex];
         Fe_DrawDescription((v->w * fe->descAnim) / 1024, (v->h * fe->descAnim) / 1024, v->text);
     }
+    if (s_narrowR)
+    {
+        Font_Select(1);
+        Font_AdjustAdvance('r', -1);
+    }
     for (int i = 0; i < count; i++)
     {
         int r, g, b;
@@ -578,6 +586,11 @@ static void Fe_DrawMenuScreen(MenuItem* items, int count, const char* (*valueOf)
         const char* value = valueOf ? valueOf(i) : NULL;
         if (value && *value)
             Fe_DrawOptionValue(r, g, b, &items[i], value, 1);
+    }
+    if (s_narrowR)
+    {
+        Font_Select(1);
+        Font_AdjustAdvance('r', 1);
     }
 }
 
@@ -609,7 +622,7 @@ static const char* MainMenuValue(int item)
     }
 }
 
-/* 8007b2ac. Pendiente: sonidos y el ajuste de espaciado de la letra r mientras pinta las opciones. */
+/* 8007b2ac */
 void Fe_Screen100(void)
 {
     FrontendState* fe = g_Frontend;
@@ -623,7 +636,9 @@ void Fe_Screen100(void)
         fe->slideX = 300;
         g_Settings.numPlayers = 2;
     }
+    s_narrowR = 1;
     Fe_DrawMenuScreen(items, 7, MainMenuValue, 0);
+    s_narrowR = 0;
     Fe_ReadPads();
 
     if (fe->popup == 1 || fe->popup == 2)
@@ -652,6 +667,7 @@ void Fe_Screen100(void)
                 g_Settings.numPlayers = 1;
             else
             {
+                Snd_PlayUi(0x4c, NULL);   /* (no esta en el banco del front-end: no suena, como en el original) */
                 fe->popup = 1;      /* 1 jugador tiene que usar el puerto 1 */
                 fe->nextScreen = -1;
             }
@@ -662,6 +678,7 @@ void Fe_Screen100(void)
                 g_Settings.numPlayers = 2;
             else
             {
+                Snd_PlayUi(0x4c, NULL);
                 fe->popup = 2;      /* hacen falta mandos en los dos puertos */
                 fe->nextScreen = -1;
             }
@@ -952,12 +969,17 @@ static const char* AudioValue(int item)
     return item == 4 ? Fe_GetString(0x2be + g_Settings.audioMode) : NULL;
 }
 
-/* 8007c540. Las barras de volumen usan la imagen Gmdc 5 decodificada en (0x300, 0x100).
- * Pendiente: aplicar los volumenes al motor de sonido y el sonido de prueba (FUN_8003f4b0). */
+/* fe +0x948: voz del sonido de prueba del menu de audio */
+static SndHandle s_testVoice;
+
+/* 8007c540. Las barras de volumen usan la imagen Gmdc 5 decodificada en (0x300, 0x100). Al mover los volumenes de
+ * efectos, motor o comentarista suena un sonido de prueba (0x4A, 0x5A, 0x5B: 8003f4b0 + 8003f7b8) que sigue
+ * sonando con el volumen de la barra hasta cambiar de opcion o salir (8003f48c). */
 void Fe_Screen500(void)
 {
     FrontendState* fe = g_Frontend;
     MenuItem* items = fe->audioMenu;
+    int stop = 0;
 
     if (fe->firstFrame)
     {
@@ -985,9 +1007,34 @@ void Fe_Screen500(void)
         }
         else if (dir)
         {
-            g_Settings.volume[fe->cursor] = (uint8_t)Fe_Clamp(g_Settings.volume[fe->cursor] + dir, 0, 0x7f);
+            int vol = Fe_Clamp(g_Settings.volume[fe->cursor] + dir, 0, 0x7f);
+            g_Settings.volume[fe->cursor] = (uint8_t)vol;
             Snd_ApplySettings(g_Settings.volume, g_Settings.audioMode);   /* 8003d498 / 8003d680 / 8003d538 / 8003d628 */
+            static const int ids[4] = { 0x4a, 0x5a, 0, 0x5b };          /* efectos, motor, musica (sin), comentarista */
+            int id = ids[fe->cursor & 3];
+            if (id)
+            {
+                if (!Handle_Valid(&s_testVoice))
+                {
+                    int def = Def_FromId(id);
+                    SndVoice* v = def != 0xff ? Voice_Alloc(vol, 10, 0, def) : NULL;
+                    if (v)
+                    {
+                        Handle_Set(&s_testVoice, v);
+                        if (vol > 0)
+                            Def_Play(def, v, 0x40, vol, -1, -1, 0);
+                    }
+                }
+                else
+                    Voice_Set(s_testVoice.v, s_testVoice.v->pan, vol, -1, 0);
+            }
         }
     }
+    else if (fe->cursor != fe->prevCursor)
+        stop = 1;
     Fe_PadRepeatReset();
+    if (fe->fadeDone)
+        stop = 1;
+    if (stop)
+        Handle_Free(&s_testVoice);   /* 8003f48c */
 }

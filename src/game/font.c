@@ -195,6 +195,16 @@ const uint8_t* Font_GetGlyph(int c)
     return s_cur->glyphs + s_cur->map[c & 0xff] * 11;
 }
 
+/* Avance (+8 del glifo) del caracter c en la fuente actual: el menu principal (8007b2ac) estrecha la r un pixel
+ * mientras pinta sus opciones. Los glifos estan en el asset, como en el original. */
+void Font_AdjustAdvance(int c, int delta)
+{
+    if (!s_cur)
+        return;
+    uint8_t* g = (uint8_t*)(uintptr_t)Font_GetGlyph(c);
+    g[8] = (uint8_t)(g[8] + delta);
+}
+
 static void ColorToRgb(unsigned color, uint8_t* r, uint8_t* g, uint8_t* b)
 {
     unsigned c = (color & 0x8000) ? (color & 0x7fff) : s_colors[(color & 0xffff) < 22 ? (color & 0xffff) : 0];
