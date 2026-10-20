@@ -22,6 +22,7 @@
 #include "sprite.h"
 #include "cnet.h"
 #include "racecar.h"
+#include "script.h"
 #include "tvcam.h"
 #include "hud.h"
 #include "pause.h"
@@ -45,6 +46,17 @@ void Race_Load(const char* path)
     TvCam_Free();                  /* 80072254 */
     Track_Free();
     Cnet_Reset();                  /* FUN_8002cf7c */
+    g_GameInfo->racingClass = g_Settings.racingClass;   /* 8002cf7c: la clase de la carrera (+0x08) */
+    Script_ResetRace();            /* 80067680 */
+    {
+        /* solo en el port (depuracion): NR_POWERUPS / NR_CLASS fuerzan los poderes (0..3) y la clase (0..3) */
+        const char* pu = getenv("NR_POWERUPS");
+        const char* cl = getenv("NR_CLASS");
+        if (pu)
+            g_GameInfo->powerUps = atoi(pu) & 3;
+        if (cl)
+            g_GameInfo->racingClass = atoi(cl) & 3;
+    }
     g_HaveStart = 0;
     strcpy(g_LevelPath, path);
     Gfx_InitBuffers(0x9c4);
@@ -288,6 +300,7 @@ void Race_MainLoop(void)
             g_PrevRaceTime = g_RaceTime;
             g_RaceTime += dt;          /* Race_UpdateTime 800269c0 */
             Track_Animate(dt);         /* 80061e94 */
+            Script_Tick(dt);           /* 80067834 */
             Power_ClearAlerts();       /* Race_Frame1P: aviso de clima */
             Actors_Update(dt);         /* 80048dec(6) */
             Race_UpdateCars(dt);
@@ -332,6 +345,7 @@ void Race_MainLoop(void)
         Race_UpdateState(dt);          /* 80027e90 */
     }
     Snd_StopRace();                    /* 8003d04c */
+    Script_Disable();                  /* 80067880 (8002456c) */
     Fx_FreeAll(2);                     /* 80038e28 (8002456c) */
     TvCam_Free();                      /* RaceCam_ResetPresets 80072348 (8002456c) */
     Render_SetPreset(1);

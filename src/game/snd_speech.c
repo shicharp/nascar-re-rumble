@@ -88,7 +88,7 @@ int Speech_Pick(int cat, int wait)
     if ((unsigned)cat >= NUM_CATS || s_cats[cat].count < 1)
         return -1;
     SpeechCat* c = &s_cats[cat];
-    int cls = g_GameInfo ? g_GameInfo->unk08 & 3 : 0;
+    int cls = g_GameInfo ? g_GameInfo->racingClass & 3 : 0;
     int mult = Exe_S32(0x80010de0u + (uint32_t)cls * 4);
     if ((g_RaceTime >> 8) - c->lastTime < (wait * mult) >> 16)
         return -1;

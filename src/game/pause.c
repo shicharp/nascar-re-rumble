@@ -424,7 +424,7 @@ void Race_Results(int dt)
     Font_DrawString(s, 0xa0 - w / 2, top + 0x78, 9);
     static const char* const cls[4] = { "Kid Play", "Rookie", "Pro", "Elite" };
     static const char* const pu[4] = { "None", "Some", "More", "Mayhem" };
-    snprintf(s, sizeof(s), "Class: %s     Power-Ups: %s", cls[g_GameInfo->unk08 & 3], pu[g_GameInfo->powerUps & 3]);
+    snprintf(s, sizeof(s), "Class: %s     Power-Ups: %s", cls[g_GameInfo->racingClass & 3], pu[g_GameInfo->powerUps & 3]);
     Font_Measure(s, &w, &hh);
     Font_DrawString(s, 0xa0 - w / 2, top + 0x83, 0xd294);
     Font_DrawString("Total", 0xae, top + 0x92, 0xeb5f);

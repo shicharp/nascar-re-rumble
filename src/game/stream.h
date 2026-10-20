@@ -40,6 +40,7 @@ typedef struct
     int vagChunks;
     int otherChunks;
     int errors;
+    int skipped;       /* assets descartados por el guion de su cabecera */
 } StreamStats;
 
 int  Stream_Open(const char* name);

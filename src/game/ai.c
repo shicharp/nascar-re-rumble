@@ -265,7 +265,7 @@ static void Ai_UpdatePath(RaceCar* e)
             }
         }
     }
-    int limit = g_GameInfo->unk08 == 0 ? 0x960 : 0x4b0;
+    int limit = g_GameInfo->racingClass == 0 ? 0x960 : 0x4b0;
     if (I32(ctrl, 0x30) > limit)
         Ai_Recover(e);
     if (I16(ctrl, 0x28) < 0)
@@ -656,7 +656,7 @@ static void Ai_Drive(RaceCar* e, int dt)
         if (I8(c, 0x3f4) == 0)
             I8(c, 0x3f4) = 1;
         int tgt = I16(ctrl, 0x20);
-        if (g_GameInfo->unk08 < 3 || g_GameInfo->powerUps == 3)
+        if (g_GameInfo->racingClass < 3 || g_GameInfo->powerUps == 3)
         {
             int rb = Ai_RubberBand(e);
             int L = g_Track ? g_Track->numCurve : 0, q = L >> 4;
@@ -677,7 +677,7 @@ static void Ai_Drive(RaceCar* e, int dt)
                     U8(c, 0x431) = 0;
                 else
                     U8(c, 0x431) = (uint8_t)Div_((q - rb) * base, q);
-                if (g_GameInfo->unk08 == 0 && (L >> 6) < rb)
+                if (g_GameInfo->racingClass == 0 && (L >> 6) < rb)
                 {
                     tgt >>= 3;
                     if (tgt < 0x15)
@@ -958,7 +958,7 @@ void Race_UpdatePositions(int dt)
             if (cat >= 0)
                 sec = Speech_Pick(cat, 10);
         }
-        else if (g_GameInfo->unk08 == 0)
+        else if (g_GameInfo->racingClass == 0)
             sec = Speech_Pick(0xc, 0xf);
         if (sec >= 0)
             Speech_Queue(sec, e, 0);

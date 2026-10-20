@@ -140,7 +140,7 @@ void Frontend_InitCamera(void)
     g_Frontend->bgIndex = 0xff;
     g_GameInfo->unk5c = 0;
     g_GameInfo->numPlayers = 1;
-    g_GameInfo->unk08 = 1;
+    g_GameInfo->racingClass = 1;
     g_GameInfo->powerUps = 1;
 }
 

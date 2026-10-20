@@ -1,3 +1,4 @@
+#include "script.h"
 #include <stdio.h>
 #include <string.h>
 #include "mem.h"
@@ -10,6 +11,7 @@ static int         s_slot = -1;
 static int         s_offset;
 static uint8_t     s_block[STREAM_BLOCK_SIZE];
 static NrAsset*    s_cur;          /* DAT_800b1124: asset en montaje */
+static int         s_skipping;     /* el guion de la cabecera descarto el asset: sus SDAT se ignoran */
 static int         s_curFill;      /* DAT_800b1128 */
 static NrAsset*    s_queueHead;    /* DAT_800b1130 */
 static NrAsset*    s_queueTail;
@@ -141,7 +143,10 @@ static void Stream_QueueAsset(NrAsset* a)
     s_stats.assets++;
 }
 
-/* 8002a2bc: cabecera SHDR. Nota: el original consulta FUN_80067890 para descartar assets por nombre. */
+/* 8002a2bc: cabecera SHDR. Salvo los Csac (que guardan sus guiones para mas tarde), el guion de +0x38 (longitud
+ * +0x30) decide si el asset se carga (en las pistas: las cajas de poder segun el ajuste de poderes, objetos segun
+ * la clase y los desbloqueos) y despues se ejecuta el segundo (+0x38 + longitud, de +0x34 bytes). Los SDAT de un
+ * asset descartado se ignoran. */
 static void Stream_BeginAsset(const uint8_t* chunk)
 {
     if (s_cur)
@@ -149,6 +154,19 @@ static void Stream_BeginAsset(const uint8_t* chunk)
         NR_Log("Stream: SHDR nuevo con un asset incompleto (%d/%d bytes)\n", s_curFill, s_cur->size);
         s_stats.errors++;
         Asset_Free(s_cur);
+        s_cur = NULL;
+    }
+    s_skipping = 0;
+    if (NR_Read32(chunk + 0x18) != NR_TAG('C', 's', 'a', 'c'))
+    {
+        uint32_t len1 = NR_Read32(chunk + 0x30);
+        if (!Script_Run(chunk + 0x38, 0, -1, NULL))
+        {
+            s_skipping = 1;
+            s_stats.skipped++;
+            return;
+        }
+        Script_Run(chunk + 0x38 + len1, 0, -1, NULL);
     }
 
     NrAsset* a = (NrAsset*)Mem_Alloc(sizeof(NrAsset), 0);
@@ -171,7 +189,8 @@ static void Stream_AppendData(const uint8_t* data, int len)
 {
     if (!s_cur)
     {
-        s_stats.errors++;
+        if (!s_skipping)
+            s_stats.errors++;
         return;
     }
     if (len > s_cur->size - s_curFill)

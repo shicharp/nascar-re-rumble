@@ -1211,7 +1211,7 @@ pickTrack:
     }
     g_GameInfo->unk5c = 0;
     g_GameInfo->numPlayers = np;
-    g_GameInfo->unk08 = 1;
+    g_GameInfo->racingClass = 1;
     /* TODO: mandos de cada jugador (FUN_8008b160 con DAT_800b797d/797f) */
     g_GameInfo->powerUps = (gs->gameMode == 5 || gs->gameMode == 13) ? 0 : gs->powerUps;
     g_SplitScreen = np == 2;

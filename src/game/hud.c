@@ -299,7 +299,7 @@ static void Hud_Messages(int view, int y, int level)
         if (diff > 0x800)
             diff -= 0x1000;
         I32(ctrl, 4) = Abs_(diff) < 0x601 ? -1 : I32(ctrl, 4) + g_FrameDelta;
-        if (g_GameInfo->unk08 == 0 && I32(ctrl, 4) > 899)
+        if (g_GameInfo->racingClass == 0 && I32(ctrl, 4) > 899)
         {
             Car_Reset(h, 0);
             I32(ctrl, 4) = -1;

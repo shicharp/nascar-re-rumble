@@ -18,6 +18,7 @@
 #include "font.h"
 #include "game.h"
 #include "snd.h"
+#include "script.h"
 #include "race.h"
 #include "render.h"
 #include "texslot.h"
@@ -112,6 +113,7 @@ void Frontend_Load(const char* path)
     TexSlot_Init();                 /* FUN_80066fe0 */
     Render_Init();                  /* FUN_800137d8 */
     Render_SetPreset(3);            /* Camera_Create(3) + Camera_ApplyProjection: H = 360 */
+    Script_ResetRace();             /* 80067680: los guiones de las cabeceras del FE.TRK */
     Stream_Open(g_LevelPath);       /* Stream_Open 8002baa8: en el front-end se abre el propio .trk */
     Font_Init();                    /* FUN_800446b8 */
     Frontend_InitCamera();
@@ -165,7 +167,8 @@ int Level_WaitLoaded(void)
     }
     g_GameInfo->nextMode = 1;
     Stream_SetIdle();               /* el resto (secciones de coches, musica) se lee bajo demanda */
-    NR_Log("Nivel cargado: %d bloques leidos\n", Stream_GetStats()->blocks);
+    NR_Log("Nivel cargado: %d bloques leidos, %d assets, %d descartados por su guion\n", Stream_GetStats()->blocks,
+           Stream_GetStats()->assets, Stream_GetStats()->skipped);
     return 1;
 }
 
@@ -255,7 +258,7 @@ int Game_Main(void)
     g_IsFrontend = 1;
     if (Game_Init())
     {
-        g_GameInfo->unk08 = 1;
+        g_GameInfo->racingClass = 1;
         g_GameInfo->unk98 = 1;
         g_GameInfo->nextMode = 3;
         Gfx_InitBuffers(200);

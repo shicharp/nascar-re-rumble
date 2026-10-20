@@ -19,7 +19,7 @@ typedef struct
 {
     int unk00;
     int unk04;
-    int unk08;          /* main: 1 */
+    int racingClass;    /* +0x08: clase de la carrera (0 Kid Play, 1 Rookie, 2 Pro, 3 Elite; 8002cf7c) */
     int numPlayers;     /* +0x0C */
     int nextMode;       /* +0x10: modo siguiente (0 carrera, 3 arranque, 4 cargando...) */
     int unk14[14];
