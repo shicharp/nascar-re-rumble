@@ -34,7 +34,8 @@ static int s_rand[32];        /* DAT_800af6dc */
 static int s_counters[100];   /* DAT_800af75c */
 static int s_timers[32];      /* DAT_800af6c4 */
 static int s_disabled;        /* DAT_800af920 */
-static int s_unknown1, s_unknown3;   /* DAT_800af750 / DAT_800af754 (sin identificar) */
+static int s_unknown1;        /* DAT_800af750 (solo la usa esta tabla) */
+int g_ScriptSound;            /* DAT_800af754: sonido de interfaz pedido por un guion (Race_UpdateState lo toca) */
 
 int Script_LogOn(void)
 {
@@ -62,7 +63,7 @@ static int* GameVar(int i)
     case 0: return &g_RaceTime;        /* DAT_800af748 */
     case 1: return &s_unknown1;        /* DAT_800af750 */
     case 2: return &g_RaceEndTimer;    /* DAT_800af740 */
-    case 3: return &s_unknown3;        /* DAT_800af754 */
+    case 3: return &g_ScriptSound;     /* DAT_800af754 */
     default: return &dummy;
     }
 }
@@ -142,7 +143,7 @@ int Script_Run(const uint8_t* code, int arg, int init, void* ent)
         case 5: v = arg; break;
         case 8: pc += *pc; push = 0; break;
         case 9: v = a == 0; break;
-        case 0xa: v = 0; Script_Pending(op); break;   /* DAT_800b0dc0: tabla de la carrera sin identificar */
+        case 0xa: v = 0; Script_Pending(op); break;   /* tabla de bytes DAT_800b0dc0: ningun guion del disco la usa */
         case 0xb:
             if (a >= 0)
                 v = s_rand[a & 31];
@@ -244,6 +245,18 @@ int Script_Run(const uint8_t* code, int arg, int init, void* ent)
     return r;
 }
 
+/* 80045100 (Race_UpdateState): el sonido que pidio un guion con la variable 3 (GR3 pide el 22; SE3 el 149, que
+ * por ser >= 0x8C no suena) */
+void Script_PlayRequestedSound(void)
+{
+    if (g_ScriptSound != 0)
+    {
+        if (g_ScriptSound < 0x8c)
+            Snd_PlayUi(g_ScriptSound, NULL);
+        g_ScriptSound = 0;
+    }
+}
+
 /* 80067680 (Race_Load / Frontend_Load) */
 void Script_ResetRace(void)
 {
@@ -253,6 +266,7 @@ void Script_ResetRace(void)
     for (int k = 0; k < 32; k++)
         s_rand[k] = (int)((unsigned)Rand_A() % 1000);
     memset(s_counters, 0, sizeof(s_counters));
+    g_ScriptSound = 0;   /* (Font_Init 800446b8 al cargar) */
     for (int k = 0; k < 32; k++)
         s_timers[k] = -10;
     s_disabled = 0;

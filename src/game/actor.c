@@ -544,6 +544,24 @@ void Actors_CmdByTeam(int team, int cmd, int arg)
             Ent_PushCmd((uint8_t*)&g_Cars[i], cmd, arg, 1);
 }
 
+/* Solo en el port (depuracion): NR_KILLTEST=id deja sin vida al actor con ese id a los 5 s de carrera (muere como
+ * al romperlo: mensaje 4 y su guion de muerte) */
+static void Actors_KillTest(void)
+{
+    static int s_id = -2, s_done;
+    if (s_id == -2)
+        s_id = getenv("NR_KILLTEST") ? atoi(getenv("NR_KILLTEST")) : -1;
+    if (s_id < 0 || s_done || g_RaceTime < 1500)
+        return;
+    s_done = 1;
+    for (Actor* a = g_Actors; a; a = a->next)
+        if (a->handle > 0 && a->id == s_id)
+        {
+            NR_Log("[guion] prueba: muere el actor %d (tipo 0x%02x)\n", a->id, a->type);
+            a->hp = -1;
+        }
+}
+
 /* Solo en el port (depuracion): NR_TRIGTEST=1 hace que el coche humano toque cada disparador a los 5 s de carrera
  * (los mismos mensajes 10 y 0xB que el choque) */
 static void Actors_TriggerTest(void)
@@ -570,6 +588,7 @@ static void Actors_TriggerTest(void)
 void Actors_Activate(void)
 {
     Actors_TriggerTest();
+    Actors_KillTest();
     RaceCar* t = RaceCam_GetTarget(0);
     if (!t)
         return;

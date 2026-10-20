@@ -23,6 +23,7 @@
 #include "ai.h"
 #include "pause.h"
 #include "snd.h"
+#include "script.h"
 
 int g_RacePaused;              /* DAT_800af710 */
 int g_RaceEndTimer;            /* DAT_800af740 */
@@ -188,6 +189,7 @@ static void Pause_Begin(int player)
 /* Race_UpdateState 80027e90 (un jugador): fin de carrera y START */
 void Race_UpdateState(int dt)
 {
+    Script_PlayRequestedSound();   /* 80045100 */
     if (g_GameState == GAMESTATE_RUNNING && g_RaceEndTimer > 0 && !g_RacePaused)
     {
         g_RaceEndTimer -= dt;

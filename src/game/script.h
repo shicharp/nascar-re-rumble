@@ -9,6 +9,7 @@ int  Script_Run(const uint8_t* code, int arg, int init, void* ent);   /* 8006789
 void Script_ResetRace(void);                                         /* 80067680 */
 void Script_Tick(int dt);                                            /* 80067834 */
 void Script_Disable(void);                                           /* 80067880 */
-int  Script_LogOn(void);                                             /* solo en el port: NR_SCRIPTLOG */
+int  Script_LogOn(void);
+void Script_PlayRequestedSound(void);                                /* 80045100 */                                             /* solo en el port: NR_SCRIPTLOG */
 
 #endif
