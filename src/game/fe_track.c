@@ -1,7 +1,7 @@
 /* Pantalla 1300: eleccion de sede y pista (carrusel de sedes, lista de pistas, trazado 3D girando) y
  * montaje de la carrera (parrilla, rivales, fichero .trk) antes de salir del front-end.
- * Pendiente: copas ganadas en el carrusel (tablas de la tarjeta DAT_800b7998 / DAT_800b8418) y configuracion
- * de mandos (FUN_8008b160). */
+ * En campeonato, la mejor copa ganada en la sede (tablas DAT_800b7998 / DAT_800b8418) gira en la esquina de la
+ * ventana. Los botones de cada jugador los pone Pad_SetupControls (8008b160, fe_pads.c). */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -706,7 +706,25 @@ void Fe_Screen1300(void)
     Fe_DrawFrame(0x96, 0x96, 0xa0, rx0, ry0, rx1, ry1);
     Font_Select(2);
     Fe_DrawTextRgb(0x1f, 0x1f, 0x1f, fe->venues[curVenue][0].name, nameX, nameY, 1);
-    /* TODO: copa ganada en esta sede (Fe_DrawSpinningModel 5..16 segun DAT_800b7998 / DAT_800b8418) */
+    if (gs->champType)
+    {
+        /* la mejor copa ganada en esta sede y clase, girando en la esquina: la de las tablas de copa individual
+         * (puesto +0x11) o por equipos (+0xD), la mejor de las dos; en el modo 4 la de su tabla (+0x1B, copas 8..10) */
+        int t = curVenue > 6 ? curVenue - 1 : curVenue;
+        int cls = gs->racingClass ? gs->racingClass - 1 : 0;
+        const uint8_t* e = g_SaveExtra.cupRecs + t * 0x150 + cls * 0x70;
+        const uint8_t* u = g_SaveExtra.cupRecs2 + t * 0x120 + cls * 0x60;
+        int model = -1;
+        if (gs->gameMode == 4)
+        {
+            if (NR_Read32(e + 4) != 0)
+                model = e[0x1b] + 8;
+        }
+        else if (NR_Read32(e) != 0 || NR_Read32(u) != 0)
+            model = (NR_Read32(u) == 0 || (NR_Read32(e) != 0 && e[0x11] <= u[0xd]) ? e[0x11] : u[0xd]) + 5;
+        if (model >= 0)
+            Fe_DrawSpinningModel(rx1 - 0x11, ry0 + 0xf, 29000, model, 2);
+    }
 
     Font_Select(0);
     for (int k = 0; k < items; k++)
