@@ -3,6 +3,7 @@
  * Uso: nascar.exe [--disc <carpeta del disco extraido>] [--skip-legal]
  *                 [--shot salida.bmp [--shot-frame N]]   captura el frame N y sale
  *                 [--press frame:boton,...]                pulsaciones simuladas (pruebas)
+ *                 [--movie fichero.wve]                    pone ese video y sale
  *                 [--viewer [fichero] [--page N]]          visor de paginas Cpag
  */
 #include <stdio.h>
@@ -56,6 +57,7 @@ int main(int argc, char** argv)
         else if (!strcmp(argv[i], "--shot") && i + 1 < argc) shot = argv[++i];
         else if (!strcmp(argv[i], "--shot-frame") && i + 1 < argc) shotFrame = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--skip-legal")) g_Options.skipLegal = 1;
+        else if (!strcmp(argv[i], "--movie") && i + 1 < argc) g_Options.movie = argv[++i];
         else if (!strcmp(argv[i], "--press") && i + 1 < argc) Pad_SetScript(argv[++i]);
     }
 

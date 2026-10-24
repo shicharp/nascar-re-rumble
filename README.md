@@ -36,7 +36,7 @@ Estado actual: arranque real del juego. `main` → `Game_Init` → pantalla lega
 software) → vídeos (omitidos) → `Level_Run("Fe.trk")` → pantalla de carga `Feld.lsc` mientras llega
 `FE.TRK` por streaming hasta el `Cctr` → `Frontend_MainLoop` (pantalla 2000 con fundido → **menús**
 navegables: principal (100), tipo de carrera (200), opciones de carrera (300), opciones de juego (400) y
-audio (500), el Showcase (600, sin los vídeos), la contraseña (700), la tarjeta de memoria (800, emulada en `memcard1.mcd`), la configuración de mandos (1000), Hints and Tips (1900), el Hall of Champs (900 y
+audio (500), el Showcase (600, con los vídeos), la contraseña (700), la tarjeta de memoria (800, emulada en `memcard1.mcd`), la configuración de mandos (1000), Hints and Tips (1900), el Hall of Champs (900 y
 récords de copa 1600), el nombre (1100), los récords de pista (1400) y, al volver de una carrera, los récords, la
 copa (clasificación 1500, podio 1700), los desbloqueos (1800) y la pregunta de guardar, con cuadros de mensaje, la selección de piloto/coche (1200) con el coche 3D que llega por
 secciones del FE.TRK y la elección de sede/pista (1300) con el trazado en 3D; al confirmar se monta la
@@ -59,7 +59,7 @@ start, select, l1, r1, l2, r2).
 Variables de depuracion: `NR_LAPS=n` vueltas, `NR_CAMCAR=n` camara en el coche n, `NR_POWER=n` poder n en la
 mano del jugador al salir, `NR_POWERLOG=1` cajas recogidas y poderes usados en el log, `NR_SNDLOG=1` sonidos,
 `NR_FXLOG=1` efectos creados, `NR_FXTEST=clase[,golpe]` crea un efecto en el coche del jugador cada segundo,
-`NR_BODYLOG=1` golpes a los objetos sueltos, `NR_SCRIPTLOG=1` guiones, `NR_TRIGTEST=1` el coche humano toca todos los disparadores, `NR_KILLTEST=id` rompe ese actor a los 5 s (guiones de golpe y de muerte), `NR_VEHLOG=1` nodos que cruzan los vehiculos de la pista, `NR_ENDRACE=t` el jugador 1 termina la carrera a los t tics, `NR_SCREENLOG=1` cambios de pantalla del front-end,
+`NR_BODYLOG=1` golpes a los objetos sueltos, `NR_SCRIPTLOG=1` guiones, `NR_TRIGTEST=1` el coche humano toca todos los disparadores, `NR_KILLTEST=id` rompe ese actor a los 5 s (guiones de golpe y de muerte), `NR_VEHLOG=1` nodos que cruzan los vehiculos de la pista, `NR_ENDRACE=t` el jugador 1 termina la carrera a los t tics, `NR_SCREENLOG=1` cambios de pantalla del front-end, `--movie <fichero>` pone ese vídeo y sale (`--skip-legal` también salta los vídeos de arranque),
 `NR_POWERUPS=n` / `NR_CLASS=n` fuerzan los poderes y la clase de la carrera, `NR_TVLOG=1` camaras de TV, `NR_TVCAM=1` empieza con las camaras de TV (`vN`: la virtual N), `NR_PSXLOD=1`
 niveles de detalle de la PS1 (por defecto, todo con el detalle completo).
 `--viewer` es el visor de páginas Cpag (flechas para cambiar de página).
@@ -95,6 +95,7 @@ mostrando mas escenario a los lados; el marcador se ancla a los bordes.
 | `src/game/memcard.c` | driver de la tarjeta de memoria (8001f560, 8001f578, 8001fa3c, 8001fae8, 8001fd88, 8001f910) emulado sobre un .mcd |
 | `src/game/savegame.c` | partida guardada: 8009358c, 80093938, 800937f8, 800939fc, 80093f6c, Clear Records 800931d8 |
 | `src/game/password.c` | contraseña del progreso: 8008f344, 8008fb60, 80090008 |
+| `src/game/movie.c` | vídeos WVE: Movie_Play 800991e4 (bucle 8009743c, audio 80096e90 / 80096d7c); `mdec.c` hace la tabla VLC como 80098ee0 / 80098f28 / 8009905c |
 | `src/game/fe_pads.c` | configuración de mandos 1000 (8007f810), esquema de botones de cada jugador 8008b160 y Hints and Tips 1900 (8008a52c) |
 | `src/game/fe_records.c` | vuelta de la carrera 80090fb4, desbloqueos 80091ae0, tiempos 8008ee98 y pantallas 900 (8007ddb4), 1400 (800855a0), 1500 (80085d90), 1600 (8007ea64), 1700 (80087130), 1800 (80087fa8) |
 | `src/game/fe_select.c` | pantalla 1200 (80081a9c): tabla de pilotos 800aa5ec, atlas de miniaturas (80092f5c, 8008e2ec, RLE 8009307c), carrusel (8008b9d4, 8008bc34), coches del garaje (800923cc, 80090a88, 80090674), 8008aee4, 8008dc1c, 8008efec |

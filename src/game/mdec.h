@@ -11,4 +11,9 @@
  * Devuelve 1 si va bien; outW/outH reciben las dimensiones. */
 int Mdec_DecodeImage(const uint8_t* img, int imgSize, uint16_t* out, int maxPixels, int* outW, int* outH);
 
+/* Un fotograma: bs = cabecera BS (u16 n, u16 0x3800, u16 qscale, u16 version) y el bitstream */
+int  Mdec_DecodeFrame(const uint8_t* bs, int size, int w, int h, uint16_t* out);
+/* 80098ee0: tabla de valores de los codigos VLC (0xE0 u16, la del bloque VLC0 de un video); NULL = la de por defecto */
+void Mdec_SetVlcTable(const uint8_t* values);
+
 #endif

@@ -4,7 +4,8 @@
 
 typedef struct
 {
-    int skipLegal;      /* no esperar los 1500 vblanks de la pantalla legal */
+    int skipLegal;      /* no esperar los 1500 vblanks de la pantalla legal (ni poner los videos de arranque) */
+    const char* movie;  /* --movie: poner ese video y salir */
 } GameOptions;
 
 extern GameOptions g_Options;
@@ -13,7 +14,7 @@ int  Game_Main(void);                 /* 800792a8 */
 int  Game_Init(void);                 /* 80079470 */
 void Game_Shutdown(void);             /* 800795b4 */
 void Legal_Show(int skippable);       /* 80090d98 */
-void Movie_Play(const char* name, int a, int b, int c, int w, int h);   /* 800991e4 */
+void Movie_Play(const char* name, int a, int b, int y, int w, int h);   /* 800991e4 (movie.c) */
 
 int  Level_Run(const char* name, int isFrontend);   /* 80029be4 */
 int  Level_Load(const char* name);                  /* 80024684 */

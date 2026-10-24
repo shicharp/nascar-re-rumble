@@ -48,13 +48,6 @@ void Game_Shutdown(void)
     g_GameInfo = NULL;
 }
 
-/* 800991e4. TODO: decodificador de video WVE de EA (y FSV) */
-void Movie_Play(const char* name, int a, int b, int c, int w, int h)
-{
-    (void)a; (void)b; (void)c; (void)w; (void)h;
-    NR_Log("Movie_Play: '%s' omitido (video WVE/FSV sin portar)\n", name);
-}
-
 /* 80090d98. El original deja la imagen en pantalla y espera 1500 vblanks (con param 0 vigila la
  * tarjeta de memoria y no deja saltar). En el port se redibuja cada frame (PsyCross necesita
  * presentar) y siempre se puede saltar con Start/X. */
@@ -270,8 +263,19 @@ int Game_Main(void)
         char intro[64];
         snprintf(intro, sizeof(intro), "%s%sIntro.wve", "CW\\", "Opening\\");
         Legal_Show(0);
-        Movie_Play(intro, 4, 0, 8, 0x140, 0xf0);
-        Movie_Play("Ea_logo.fsv", 4, 0, 0, 0x140, 0xf0);
+        if (g_Options.movie)
+        {
+            /* solo en el port (pruebas): --movie <fichero> pone ese video y sale */
+            Movie_Play(g_Options.movie, 4, 0, 0xc, 0x140, 0xf0);
+            Gfx_FreeBuffers();
+            Game_Shutdown();
+            return 0;
+        }
+        if (!g_Options.skipLegal)   /* (el port salta tambien los videos con --skip-legal) */
+        {
+            Movie_Play(intro, 4, 0, 8, 0x140, 0xf0);
+            Movie_Play("Ea_logo.fsv", 4, 0, 0, 0x140, 0xf0);   /* (no esta en el disco) */
+        }
         Gfx_FreeBuffers();
 
         /* Bucle principal: front-end y carrera elegida */
