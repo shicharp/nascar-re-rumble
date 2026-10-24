@@ -324,7 +324,7 @@ static void ReleaseOtherSlots(int p, int keep)
 
 /* 800923cc: el panel p quiere mostrar (driver, car): reutiliza un coche ya cargado o pide la carga
  * en el hueco libre usado hace mas tiempo */
-static void Fe_RequestCar(int p, int driver, int car)
+void Fe_RequestCar(int p, int driver, int car)
 {
     FrontendState* fe = g_Frontend;
     if (!Fe_CarAvailable(fe->driver[p], fe->car[p]))
@@ -488,7 +488,7 @@ int Fe_OnCarModel(NrAsset* a, int id)
 }
 
 /* 80090a88(1): vacia los huecos de coches */
-static void Fe_ResetCars(void)
+void Fe_ResetCars(void)
 {
     FrontendState* fe = g_Frontend;
     for (int i = 0; i < 3; i++)
@@ -513,7 +513,7 @@ static void Fe_ResetCars(void)
 }
 
 /* 80090a88(0): lanza la siguiente carga pendiente y mueve los coches que entran o salen */
-static void Fe_UpdateCars(void)
+void Fe_UpdateCars(void)
 {
     FrontendState* fe = g_Frontend;
     s_fadeBusy = fe->fadeDone != 0;
@@ -680,7 +680,7 @@ static void NegateY(int* rot)
 
 /* 8008bd58: coche del panel p girando, centrado en (x, y) de pantalla, a 'dist' de la camara. Con
  * 'reflection' dibuja antes su reflejo invertido bajo el suelo y el foco, y lo vuelca (Gfx_Flip(0)). */
-static void Fe_DrawCarModel(int p, int x, int y, int dist, int reflection)
+void Fe_DrawCarModel(int p, int x, int y, int dist, int reflection)
 {
     FrontendState* fe = g_Frontend;
     GfxObj* car = (GfxObj*)fe->carModel[p];

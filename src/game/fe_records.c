@@ -10,11 +10,22 @@
  * si hay alguno, la pantalla 1100 pide el nombre (texto 2002 record, 2003 vuelta rapida, 2004 los dos) y la 1400
  * los ensena. En una copa se va directamente a la 1400 y despues a la clasificacion (1500); al terminar la copa,
  * los tres primeros pasan a la 1700 (trofeo y records de copa). Despues, 80091ae0 mira que se ha desbloqueado
- * (1800) y se vuelve al menu principal (o a la 600 la primera vez que se gana todo en Elite). */
+ * (1800) y se vuelve al menu principal (o a la 600 la primera vez que se gana todo en Elite).
+ *
+ * Records de copa (g_SaveExtra.cupRecs, DAT_800b7998): por sede 0x150 y por clase 0x70, cuatro puestos de 0x1C
+ * {tiempo u32, tiempo del modo 4 u32, nombre[9] (+8), puesto (+0x11), nombre del modo 4 (+0x12), su puesto (+0x1B)};
+ * por equipos (cupRecs2, DAT_800b8418): por sede 0x120 y clase 0x60, cuatro de 0x18 {tiempo, nombre (+4), puesto
+ * (+0xD), compañero (+0xE)}. Sedes 0-5, 6 Winston Cup, 7 copa EA. Puesto 0 = copa ganada. */
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "libgte.h"
 #include "nr.h"
+#include "mem.h"
+#include "gfx.h"
+#include "asset.h"
+#include "render.h"
 #include "exe.h"
 #include "font.h"
 #include "globals.h"
@@ -199,7 +210,7 @@ static int Fe_CheckUnlocks(void)
             s_unlock[idx - 0x14] = 1;
         }
     }
-    /* Winston Cup (sede 7) ganada: el especial DAT_800b714f */
+    /* copa EA (sede 7) ganada: el especial DAT_800b714f */
     if (CupWon(7, c) && P(0x800b714f) == 0)
     {
         changed = 1;
@@ -531,4 +542,737 @@ void Fe_Screen1400(void)
         if (s_slide > 0x92)
             s_slide = 0x92;
     }
+}
+
+/* ---------------------------------------------------------------- pantalla 1500: clasificacion de la copa */
+
+static short s_cupView;   /* fe +0x91A: 0 clasificacion de la copa, 1 resultado de la carrera */
+
+static const char* CarName(const GridCar* c)
+{
+    return c->player == 0xff ? g_Drivers[c->driver].name : g_Settings.playerName[c->player & 1];
+}
+
+/* color de una fila: el equipo del jugador 1 amarillo, el del 2 naranja, el resto blanco */
+static void RowColor(int k, int* r, int* g, int* b)
+{
+    *r = 0x1c;
+    *b = 0;
+    if (g_RaceGrid.car[k].team == g_RaceGrid.car[GridFind(0)].team)
+        *g = 0x1c;
+    else if (g_Settings.numPlayers == 2 && g_RaceGrid.car[k].team == g_RaceGrid.car[GridFind(1)].team)
+        *g = 0xe;
+    else
+        *g = *b = 0x1c;
+}
+
+static void DrawNumber(int n, int x, int y, int r, int g, int b)   /* 80045098 */
+{
+    char s[16];
+    snprintf(s, sizeof(s), "%d", n);
+    Font_DrawString(s, x, y, (unsigned)(r << 10 | g << 5 | b) | 0x8000);
+}
+
+/* registros y parrilla en el orden de CarRecord.startPos (+ base: 1 = puesto de llegada 1..n, 0 = clasificacion) */
+static void SortByPos(int base)
+{
+    int n = g_RaceGrid.count < 6 ? g_RaceGrid.count : 6;
+    CarRecord recs[8];
+    GridCar cars[8];
+    memset(recs, 0, sizeof(recs));
+    memset(cars, 0, sizeof(cars));
+    for (int i = 0; i < n; i++)
+    {
+        int p = (g_CarRecords[i].startPos - base) & 7;
+        recs[p] = g_CarRecords[i];
+        cars[p] = g_RaceGrid.car[i];
+    }
+    for (int i = 0; i < n; i++)
+    {
+        g_CarRecords[i] = recs[i];
+        g_RaceGrid.car[i] = cars[i];
+    }
+}
+
+/* primer frame de 80085d90: puntos de la carrera (DAT_800af468: 10, 8, 6, 4, 2, 1) y tiempo acumulado, orden de
+ * llegada y puesto en la copa (por puntos, despues por tiempo); por equipos, la suma de los dos */
+static void CupUpdateStandings(void)
+{
+    int n = g_RaceGrid.count < 6 ? g_RaceGrid.count : 6;
+    CarRecord* r = g_CarRecords;
+    for (int i = 0; i < n; i++)
+    {
+        r[i].points = (uint8_t)(r[i].points + Exe_U8(0x800af467u + r[i].startPos));
+        r[i].d += r[i].a;
+    }
+    SortByPos(1);
+    if (!g_Settings.teamRace)
+    {
+        for (int i = 0; i < n; i++)
+        {
+            int rank = n - 1;
+            for (int j = 0; j < n; j++)
+            {
+                if (j == i)
+                    continue;
+                uint8_t pi = (uint8_t)r[i].points, pj = (uint8_t)r[j].points;
+                if (pj < pi || (pi == pj && ((uint32_t)r[i].d < (uint32_t)r[j].d || (r[i].d == r[j].d && i < j))))
+                    rank--;
+            }
+            r[i].startPos = (uint8_t)rank;
+        }
+        return;
+    }
+    for (int t = 0; t < 3; t++)
+    {
+        int m = 0;
+        for (int k = 0; k < 6; k++)
+            if (g_RaceGrid.car[k].team == t && m < 2)
+                s_teamCars[t][m++] = (int8_t)k;
+    }
+    for (int t = 0; t < 3; t++)
+    {
+        int rank = 2;
+        const CarRecord *a = &r[s_teamCars[t][0]], *b = &r[s_teamCars[t][1]];
+        unsigned pt = (uint8_t)a->points + (uint8_t)b->points;
+        uint32_t tt = (uint32_t)a->d + (uint32_t)b->d;
+        for (int u = 0; u < 3; u++)
+        {
+            if (u == t)
+                continue;
+            const CarRecord *c = &r[s_teamCars[u][0]], *d = &r[s_teamCars[u][1]];
+            unsigned pu = (uint8_t)c->points + (uint8_t)d->points;
+            uint32_t tu = (uint32_t)c->d + (uint32_t)d->d;
+            if (pu < pt || (pu == pt && (tt < tu || (tt == tu && t < u))))
+                rank--;
+        }
+        s_teamPos[t] = (int8_t)rank;
+    }
+    for (int t = 0; t < 3; t++)
+    {
+        const CarRecord *a = &r[s_teamCars[t][0]], *b = &r[s_teamCars[t][1]];
+        int second = (uint8_t)a->points < (uint8_t)b->points ||
+                     ((uint8_t)a->points == (uint8_t)b->points && (uint32_t)b->d < (uint32_t)a->d);
+        r[s_teamCars[t][second]].startPos = (uint8_t)(s_teamPos[t] * 2);
+        r[s_teamCars[t][!second]].startPos = (uint8_t)(s_teamPos[t] * 2 + 1);
+    }
+}
+
+/* titulo con la sede (fuente 2) y la pista (fuente 1) centradas juntas */
+static void DrawTrackTitle(int y)
+{
+    FrontendState* fe = g_Frontend;
+    const char* track = fe->venues[g_Settings.venue][g_Settings.track + 1].name;
+    const char* venue = fe->venues[g_Settings.venue][0].name;
+    int wt, wv, h;
+    Font_Select(1);
+    Font_Measure(track, &wt, &h);
+    Font_Select(2);
+    Font_Measure(venue, &wv, &h);
+    int half = (wt + 0xc + wv) / 2;
+    Font_DrawString(venue, 0x9b - half, y, 8);
+    Font_Select(1);
+    Font_DrawString(track, wv - half + 0xa7, y + 4, 8);
+}
+
+/* 80085d90: despues de cada carrera de una copa. Arriba / abajo cambia entre la clasificacion (puntos y tiempo
+ * acumulados; por equipos, de dos en dos con la suma) y el resultado de la carrera; X sigue (siguiente carrera o
+ * podio, 80090fb4) y triangulo pregunta si abandonar la copa (0xA28). */
+void Fe_Screen1500(void)
+{
+    FrontendState* fe = g_Frontend;
+    GameSettings* gs = &g_Settings;
+    int port = gs->numPlayers == 2 ? -1 : 0;
+    int n = g_RaceGrid.count < 6 ? g_RaceGrid.count : 6;
+    if (fe->firstFrame)
+    {
+        Fe_SetBackground(8);
+        Fe_DecodeGmdc(10, 0x380, 0);      /* titulos "Standings" / "Race Results" */
+        Fe_DecodeGmdc(0xb, 0x380, 0x20);
+        Fe_DecodeGmdc(8, 0x300, 0x100);   /* tabla normal y por equipos */
+        Fe_DecodeGmdc(9, 0x300, 0x180);
+        Fe_DecodeGmdc(0xc, 0x380, 0x40);
+        fe->popup = 0;
+        s_cupView = 0;
+        CupUpdateStandings();
+        s_slide = 6;
+    }
+    Fe_DrawBackground(0x800);
+    Fe_DrawHelp(0, HelpText(10), 0x21, 0xd5, 0x23, 300, 0);
+    DrawTrackTitle(0x11);
+    Fe_DrawVramRect(0x380, s_cupView * 0x20, 99, 0x1f, 0x27, 0x33, 0, 0);
+    Fe_DrawVramRect(0x380, 0x40, 0xf, 0x1a, 0x91, 0x35, 0, 0);
+    int ir, ig, ib;
+    Fe_ItemColor(&ir, &ig, &ib, 1);
+    Fe_DrawFrame(ir * -2 + 0x96, ig * -2 + 0x96, ib * -2 + 0xa0, 0x90, 0x35, 0xa0, 0x4e);
+    Fe_DrawVramRect(0x300, (gs->teamRace && s_cupView == 0) * 0x80 + 0x100, 0xf3, 0x7b, 0x26, 0x56, 0, 0);
+    int limit = s_slide + 0x2d;
+    if (s_cupView == 0)
+    {
+        unsigned sumP = 0;
+        uint32_t sumT = 0;
+        for (int rank = 0; rank < n; rank++)
+        {
+            int k = 0;
+            while (k < n && g_CarRecords[k].startPos != rank)
+                k++;
+            if (k == n)
+                k = 0;
+            int y = gs->teamRace ? rank / 2 * 0x22 + (rank % 2 == 0 ? 0x6b : 0x77) : rank * 0x11 + 0x6a;
+            if (limit <= y + 9)
+                break;
+            int r, g, b;
+            RowColor(k, &r, &g, &b);
+            const CarRecord* rec = &g_CarRecords[k];
+            Font_Select(4);
+            Fe_DrawTextRgb(r, g, b, CarName(&g_RaceGrid.car[k]), 0x3b, y - 3, 0);
+            Font_Select(0);
+            if (!gs->teamRace)
+            {
+                Fe_DrawTime(r, g, b, 0xb3, y, rec->d);
+                DrawNumber((uint8_t)rec->points, (uint8_t)rec->points < 10 ? 0xf8 : 0xf5, y, r, g, b);
+            }
+            else if (rank % 2)
+            {
+                int yy = rank / 2 * 0x22 + 0x70;
+                sumT += (uint32_t)rec->d;
+                sumP += (uint8_t)rec->points;
+                Fe_DrawTime(r, g, b, 0xb3, yy, (int)sumT);
+                Font_Select(4);
+                DrawNumber((int)sumP, sumP < 10 ? 0xf8 : 0xf4, yy - 3, r, g, b);
+            }
+            else
+            {
+                sumT = (uint32_t)rec->d;
+                sumP = (uint8_t)rec->points;
+            }
+        }
+    }
+    else
+        for (int i = 0; i < n && i * 0x11 + 0x73 < limit; i++)
+        {
+            int r, g, b;
+            RowColor(i, &r, &g, &b);
+            Font_Select(4);
+            Fe_DrawTextRgb(r, g, b, CarName(&g_RaceGrid.car[i]), 0x3b, i * 0x11 + 0x67, 0);
+            Font_Select(0);
+            Fe_DrawTime(r, g, b, 0xb3, i * 0x11 + 0x6a, g_CarRecords[i].a);
+            int pts = Exe_U8(0x800af468u + i);
+            DrawNumber(pts, pts < 10 ? 0xf8 : 0xf5, i * 0x11 + 0x6a, r, g, b);
+        }
+
+    Fe_ReadPads();
+    if (fe->popup == 0)
+    {
+        if (Fe_PadPressed(PADB_CROSS, port, 1))
+            fe->nextScreen = 0;   /* (al terminar el fundido se cambia por lo que siga) */
+        else if (Fe_PadPressed(PADB_TRIANGLE, port, 1))
+        {
+            fe->popup = 1;
+            gs->yesNo = 0;
+        }
+        else if (Fe_PadPressed(PADB_UP, port, 1) || Fe_PadPressed(PADB_DOWN, port, 1))
+        {
+            s_cupView = s_cupView == 0;
+            fe->cursor = fe->prevCursor == 0;   /* (para el sonido de mover el cursor) */
+        }
+    }
+    else
+    {
+        int res = Fe_MsgBox(0, 0x4f, Fe_GetString(0xa28), &gs->yesNo, port);
+        if (res != -1)
+        {
+            if (res != 0)
+            {
+                /* abandonar la copa */
+                if (!Fe_CheckUnlocks())
+                {
+                    fe->nextScreen = 100;
+                    if (g_FeSaveReturn)
+                        fe->marquee = 1;
+                }
+                else
+                    fe->nextScreen = 1800;
+            }
+            fe->popup = 0;
+        }
+    }
+    Fe_PadRepeatReset();
+    if (s_slide < 0x9e)
+    {
+        s_slide = (short)(s_slide + g_FrameDelta);
+        if (s_slide > 0x9e)
+            s_slide = 0x9e;
+    }
+    if (fe->fadeDone && fe->nextScreen != 100 && fe->nextScreen != 1800 && fe->nextScreen != 800)
+    {
+        if (gs->champType && gs->raceIndex < gs->cupRaces)
+            SortByPos(0);   /* la parrilla de la siguiente carrera sale de la clasificacion */
+        fe->nextScreen = (short)Fe_AfterRace();
+    }
+}
+
+/* ---------------------------------------------------------------- pantalla 1700: podio de la copa */
+
+/* inserta al del podio en una tabla de copa de 4 puestos (por puesto en la copa y despues por tiempo).
+ * stride: tamaño de cada puesto; tOff / pOff: tiempo y puesto; names / nameOff: nombres que se copian */
+static void CupInsert(uint8_t* tab, int stride, int tOff, int pOff, const CupWinner* w, int whole,
+                      int nameOff, int name2Off)
+{
+    int k = 0;
+    for (; k < 4; k++)
+    {
+        const uint8_t* e = tab + k * stride;
+        uint32_t t = Rd32(e + tOff);
+        if (t == 0 || w->pos < e[pOff] || (w->time < t && w->pos == e[pOff]))
+            break;
+    }
+    if (k >= 4)
+        return;
+    for (int j = 3; j > k; j--)
+    {
+        uint8_t* d = tab + j * stride;
+        const uint8_t* s = tab + (j - 1) * stride;
+        if (whole)
+            memcpy(d, s, stride);
+        else
+        {
+            memcpy(d + nameOff, s + nameOff, 9);
+            d[pOff] = s[pOff];
+            memcpy(d + tOff, s + tOff, 4);
+        }
+    }
+    uint8_t* e = tab + k * stride;
+    memcpy(e + nameOff, w->name, 9);
+    if (name2Off >= 0)
+        memcpy(e + name2Off, w->name2, 9);
+    e[pOff] = w->pos;
+    Wr32(e + tOff, w->time);
+}
+
+/* nombre de una tabla de copa (8008f15c): 0xDE + piloto + 1 = el de un piloto de la IA */
+static const char* CupName(const char* s)
+{
+    return (uint8_t)s[0] == 0xde ? g_Drivers[(uint8_t)s[1] - 1].name : s;
+}
+
+/* 80087130: uno por uno, de abajo arriba, los del podio con su coche (dos por equipos), el puesto, el tiempo y la
+ * copa girando; al entrar cada uno pasa a las tablas de la copa (DAT_800b7998: +0 tiempo, +8 nombre, +0x11 puesto;
+ * en el modo 4, +4 / +0x12 / +0x1B; por equipos DAT_800b8418). */
+void Fe_Screen1700(void)
+{
+    FrontendState* fe = g_Frontend;
+    GameSettings* gs = &g_Settings;
+    if (fe->firstFrame)
+    {
+        Fe_SetBackground(9);
+        fe->popup = gs->numPlayers;   /* se restaura al salir */
+        if (s_numWinners == 0)
+            fe->nextScreen = 200;
+        else
+        {
+            int c = gs->racingClass ? gs->racingClass - 1 : 0;
+            Fe_ResetCars();
+            if (gs->champType == 2)
+                gs->curVenue = 6;
+            else if (gs->champType == 3)
+                gs->curVenue = 7;
+            gs->numPlayers = 2;
+            const CupWinner* w = &s_winners[--s_numWinners];
+            if (!w->team)
+                gs->numPlayers = 1;
+            fe->driver[0] = w->driver;
+            fe->car[0] = w->car;
+            Fe_RequestCar(0, w->driver, w->car);
+            if (w->team)
+            {
+                fe->driver[1] = w->driver2;
+                fe->car[1] = w->car2;
+                Fe_RequestCar(1, w->driver2, w->car2);
+            }
+            uint8_t* recs = g_SaveExtra.cupRecs + gs->curVenue * 0x150 + c * 0x70;
+            if (gs->gameMode == 4)
+                CupInsert(recs, 0x1c, 4, 0x1b, w, 0, 0x12, -1);
+            else if (!w->team)
+                CupInsert(recs, 0x1c, 0, 0x11, w, 0, 8, -1);
+            else
+                CupInsert(g_SaveExtra.cupRecs2 + gs->curVenue * 0x120 + c * 0x60, 0x18, 0, 0xd, w, 1, 4, 0xe);
+            s_slide = 0x92;
+            fe->previewZoom = 25000;
+        }
+    }
+    const CupWinner* w = &s_winners[s_numWinners];
+    Fe_UpdateCars();
+    Fe_DrawBackground(0x800);
+    Fe_DrawHelp(w->player, HelpText(9), 0x21, 0xd5, 0x23, 0x109, 0);
+    Fe_DrawBox(0x46, 0x46, 0x46, s_slide + 0xb4, 0x31, 0x140, 0x46, 1);
+    Fe_DrawFrame(100, 100, 100, s_slide + 0xb4, 0x31, 0x14a, 0x46);
+    Font_Select(2);
+    Fe_DrawTextRgb(0x1f, 0x1f, 0x1f, fe->venues[gs->venue][0].name, s_slide + 0xb7, 0x2e, 0);
+    Fe_DrawBox(0x46, 0x46, 0x46, s_slide + 200, 0x4e, 0x14a, 99, 1);
+    Fe_DrawFrame(100, 100, 100, s_slide + 200, 0x4e, 0x14a, 99);
+    Font_Select(2);
+    Fe_DrawTextRgb(0x1f, 0x1f, 0x1f, Fe_GetString(0xa2d + w->pos), s_slide + 0xcb, 0x4b, 0);   /* DAT_800b7058 */
+    Font_Select(4);
+    int x1 = w->team ? 0x6e : 0x5a, y = w->team ? 0x89 : 0x8e;
+    Fe_DrawBox(0x46, 0x46, 0x46, -0x1e, y, x1 - s_slide, y + 0x10, 1);
+    Fe_DrawFrame(100, 100, 100, -0x1e, y, x1 - s_slide, y + 0x10);
+    Fe_DrawTextRgb(0x1f, 0x1f, 0x1f, CupName(w->name), x1 - (s_slide + 4), y, 2);
+    int y2 = y;
+    if (w->team)
+    {
+        y2 = y + 0x17;
+        x1 += 10;
+        Fe_DrawBox(0x46, 0x46, 0x46, -0x32, y2, x1 - s_slide, y + 0x27, 1);
+        Fe_DrawFrame(100, 100, 100, -0x32, y2, x1 - s_slide, y + 0x27);
+        Fe_DrawTextRgb(0x1f, 0x1f, 0x1f, CupName(w->name2), x1 - (s_slide + 4), y2, 2);
+    }
+    int y3 = y2 + 0x17;
+    x1 += 10;
+    Fe_DrawBox(0x46, 0x46, 0x46, -0x1e, y3, x1 - s_slide, y2 + 0x27, 1);
+    Fe_DrawFrame(100, 100, 100, -0x1e, y3, x1 - s_slide, y2 + 0x27);
+    Fe_DrawTime(0x1f, 0x1f, 0x1f, x1 - (s_slide + 0x34), y3, (int)w->time);
+    fe->modelAngle = 0x990;
+    if (w->team)
+    {
+        Fe_DrawCarModel(0, 0xa0, 0x96, 0x1e14, 0);
+        Fe_DrawCarModel(1, 0xe6, 0xa0, 0x19c8, 0);
+    }
+    else
+        Fe_DrawCarModel(0, 200, 0x90, 0x1a2c, 0);
+    if ((g_FadeDir == 0 || g_FadeLevel == 0x100) && fe->nextScreen == -1)
+    {
+        Gfx_FlushPartial();   /* la copa por encima de los coches */
+        Fe_DrawSpinningModel(0x34, 0x54, fe->previewZoom + 11000, w->pos + (gs->gameMode == 4 ? 8 : 5), 1);
+    }
+    Fe_ReadPads();
+    if (Fe_PadPressed(PADB_CROSS, w->player, 1))
+        fe->nextScreen = (short)(s_numWinners != 0 ? 1700 : Fe_AfterRace());
+    Fe_PadRepeatReset();
+    if (g_FadeDir == 0 && fe->previewZoom > 0)
+    {
+        fe->previewZoom -= g_FrameDelta * 400;
+        if (fe->previewZoom < 0)
+            fe->previewZoom = 0;
+    }
+    if (s_slide > 0)
+    {
+        s_slide = (short)(s_slide - g_FrameDelta);
+        if (s_slide < 0)
+            s_slide = 0;
+    }
+    if (fe->fadeDone && fe->nextScreen != 1700)
+        gs->numPlayers = (uint8_t)fe->popup;
+}
+
+/* ---------------------------------------------------------------- pantalla 1800: desbloqueos */
+
+static short s_page = -1;       /* fe +0xA80: ultima pagina ensenada (0..7) */
+static short s_pageArg;         /* fe +0xA82 */
+static char  s_pageMsg[0x80];   /* fe +0xA7C */
+static int   s_allCups;         /* fe +0xA88: todas las copas de sede ganadas en la clase: la copa EA */
+static TrackPreview* s_previews[3];   /* fe +0xA90 */
+
+/* elige la siguiente pagina de lo desbloqueado (s_unlock) y cuenta las que quedan (incluida esa) */
+static int NextUnlockPage(void)
+{
+    FrontendState* fe = g_Frontend;
+    GameSettings* gs = &g_Settings;
+    int c = gs->racingClass ? gs->racingClass - 1 : 0;
+    for (int i = 0; i < 3; i++)
+        if (s_previews[i])
+        {
+            Pool_Free(s_previews[i]);
+            s_previews[i] = NULL;
+        }
+    int count = 0, sel = -1;
+    if (s_kidTime != 0 && s_page < 0)
+    {
+        s_page = 0;   /* tiempo de la copa de Rookie */
+        snprintf(s_pageMsg, sizeof(s_pageMsg), "%s", Fe_GetString(0xa95));
+        sel = 0;
+        count++;
+    }
+    if (s_unlock[0] && s_page < 1)
+    {
+        if (sel == -1)
+        {
+            s_page = 1;   /* clase nueva */
+            s_pageArg = s_unlock[0];
+            snprintf(s_pageMsg, sizeof(s_pageMsg), "%s", Fe_GetString(0xa8d));
+            sel = 1;
+        }
+        count++;
+    }
+    if (s_unlock[1] && s_page < 3)
+    {
+        if (sel == -1)
+        {
+            /* sede nueva (4 o 5; con 3, las dos) */
+            if (s_unlock[1] == 3)
+            {
+                s_page = 2;
+                s_unlock[1] = 2;
+                s_pageArg = 4;
+                count++;
+            }
+            else
+            {
+                s_page = 3;
+                s_pageArg = (short)(s_unlock[1] - 1 + 4);
+            }
+            sel = s_page;
+            snprintf(s_pageMsg, sizeof(s_pageMsg), "%s%s%s", Fe_GetString(0xa8f), fe->venues[s_pageArg][0].name,
+                     Fe_GetString(0xa90));
+        }
+        count++;
+    }
+    int first = -1;
+    for (int k = 0; k < 3; k++)
+        if (s_unlock[2 + k] == 1)
+        {
+            if (first == -1)
+                first = k;
+            count++;
+        }
+    if (first != -1 && sel == -1)
+    {
+        s_page = 4;   /* pista suelta */
+        s_pageArg = (short)first;
+        snprintf(s_pageMsg, sizeof(s_pageMsg), "%s", Fe_GetString(0xa91));
+        sel = 4;
+        s_unlock[2 + first] = 0;
+    }
+    int v = 0;
+    while (v < 7 && s_unlock[5 + v * 3 + c] == 0)
+        v++;
+    if (v < 7 && s_page < 5)
+    {
+        if (sel == -1)
+        {
+            sel = 5;   /* copa ganada: el piloto de la sede */
+            s_page = 5;
+            s_pageArg = (short)v;
+            if (s_unlock[5 + v * 3 + c] == 1)
+            {
+                snprintf(s_pageMsg, sizeof(s_pageMsg), "%s", Fe_GetString(0xa92));
+                int all = 0;
+                while (all < 6 && P(0x800b713a + all * 3 + c) != 0)
+                    all++;
+                if (all == 6 && v < 6)
+                    s_allCups = 1;
+            }
+            else
+                snprintf(s_pageMsg, sizeof(s_pageMsg), "%s", Fe_GetString(0xa93));
+        }
+        count++;
+    }
+    if (s_allCups && s_page < 6)
+    {
+        if (sel == -1)
+        {
+            s_page = 6;   /* la copa EA de la clase */
+            snprintf(s_pageMsg, sizeof(s_pageMsg), "%s%s %s.", Fe_GetString(0xa97), Fe_GetString(0x7b + c),
+                     fe->venues[8][0].name);
+            sel = 6;
+        }
+        count++;
+    }
+    for (int k = 0; k < 10; k++)
+        if (s_unlock[0x1a + k] == 1)
+        {
+            if (sel == -1)
+            {
+                s_page = 7;   /* especial: piloto leyenda */
+                s_pageArg = (short)k;
+                snprintf(s_pageMsg, sizeof(s_pageMsg), "%s", Fe_GetString(0xa94));
+                sel = 7;
+            }
+            count++;
+        }
+    return count;
+}
+
+/* las tres pistas de una sede (o una) girando, con su nombre debajo */
+static void DrawPreview(TrackPreview* tp, int z, int x, int y, const char* name, int ty)
+{
+    FrontendState* fe = g_Frontend;
+    if (!tp)
+        return;
+    tp->pos[0] = tp->pos[1] = 0;
+    tp->pos[2] = z;
+    int eye[3] = { 0, 50000, 0 };
+    Camera_LookAt(eye, tp->pos);
+    Math_RotMatrix(fe->modelAngle & 0xfff, 0, 0, tp->rot);
+    SetGeomOffset(x, y);
+    TrackPreview_Draw(tp, 0x7f3f3f, &fe->previewLight);
+    Fe_DrawTextBox(0, name, x, ty);
+}
+
+/* 80087fa8: una pagina por cada cosa desbloqueada (texto 0xA8C de titulo): tiempo de Rookie, clase nueva (coche),
+ * sede nueva (sus tres pistas), pista suelta, piloto de la sede ganada, la copa EA y los pilotos leyenda. Con mas
+ * de una, X vuelve a entrar en la 1800 con la siguiente. */
+void Fe_Screen1800(void)
+{
+    FrontendState* fe = g_Frontend;
+    GameSettings* gs = &g_Settings;
+    int port = gs->numPlayers == 2 ? -1 : 0;
+    int c = gs->racingClass ? gs->racingClass - 1 : 0;
+    if (!s_unlock)
+    {
+        fe->nextScreen = (short)Fe_AfterRace();
+        return;
+    }
+    if (fe->firstFrame)
+    {
+        Fe_SetBackground(4);
+        Fe_ResetCars();
+        fe->previewLight.vx = 0;
+        fe->previewLight.vy = (short)0xf000;
+        fe->previewLight.vz = 0x1000;
+        {
+            double l = sqrt(2.0);
+            fe->previewLight.vy = (short)lround(-4096 / l);
+            fe->previewLight.vz = (short)lround(4096 / l);
+        }
+        fe->modelAngle = 0;
+        fe->popup = 0;
+        if (fe->prevScreen != 1800)
+        {
+            s_page = -1;
+            fe->portPopup = (char)NextUnlockPage();
+        }
+    }
+    Fe_DrawBackground(20000);
+    Fe_DrawHelp(0, HelpText(9), 0x21, 0xd5, 0x23, 0x109, 0);
+    Fe_UpdateCars();
+    Fe_DrawBox(0x20, 0, 0, 0x27, 0x32, 0x114, 0x50, 0);
+    Fe_DrawFrame(0x94, 0x94, 0xa0, 0x26, 0x32, 0x114, 0x50);
+    Font_Select(2);
+    Fe_DrawTextRgb(0x1c, 0x1c, 0x1c, Fe_GetString(0xa8c), 0x9d, 0x14, 1);
+    Font_Select(0);
+    Fe_DrawTextRgb(0x1d, 0x1e, 0, s_pageMsg, 0x9d, 0x3b, 1);
+    char text[96];
+    switch (s_page)
+    {
+    case 0:
+    {
+        Fe_DrawTextBox(0, Fe_GetString(0xa96), 0xa0, 0x73);
+        Font_Select(3);
+        int w = Fe_DrawTime(-1, -1, -1, 0, 0, s_kidTime);
+        Fe_DrawTime(0x1c, 0x1c, 0x1c, 0x9c - w / 2, 0x84, s_kidTime);
+        break;
+    }
+    case 1:
+        if (fe->firstFrame)
+        {
+            fe->car[0] = (uint8_t)s_pageArg;
+            Fe_RequestCar(0, fe->driver[0], s_pageArg);
+        }
+        else
+        {
+            Fe_DrawCarModel(0, 0xa8, 0x9b, 8000, 0);
+            snprintf(text, sizeof(text), "%s %s", Fe_GetString(0x7c + c), Fe_GetString(0xa8e));
+            Fe_DrawTextBox(0, text, 0xa0, 0xb6);
+        }
+        break;
+    case 2:
+    case 3:
+    {
+        static const short offs[3][2] = { { 0, -0x46 }, { -0x41, -0xf }, { 0x41, -0xf } };
+        if (fe->firstFrame)
+            for (int i = 0; i < 3; i++)
+                s_previews[i] = TrackPreview_Create(Asset_Find(ASSET_TkFE, fe->venues[s_pageArg][i + 1].tkfe), 600, 700);
+        for (int i = 0; i < 3; i++)
+            DrawPreview(s_previews[i], 110000, offs[i][0] + 0xa0, offs[i][1] + 200, fe->venues[s_pageArg][i + 1].name,
+                        offs[i][1] + 200);
+        SetGeomOffset(0xa0, 0x8c);
+        break;
+    }
+    case 4:
+        if (fe->firstFrame)
+            s_previews[0] = TrackPreview_Create(Asset_Find(ASSET_TkFE, fe->venues[6][s_pageArg + 1].tkfe), 600, 700);
+        Font_Select(0);
+        DrawPreview(s_previews[0], 78000, 0xa0, 0x8c, fe->venues[6][s_pageArg + 1].name, 0xb6);
+        SetGeomOffset(0xa0, 0x8c);
+        break;
+    case 5:
+        if (fe->firstFrame)
+        {
+            fe->driver[0] = (uint8_t)(s_pageArg + 0x27);
+            fe->car[0] = (uint8_t)c;
+            Fe_RequestCar(0, s_pageArg + 0x27, c);
+        }
+        else
+        {
+            Fe_DrawCarModel(0, 0xa6, 0x9b, 8000, 0);
+            Fe_DrawTextBox(0, g_Drivers[s_pageArg + 0x27].name, 0xa0, 0xb6);
+        }
+        break;
+    case 6:
+        if (fe->firstFrame)
+            Fe_LoadVenueThumb(fe->venues[8][0].image, 0);
+        else
+        {
+            Fe_DrawVenueThumb(0, 0x83, 0x87, 0, 1);
+            int r, g, b;
+            Fe_ItemColor(&r, &g, &b, 1);
+            Fe_DrawFrame(r * 3 + 0x32, g * 3 + 0x32, b * 3 + 0x3c, 0x81, 0x86, 0xc1, 0x9f);
+            Font_Select(2);
+            Fe_DrawTextRgb(0x1c, 0x1c, 0x1c, fe->venues[8][0].name, 0x9e, 0x6e, 1);
+        }
+        break;
+    case 7:
+        if (fe->firstFrame)
+        {
+            fe->driver[0] = (uint8_t)(s_pageArg + 0x2e);
+            fe->car[0] = (uint8_t)c;
+            Fe_RequestCar(0, s_pageArg + 0x2e, c);
+        }
+        else if (!fe->fadeDone)
+        {
+            Fe_DrawCarModel(0, 0xa6, 0xa1, 8000, 0);
+            Fe_DrawTextBox(0, g_Drivers[s_pageArg + 0x2e].name, 0xa0, 0xb6);
+        }
+        else
+            s_unlock[0x1a + s_pageArg] = 0;
+        break;
+    default:
+        break;
+    }
+    Fe_ReadPads();
+    if (Fe_PadPressed(PADB_CROSS, port, 1))
+        fe->nextScreen = (uint8_t)fe->portPopup < 2 ? (short)Fe_AfterRace() : 0;
+    Fe_PadRepeatReset();
+    if (!fe->fadeDone)
+    {
+        fe->modelAngle += g_FrameDelta * 2;
+        return;
+    }
+    if ((uint8_t)fe->portPopup >= 2)
+    {
+        /* quedan mas: la siguiente pagina */
+        fe->portPopup = (char)NextUnlockPage();
+        fe->nextScreen = 1800;
+        return;
+    }
+    /* LAB_80088658: fin */
+    for (int i = 0; i < 3; i++)
+        if (s_previews[i])
+        {
+            Pool_Free(s_previews[i]);
+            s_previews[i] = NULL;
+        }
+    free(s_unlock);
+    s_unlock = NULL;
+    if (s_unlockShow > 0)
+    {
+        /* clase nueva: los coches de los jugadores pasan a ella y el menu principal marca "Racing Class" */
+        for (int i = 0; i < gs->numPlayers && i < 2; i++)
+            gs->lastCar[i] = gs->maxClassUnlocked;
+        for (int i = 0; i < 7; i++)
+            fe->mainMenu[i].active = 0;
+        fe->mainMenu[2].active = 1;
+    }
+    s_kidTime = 0;
 }

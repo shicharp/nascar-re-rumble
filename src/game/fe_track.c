@@ -139,7 +139,7 @@ static int Fe_WrapVenue(int v)
 }
 
 /* 8008e13c: miniatura de 64x32 en (0x200, hueco*32), los huecos 7+ una pagina mas abajo */
-static void Fe_LoadVenueThumb(int image, int slot)
+void Fe_LoadVenueThumb(int image, int slot)
 {
     Fe_DecodeLmdc(image, 0x200, slot * 0x20 + (slot > 6 ? 0x20 : 0));
 }
@@ -151,7 +151,7 @@ static int VenueImage(const VenueCarousel* c)
 
 /* 8008c308: miniatura de sede. mode 1 = carrusel (64x24 recortada a la ventana), 0 = con marco,
  * -1 = sin marco (64x30) */
-static void Fe_DrawVenueThumb(int slot, int x, int y, int depth, int mode)
+void Fe_DrawVenueThumb(int slot, int x, int y, int depth, int mode)
 {
     if (slot < 0)
         return;
@@ -223,18 +223,6 @@ static void Fe_DrawWindowBg(int x0, int y0, int x1, int y1, int depth)
 
 /* ---------------------------------------------------------------- trazado 3D (TkFE) */
 
-/* Cinta de la pista generada a partir de los puntos del TkFE (0x6C bytes + vertices y normales) */
-typedef struct
-{
-    short    count;          /* +0x00 puntos */
-    short    start;          /* +0x02 punto de la linea de salida */
-    short    startVerts[6][4];/* +0x04 cuadros de la linea de salida */
-    int16_t* verts;          /* +0x34 por punto: borde izquierdo y derecho (x, y, z, -) */
-    int16_t* normals;        /* +0x38 por punto (x, y, z, -) */
-    int      rot[9];         /* +0x3C */
-    int      pos[3];         /* +0x60 */
-} TrackPreview;
-
 static_assert(sizeof(TrackPreview) == 0x6c, "TrackPreview debe medir 0x6C");
 
 static void Normalize16(double* v)
@@ -246,7 +234,7 @@ static void Normalize16(double* v)
 }
 
 /* 8001893c: cinta de anchura w a la altura h sobre los puntos (todo a escala 1/8) */
-static TrackPreview* TrackPreview_Create(const NrAsset* a, int w, int h)
+TrackPreview* TrackPreview_Create(const NrAsset* a, int w, int h)
 {
     if (!a)
         return NULL;
@@ -352,7 +340,7 @@ static void EmitG4(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t ca, 
 }
 
 /* 80018ef0: cinta iluminada (NCCS con el color de la pista) y su sombra plana en y = 0 */
-static void TrackPreview_Draw(TrackPreview* tp, uint32_t color, const SVECTOR* light)
+void TrackPreview_Draw(TrackPreview* tp, uint32_t color, const SVECTOR* light)
 {
     MTC2(color | 0x38000000u, 6);
     CTC2(0x20 << 4, 13);

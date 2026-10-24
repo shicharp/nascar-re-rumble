@@ -1,11 +1,11 @@
 /* Contrasena del progreso (ver password.h).
  * Palabra 0: bits 0-1 clase maxima (DAT_800b7135), 2-13 el estado (0..3) de las 6 sedes en esa clase
  * (DAT_800b713a + clase + 3 * sede), 14-16 copas de las sedes especiales ganadas (DAT_800b714c..714e != 0) y 17-19
- * con 2, 20-25 las 6 sedes en la clase anterior con 2, 26-30 suma baja, 31 record de la Winston Cup en Rookie.
- * Palabra 1: bits 0-4 suma alta, 5 record de la WC en Pro, 6 record de la WC en Elite, 7-15 los extras
+ * con 2, 20-25 las 6 sedes en la clase anterior con 2, 26-30 suma baja, 31 copa EA ganada en Rookie.
+ * Palabra 1: bits 0-4 suma alta, 5 / 6 copa EA ganada en Pro / Elite, 7-15 los extras
  * DAT_800b7150..7158. La suma baja suma por cada bit su indice (puesto) o la paridad (quitado); la alta cuenta
  * los bits puestos. Caracter i = bits 5i..5i+4 con el alfabeto DAT_800abeac (i par) o 800abecc (i impar).
- * Los records de la WC (sede 7, primer puesto de DAT_800b7998 / 8418 sin la marca +0x11 / +0xD) los pone tambien
+ * Los records de la copa EA (sede 7 de las tablas de copa, primer puesto de DAT_800b7998 / 8418 sin la marca +0x11 / +0xD) los pone tambien
  * la contrasena: con ellos se escribe el nombre del jugador y 9000000 como tiempo. */
 #include <string.h>
 #include "nr.h"
@@ -14,7 +14,7 @@
 #include "savegame.h"
 #include "password.h"
 
-static uint8_t s_flags[3];   /* fe +0x9D4..+0x9D6: records de la WC en cada clase */
+static uint8_t s_flags[3];   /* fe +0x9D4..+0x9D6: copa EA ganada en cada clase */
 static int8_t  s_cheat = -1; /* fe +0x9D7: contrasena especial (0..10) o -1 */
 
 #define P(a) PROGRESS(a)
@@ -67,7 +67,7 @@ static unsigned Pw_Sum(uint32_t w0, uint32_t w1)
     return lo | hi << 5;
 }
 
-/* records de la Winston Cup (sede 7) puestos por el jugador en cada clase */
+/* records de la copa EA (sede 7) puestos por el jugador en cada clase */
 static void Pw_RecordFlags(void)
 {
     for (int c = 0; c < 3; c++)
@@ -163,7 +163,7 @@ int Pw_Decode(const char* text, uint32_t* w)
     return Pw_Sum(w[0], w[1]) == stored;
 }
 
-/* 80090008: progreso, copas y records de la WC a partir de la contrasena; las especiales dan extras */
+/* 80090008: progreso, copas y records de la copa EA a partir de la contrasena; las especiales dan extras */
 void Pw_Apply(const uint32_t* w)
 {
     if (s_cheat >= 0)

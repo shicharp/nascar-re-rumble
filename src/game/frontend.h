@@ -326,6 +326,9 @@ extern short g_FeSaveReturn;          /* DAT_800b7118: 1 = preguntar si guardar 
 int  Fe_AfterRace(void);                                                  /* 80090fb4: siguiente pantalla */
 int  Fe_DrawTime(int r, int g, int b, int x, int y, int t);               /* 8008ee98 */
 void Fe_Screen1400(void);                                                 /* 800855a0: records de la pista */
+void Fe_Screen1500(void);                                                 /* 80085d90: clasificacion de la copa */
+void Fe_Screen1700(void);                                                 /* 80087130: podio de la copa */
+void Fe_Screen1800(void);                                                 /* 80087fa8: desbloqueos */
 int  Fe_DecodeGmdc(int index, int x, int y);                              /* 8008e21c */
 void Fe_Screen1200(void);                                                 /* 80081a9c */
 void Fe_Screen1300(void);                                                 /* 800838f8 */
