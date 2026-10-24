@@ -15,6 +15,7 @@ void     Fe_DrawFrame(int r, int g, int b, int x0, int y0, int x1, int y1);     
 void     Fe_ItemColor(int* r, int* g, int* b, int mode);                               /* 8008ac5c */
 void     Fe_DrawHelp(int port, const char* text, int x, int y, int clipX0, int clipX1, int edges); /* 8008d5f4 */
 int      Fe_MsgBox(int x, int y, const char* text, uint8_t* yesNo, int port);         /* 8008cb88 */
+void     Fe_DrawTextBox(int style, const char* text, int x, int y);                   /* 8008ec2c */
 
 void     Fe_ReadPads(void);                                    /* 8008a7f4 */
 int      Fe_PadPressed(uint32_t mask, int port, int repeat);   /* 8008a994 */

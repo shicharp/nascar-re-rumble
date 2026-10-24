@@ -31,6 +31,7 @@
 #include "snd.h"
 #include "vecmath.h"
 #include "fx.h"
+#include "carphys_int.h"
 
 uint8_t g_CarLoadOrder[8];
 int     g_CarsLoaded;
@@ -266,6 +267,25 @@ static void Race_UpdateListener(int view)
     Snd_SetListener(view, g_Camera.pos, heading, vel, reverb, tp.curve);
 }
 
+/* Solo en el port (depuracion): NR_ENDRACE=t da por terminada la carrera del jugador 1 a los t tics, como si
+ * cruzara la meta (la vuelta rapida, si no tiene, es el tiempo total) */
+static void Race_DebugEnd(void)
+{
+    static int s_end = -1;
+    if (s_end < 0)
+        s_end = getenv("NR_ENDRACE") ? atoi(getenv("NR_ENDRACE")) : 0;
+    RaceCar* e = g_Humans[0];
+    if (s_end <= 0 || g_RaceTime < s_end || !e || !e->phys || I32(e->phys, 0x330) != 0)
+        return;
+    I32(e->phys, 0x330) = g_RaceTime - 900;
+    int slot = e->id - 1000;
+    if (slot >= 0 && slot < 6 && g_CarRecords[slot].b == 0)
+        g_CarRecords[slot].b = (g_RaceTime - 900) / 3;
+    if (g_NumHumans < 2)
+        g_RaceEndTimer = 5;
+    NR_Log("[depuracion] NR_ENDRACE: el jugador 1 termina a los %d tics\n", g_RaceTime);
+}
+
 /* 800299a8 + 80026f28 (un jugador). Del bucle original estan: tiempo de carrera, texturas animadas,
  * camara de persecucion (8005f034), visibilidad y dibujo de la pista (Track_DrawView 800644c0 +
  * Race_DrawView 8006422c), parte del HUD y la fisica (80030cac / 80056c6c). Pendiente: IA, poderes, actores,
@@ -317,6 +337,7 @@ void Race_MainLoop(void)
             Power_ClearAlerts();       /* Race_Frame1P: aviso de clima */
             Actors_Update(dt);         /* 80048dec(6) */
             Race_UpdateCars(dt);
+            Race_DebugEnd();
             Actors_PostUpdate();       /* 80048e84 */
             Fx_Update(dt);             /* 80038b50 */
             Hud_Update(dt);            /* 80042330 */

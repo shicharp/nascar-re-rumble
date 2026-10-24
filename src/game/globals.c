@@ -9,6 +9,7 @@ int       g_FrameCount;
 int       g_FrontendFrames;
 char      g_LevelPath[128];
 char      g_SelectedTrack[16];
+int       g_RaceExit = 3;
 int       g_BootState;
 short     g_Venue;
 char      g_TrackName[32];

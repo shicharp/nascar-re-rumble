@@ -1078,7 +1078,10 @@ void Fe_Screen800(void)
                       s->last != -2;
 
     Fe_DrawBackground(20000);
-    Fe_DrawHelp(0, items[fe->cursor].help, 0x21, 0xd5, 0x23, 0x109, 0);
+    const char* help = items[fe->cursor].help;
+    if (g_FeSaveReturn && help && strlen(help) > 0x13)
+        help += 0x13;   /* viniendo de guardar al volver al menu no se puede ir atras: sin "Previous Menu" */
+    Fe_DrawHelp(0, help, 0x21, 0xd5, 0x23, 0x109, 0);
     for (int i = 0; i < 3; i++)
     {
         int r = -1, g = -1, b = -1;
@@ -1140,9 +1143,13 @@ void Fe_Screen800(void)
         fe->popup--;
     }
     Fe_ReadPads();
-    if (!interactive)
-        for (int i = 0; i < g_Settings.numPlayers && i < 2; i++)
+    for (int i = 0; i < g_Settings.numPlayers && i < 2; i++)
+    {
+        if (!interactive)
             fe->pad[i] = 0;   /* mientras trabaja la tarjeta, sin mandos */
+        else if (g_FeSaveReturn && s->mode != -1 && s->res != 3 && s->res != 4)
+            fe->pad[i] &= ~PADB_TRIANGLE;
+    }
     s_cardMsgActive = 0;
 
     if (s->mode == -1)
@@ -1269,21 +1276,27 @@ void Fe_Screen800(void)
     if (fe->fadeDone)
     {
         s_cardSaveReq = 0;
+        if (g_FeSaveReturn)
+        {
+            fe->nextScreen = g_FeSaveReturn;   /* de vuelta al menu (DAT_800b7118) */
+            g_FeSaveReturn = 0;
+        }
         Save_Stop();     /* 80093568 */
     }
 }
 
 /* ---------------------------------------------------------------- pantalla 700: contrasena */
 
-static char     s_pwText[12];        /* fe +0x951: lo escrito */
+static char     s_kbText[2][12];     /* fe +0x951 + jugador * 0xB: lo escrito (contrasena o nombre) */
 static char     s_pwCurrent[12];     /* fe +0x9B9: la del progreso actual */
-static short    s_pwX, s_pwY;        /* fe +0x968 / +0x96C: tecla (fila 4: espacio, borrar, hecho de 3 de ancho) */
+static short    s_kbX[2], s_kbY[2];  /* fe +0x968 / +0x96C: tecla de cada recuadro (fila 4: espacio, borrar, hecho
+                                        de 3 de ancho; 0xFF = ya ha terminado) */
 static const char* s_pwMsg;          /* fe +0x9C8 */
 static int      s_pwAsk;             /* fe +0xB6: el mensaje pregunta Si / No (cargar la contrasena) */
 static uint32_t s_pwWords[2];        /* fe +0x9CC */
 
 /* 8008ec2c: texto en una caja centrada en x (estilo 2: caja gris oscura con marco) */
-static void Fe_DrawTextBox(int style, const char* text, int x, int y)
+void Fe_DrawTextBox(int style, const char* text, int x, int y)
 {
     FrontendState* fe = g_Frontend;
     short screen = fe->screen;
@@ -1311,17 +1324,17 @@ static void Fe_DrawTextBox(int style, const char* text, int x, int y)
     fe->screen = screen;
 }
 
-/* 8008f19c: mueve el cursor del teclado (en la fila 4 de 3 en 3) */
-static void Fe_PwMove(void)
+/* 8008f19c: mueve el cursor del teclado del recuadro i con el mando port (en la fila 4 de 3 en 3) */
+static void Fe_PwMove(int i, int port)
 {
-    int x = s_pwX, y = s_pwY, dy = 0, dx = 0;
-    if (Fe_PadPressed(PADB_UP, -1, 1))
+    int x = s_kbX[i], y = s_kbY[i], dy = 0, dx = 0;
+    if (Fe_PadPressed(PADB_UP, port, 1))
         dy = -1;
-    else if (Fe_PadPressed(PADB_DOWN, -1, 1))
+    else if (Fe_PadPressed(PADB_DOWN, port, 1))
         dy = 1;
-    if (Fe_PadPressed(PADB_LEFT, -1, 1))
+    if (Fe_PadPressed(PADB_LEFT, port, 1))
         dx = -1;
-    else if (Fe_PadPressed(PADB_RIGHT, -1, 1))
+    else if (Fe_PadPressed(PADB_RIGHT, port, 1))
         dx = 1;
     if (dy)
         y = Fe_Clamp(y + dy, 0, 4);
@@ -1329,10 +1342,10 @@ static void Fe_PwMove(void)
         x = Fe_Clamp(x + (y == 4 ? dx * 3 : dx), 0, 8);
     if (y == 4)
         x = x / 3 * 3;
-    if (x != s_pwX || y != s_pwY)
+    if (x != s_kbX[i] || y != s_kbY[i])
     {
-        s_pwX = (short)x;
-        s_pwY = (short)y;
+        s_kbX[i] = (short)x;
+        s_kbY[i] = (short)y;
         if (dx)
             Snd_PlayUi(0x47, NULL);
         if (dy)
@@ -1353,14 +1366,14 @@ void Fe_Screen700(void)
         Pw_Encode(s_pwCurrent);           /* 8008f344 */
         s_pwMsg = NULL;
         s_pwAsk = 0;
-        s_pwX = s_pwY = 0;
-        s_pwText[0] = 0;
+        s_kbX[0] = s_kbY[0] = 0;
+        s_kbText[0][0] = 0;
     }
     int r, g, b;
     Fe_ItemColor(&r, &g, &b, 1);
     Fe_DrawBackground(0x800);
     Fe_DrawHelp(0, Fe_GetString(0xbbc), 0x21, 0xd5, 0x23, 300, 0);   /* DAT_800b6e88 */
-    int len = (int)strlen(s_pwText);
+    int len = (int)strlen(s_kbText[0]);
     char line[64];
     snprintf(line, sizeof(line), "%s%s", Fe_GetString(0x837), s_pwCurrent);
     Fe_DrawTextBox(2, line, 0xa0, 0xbb);
@@ -1370,9 +1383,9 @@ void Fe_Screen700(void)
     Fe_DrawVramRect(0x300, 0x110, 0x7f, 0x4c, 0x61, 0x3c, 0, 0);
     if (!s_pwMsg)
     {
-        int w = s_pwY < 4 ? 1 : 3;
-        Fe_DrawOutline(r << 3, g << 3, b << 3, s_pwX * 0xe + 0x61, s_pwY * 0xf + 0x3c,
-                       s_pwX * 0xe + w * 0xe + 0x61, s_pwY * 0xf + 0x4b, 2);
+        int w = s_kbY[0] < 4 ? 1 : 3;
+        Fe_DrawOutline(r << 3, g << 3, b << 3, s_kbX[0] * 0xe + 0x61, s_kbY[0] * 0xf + 0x3c,
+                       s_kbX[0] * 0xe + w * 0xe + 0x61, s_kbY[0] * 0xf + 0x4b, 2);
     }
     Font_Select(1);
     Fe_DrawBox(0x5a, 0x5a, 0x3c, 0x5b, 0x91, 0xe6, 0xa4, 0);
@@ -1383,7 +1396,7 @@ void Fe_Screen700(void)
         Fe_DrawOutline(0x32, 0x32, 0x32, 0x5f + i * 0xd, 0x93, 0x6c + i * 0xd, 0xa1, 1);
         if (i < len)
         {
-            char c[2] = { s_pwText[i], 0 };
+            char c[2] = { s_kbText[0][i], 0 };
             int adv = (int8_t)Font_GetGlyph((uint8_t)c[0])[8];
             Fe_DrawTextRgb(0, 0, 0, c, i * 0xd + 0x65 + ((adv & 1) == 0), 0x8f, 1);
         }
@@ -1408,48 +1421,48 @@ void Fe_Screen700(void)
     }
     else if (Fe_PadPressed(PADB_CROSS, -1, 1))
     {
-        if (s_pwY != 4)
+        if (s_kbY[0] != 4)
         {
             if (len < 10)
             {
                 const uint8_t* keys = Exe_Ptr(0x800abe7cu);
-                char c = keys ? (char)keys[s_pwX + s_pwY * 9] : '?';
+                char c = keys ? (char)keys[s_kbX[0] + s_kbY[0] * 9] : '?';
                 if (!(c > 0x2f && c < 0x3a))
                     c = (char)(c - 0x20);   /* las letras, en mayusculas */
-                s_pwText[len] = c;
-                s_pwText[len + 1] = 0;
+                s_kbText[0][len] = c;
+                s_kbText[0][len + 1] = 0;
                 Snd_PlayUi(0x48, NULL);
             }
             else
                 Snd_PlayUi(0x4c, NULL);
         }
-        else if (s_pwX == 0)
+        else if (s_kbX[0] == 0)
         {
             if (len < 10)
             {
-                s_pwText[len] = ' ';
-                s_pwText[len + 1] = 0;
+                s_kbText[0][len] = ' ';
+                s_kbText[0][len + 1] = 0;
                 Snd_PlayUi(0x57, NULL);
             }
             else
                 Snd_PlayUi(0x4c, NULL);
         }
-        else if (s_pwX == 3)
+        else if (s_kbX[0] == 3)
         {
             if (len > 0)
             {
-                s_pwText[len - 1] = 0;
+                s_kbText[0][len - 1] = 0;
                 Snd_PlayUi(0x5c, NULL);
             }
         }
-        else if (s_pwX == 6)
+        else if (s_kbX[0] == 6)
         {
             if (len < 10)
             {
                 s_pwMsg = Fe_GetString(0x836);   /* incompleta */
                 Snd_PlayUi(0x4c, NULL);
             }
-            else if (!Pw_Decode(s_pwText, s_pwWords))
+            else if (!Pw_Decode(s_kbText[0], s_pwWords))
             {
                 s_pwMsg = Fe_GetString(0x834);   /* no vale */
                 Snd_PlayUi(0x4c, NULL);
@@ -1466,6 +1479,245 @@ void Fe_Screen700(void)
     else if (Fe_PadPressed(PADB_TRIANGLE, -1, 1))
         fe->nextScreen = 0;
     else
-        Fe_PwMove();
+        Fe_PwMove(0, -1);
     Fe_PadRepeatReset();
+}
+
+/* ---------------------------------------------------------------- pantalla 1100: nombre */
+
+static short s_nameSlide;      /* fe +0x99E: los recuadros se despliegan hacia abajo */
+static short s_kbAnim[2];      /* fe +0x9A0: el teclado aparece (0..100) y se va al terminar */
+
+/* 80080cbc: nombre de cada jugador (8 caracteres) con el teclado de la 700. Desde la 400 (Set Name), desde la 1300
+ * antes de una copa y despues de un record (2000; namePlayer y champReady los pone 80090fb4). End sin nada borra
+ * el nombre; al terminar todos: a la 1400 (records), a empezar la copa (1300) o atras (400). */
+void Fe_Screen1100(void)
+{
+    FrontendState* fe = g_Frontend;
+    GameSettings* gs = &g_Settings;
+    if (fe->firstFrame)
+    {
+        Fe_SetBackground(4);
+        Fe_DecodeGmdc(2, 0x300, 0x100);   /* "Player 1" */
+        Fe_DecodeGmdc(3, 0x300, 0x120);   /* "Player 2" */
+        Fe_DecodeGmdc(4, 0x300, 0x140);
+        Fe_DecodeGmdc(1, 0x300, 0x150);   /* el teclado */
+        s_kbX[0] = s_kbX[1] = 6;           /* en End */
+        s_kbY[0] = s_kbY[1] = 4;
+        fe->popup = 0;
+        s_nameSlide = 0;
+        s_kbAnim[0] = s_kbAnim[1] = 0;
+        if (fe->prevScreen != 2000)
+        {
+            fe->portPopup = (char)gs->numPlayers;
+            fe->namePlayer[0] = 0;
+            fe->namePlayer[1] = 1;
+        }
+        for (int i = 0; i < 2; i++)
+        {
+            int p = fe->namePlayer[i] & 1;
+            if (!gs->playerNameSet[p])
+                s_kbText[p][0] = 0;   /* DAT_800af364 */
+            else
+                snprintf(s_kbText[p], sizeof(s_kbText[p]), "%s", gs->playerName[p]);
+        }
+    }
+    int r, g, b;
+    Fe_ItemColor(&r, &g, &b, 1);
+    int count = (uint8_t)fe->portPopup;
+    int target = count == 2 ? 0xc2 : count * 0x5e - 3;
+    int bottom = s_nameSlide + 0x1f;
+    Fe_DrawBackground(0x800);
+    int help = (fe->prevScreen == 1300 || fe->prevScreen == 400) ? 4 : 0x10;
+    if (count == 1)
+        Fe_DrawHelp(0, HelpText(help), 0x21, 0xd5, 0x23, 300, 0);
+    else
+    {
+        if (s_kbX[0] != 0xff)
+            Fe_DrawHelp(fe->namePlayer[0], HelpText(help), 0x24, 0x70, 0x26, 0x114, 2);
+        if (s_kbX[1] != 0xff)
+            Fe_DrawHelp(fe->namePlayer[1], HelpText(help), 0x24, 0xce, 0x26, 0x114, 2);
+    }
+    Fe_DrawVramRect(0x300, 0x140, 0xf6, 6, 0x23, 0x19, 0, 0);
+    for (int i = 0; i < count && i < 2; i++)
+    {
+        int p = fe->namePlayer[i] & 1;
+        int y0 = 0x23 + i * 0x5e;
+        int y1 = 0x6f + i * 0x5e < bottom ? 0x6f + i * 0x5e : bottom;
+        if (y0 < y1)
+        {
+            Fe_DrawBox(0x80, 0x80, 0x80, 0xaa, y0, 0x117, y1, 1);
+            Fe_DrawOutline(0x50, 0x50, 0x50, 0xaa, y0, 0x116, y1 - 1, 1);
+        }
+        int top = 0x26 + i * 0x5e;
+        int bot = 0x46 + i * 0x5e < bottom ? 0x46 + i * 0x5e : bottom;
+        Fe_DrawVramRect(0x300, p * 0x20 + 0x100, 0x65, bot - top, 0xae, top, 0, 0);
+        Font_Select(0);
+        Font_DrawWrapped(0xaf, top + 0x28, 0x111, bot + 0x34, Fe_GetString(fe->champReady[p] + 2000), 9);
+        if (s_nameSlide != target)
+            continue;
+        if (s_kbX[i] == 0xff)
+        {
+            s_kbAnim[i] = (short)(s_kbAnim[i] - g_FrameDelta);
+            if (s_kbAnim[i] < 0)
+                s_kbAnim[i] = 0;
+        }
+        else if (s_kbAnim[i] < 100)
+        {
+            s_kbAnim[i] = (short)(s_kbAnim[i] + g_FrameDelta * 2);
+            if (s_kbAnim[i] > 100)
+                s_kbAnim[i] = 100;
+        }
+        Font_Select(1);
+        int len = (int)strlen(s_kbText[p]);
+        for (int k = 0; k < len; k++)
+        {
+            char c[2] = { s_kbText[p][k], 0 };
+            int adv = (int8_t)Font_GetGlyph((uint8_t)c[0])[8];
+            Fe_DrawTextRgb(0, 0, 0, c, k * 0xc + 0xb6 + ((adv & 1) == 0), i * 0x5e + 0x31, 1);
+        }
+        if (s_kbX[i] != 0xff && len < 8)
+            Fe_DrawBox(b * 2 + 0x14, b * 2 + 0x14, b * 2 + 0x6e, len * 0xc + 0xb2, i * 0x5e + 0x37,
+                       len * 0xc + 0xbb, i * 0x5e + 0x42, 0);
+        if (s_kbX[i] == 0xff && s_kbAnim[i] == 0)
+            continue;
+        Fe_DrawVramRect(0x300, 0x150, s_kbAnim[i] * 0x7f / 100, 0x4c, 0x26, y0, 0, 0);
+        if (s_kbX[i] != 0xff)
+        {
+            int w = s_kbY[i] < 4 ? 1 : 3;
+            Fe_DrawOutline(r << 3, g << 3, b << 3, s_kbX[i] * 0xe + 0x26, s_kbY[i] * 0xf + y0,
+                           s_kbX[i] * 0xe + w * 0xe + 0x26, s_kbY[i] * 0xf + i * 0x5e + 0x32, 2);
+        }
+    }
+    Fe_DrawVramRect(0x300, 0x140, 0xf6, 6, 0x23, s_nameSlide + 0x19, 0, 0);
+
+    Fe_ReadPads();
+    for (int i = 0; i < count && i < 2; i++)
+    {
+        int p = fe->namePlayer[i] & 1;
+        char* text = s_kbText[p];
+        int len = (int)strlen(text);
+        if (Fe_PadPressed(PADB_CROSS, p, 1))
+        {
+            if (s_kbY[i] == 4)
+            {
+                if (s_kbX[i] == 0)
+                {
+                    if (len > 7)
+                        Snd_PlayUi(0x4c, NULL);
+                    else
+                    {
+                        text[len] = ' ';
+                        text[len + 1] = 0;
+                        Snd_PlayUi(0x57, NULL);
+                    }
+                }
+                else if (s_kbX[i] == 3)
+                {
+                    if (len > 0)
+                    {
+                        text[len - 1] = 0;
+                        Snd_PlayUi(0x58, NULL);
+                    }
+                }
+                else if (s_kbX[i] == 6)
+                {
+                    if (len < 1)
+                        gs->playerNameSet[p] = 0;
+                    else
+                    {
+                        snprintf(gs->playerName[p], sizeof(gs->playerName[p]), "%s", text);
+                        gs->playerNameSet[p] = 1;
+                    }
+                    int other = i == 0 ? 1 : 0;
+                    if (count == 1 || (s_kbX[other] == 0xff && s_kbY[other] == 0xff))
+                    {
+                        if (fe->prevScreen == 2000)
+                            fe->nextScreen = 1400;
+                        else
+                        {
+                            if (fe->prevScreen == 1300)
+                                fe->popup = 1;   /* al terminar el fundido: Fe_StartRace */
+                            fe->nextScreen = 0;
+                        }
+                    }
+                    else
+                        Snd_PlayUi(0x48, NULL);
+                    s_kbX[i] = s_kbY[i] = 0xff;
+                }
+            }
+            else if (s_kbX[i] != 0xff)
+            {
+                if (len < 8)
+                {
+                    const uint8_t* keys = Exe_Ptr(0x800abe7cu);
+                    text[len] = keys ? (char)keys[s_kbX[i] + s_kbY[i] * 9] : '?';
+                    text[len + 1] = 0;
+                    /* letra al principio o despues de un espacio: mayuscula */
+                    if ((text[len] < '0' || text[len] > '9') && (len == 0 || text[len - 1] == ' '))
+                        text[len] = (char)(text[len] - 0x20);
+                    Snd_PlayUi(0x56, NULL);
+                }
+                else
+                    Snd_PlayUi(0x4c, NULL);
+            }
+        }
+        else if (Fe_PadPressed(PADB_TRIANGLE, p, 1))
+        {
+            if (fe->prevScreen == 1300 || fe->prevScreen == 400)
+                fe->nextScreen = 0;
+        }
+        else if (s_kbX[i] != 0xff)
+            Fe_PwMove(i, p);
+    }
+    Fe_PadRepeatReset();
+    if (s_nameSlide < target)
+    {
+        s_nameSlide = (short)(s_nameSlide + g_FrameDelta);
+        if (s_nameSlide > target)
+            s_nameSlide = (short)target;
+    }
+    if (fe->fadeDone && fe->popup)
+        Fe_StartRace(0);
+}
+
+/* ---------------------------------------------------------------- guardar al volver al menu */
+
+/* parte de 8007a994: con DAT_800b7118 puesto (records, copa o desbloqueos) y camino del menu principal (100) o de la
+ * 600, se queda en la pantalla y pregunta si guardar (texto 0xFA4) ensenando la contrasena del progreso. ask = 0:
+ * antes de la pantalla (devuelve 1 si toca preguntar); ask = 1: despues, el cuadro. */
+int Fe_SavePrompt(int ask)
+{
+    FrontendState* fe = g_Frontend;
+    if (!ask)
+    {
+        if (!g_FeSaveReturn || (fe->nextScreen != 100 && fe->nextScreen != 600))
+            return 0;
+        if (g_FeSaveReturn == 1)
+        {
+            Pw_Encode(s_pwCurrent);
+            g_FeSaveReturn = fe->nextScreen;
+            g_Settings.yesNo = 0;
+        }
+        g_FadeLevel = 0x100;
+        g_FadeDir = 1;
+        fe->nextScreen = -1;
+        return 1;
+    }
+    g_FadeDir = 0;
+    fe->nextScreen = g_FeSaveReturn;
+    Fe_ReadPads();
+    int res = Fe_MsgBox(0, 0x4f, Fe_GetString(0xfa4), &g_Settings.yesNo, g_Settings.numPlayers == 1 ? 0 : -1);
+    Fe_PadRepeatReset();
+    char line[64];
+    snprintf(line, sizeof(line), "%s%s", Fe_GetString(0x837), s_pwCurrent);
+    Fe_DrawTextBox(2, line, 0xa0, 0x99);
+    if (res == 0)
+        g_FeSaveReturn = 0;
+    else if (res > 0)
+    {
+        s_cardSaveReq = 1;
+        fe->nextScreen = 800;
+    }
+    return 1;
 }

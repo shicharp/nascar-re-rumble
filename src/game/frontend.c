@@ -11,6 +11,7 @@
 #include "frontend.h"
 #include "savegame.h"
 #include "snd.h"
+#include "hud.h"
 
 FrontendState* g_Frontend;
 short g_FadeDir;
@@ -219,9 +220,29 @@ void Frontend_InitScreens(void)
             g_Settings.oppCar[i] = 0;
         }
         memset(g_Settings.progress, 0, sizeof(g_Settings.progress));
-        g_BootState = 1;
     }
-    fe->nextScreen = 100;
+    if (g_BootState != 1)
+    {
+        /* LAB_80079c94: primer arranque o partida recien cargada de la tarjeta */
+        g_FeSaveReturn = 0;
+        g_Settings.savedTrack = 0xff;
+        g_BootState = 1;
+        fe->nextScreen = 100;
+    }
+    else if (!g_Settings.demo)
+    {
+        /* vuelta de una carrera: nivel del marcador (DAT_800b715e + jugadores) y lo que sigue (80090fb4) */
+        g_SaveExtra.hudPref[(g_Settings.numPlayers - 1) & 1] = (uint8_t)Hud_GetSetting(0);
+        fe->screen = 2000;
+        fe->nextScreen = (short)Fe_AfterRace();
+    }
+    else
+    {
+        g_Settings.demo = 0;
+        g_Settings.venue = g_Settings.curVenue;
+        g_Settings.track = g_Settings.curTrack;
+        fe->nextScreen = 100;
+    }
 
     /* 8007a3e4: seccion del coche y miniatura de cada piloto y clase */
     for (int c = 0; c < 3; c++)
@@ -269,7 +290,7 @@ static void Fe_ScreenPending(void)
     FntPrint("\n\n\n\n\n\n\n\n\n\n\n\n\n     PANTALLA %d SIN PORTAR\n", g_Frontend->screen);
 }
 
-/* 8007a994. Pendiente: Camera_ApplyProjection, memoria (DAT_800b7118), avisos de mando
+/* 8007a994. Pendiente: Camera_ApplyProjection, avisos de mando
  * desconectado (FUN_8008ec2c) y demo por inactividad. */
 void Frontend_Update(void)
 {
@@ -313,6 +334,7 @@ void Frontend_Update(void)
         }
     }
 
+    int savePrompt = Fe_SavePrompt(0);   /* DAT_800b7118 */
     switch (fe->screen)
     {
     case 100:  Fe_Screen100(); break;
@@ -322,11 +344,12 @@ void Frontend_Update(void)
     case 500:  Fe_Screen500(); break;
     case 700:  Fe_Screen700(); break;
     case 800:  Fe_Screen800(); break;
+    case 1100: Fe_Screen1100(); break;
     case 1200: Fe_Screen1200(); break;
     case 1300: Fe_Screen1300(); break;
+    case 1400: Fe_Screen1400(); break;
     case 2000: Fe_Screen2000(); break;
-    /* 600 FUN_80088edc, 900 FUN_8007ddb4, 1000 FUN_8007f810,
-     * 1100 FUN_80080cbc, 1400 FUN_800855a0, 1500 FUN_80085d90,
+    /* 600 FUN_80088edc, 900 FUN_8007ddb4, 1000 FUN_8007f810, 1500 FUN_80085d90,
      * 1600 FUN_8007ea64, 1700 FUN_80087130, 1800 FUN_80087fa8, 1900 FUN_8008a52c */
     default: Fe_ScreenPending(); break;
     }
@@ -338,7 +361,9 @@ void Frontend_Update(void)
         fe->fadeDone = 0;
         fe->idleTimer = 0;
     }
-    if (g_FadeDir == 0 && fe->nextScreen == -1)
+    if (savePrompt)
+        Fe_SavePrompt(1);
+    else if (g_FadeDir == 0 && fe->nextScreen == -1)
     {
         /* sonidos de navegacion: mover el cursor 0x46, cambiar un ajuste 0x47 */
         if (fe->cursor != fe->prevCursor)
@@ -352,7 +377,7 @@ void Frontend_Update(void)
             Snd_PlayUi(0x47, NULL);
         }
     }
-    if (fe->nextScreen != -1 && g_FadeDir == 0)
+    if (!savePrompt && fe->nextScreen != -1 && g_FadeDir == 0)
     {
         /* LAB_8007afc4: empieza el fundido a negro hacia la siguiente pantalla (sonido 0x48; no al volver de la
          * pantalla 700 con +0xB6 puesto) */

@@ -111,7 +111,7 @@ static void Save_Pack(void)
         uint8_t* r = d + 0x202 + p * 0xb;
         memcpy(r, g->playerName[p], 9);
         r[9] = g->playerNameSet[p];
-        r[10] = x->nameTail[p];
+        r[10] = (uint8_t)x->recordPos[p];
     }
     d[0x218] = x->b711c;
     PROGRESS(0x800b7135) = g->maxClassUnlocked;
@@ -189,7 +189,7 @@ static void Save_Unpack(void)
         memset(g->playerName[p], 0, sizeof(g->playerName[p]));
         memcpy(g->playerName[p], r, 9);
         g->playerNameSet[p] = r[9];
-        x->nameTail[p] = r[10];
+        x->recordPos[p] = (int8_t)r[10];
     }
     x->b711c = d[0x218];
     memcpy(&PROGRESS(0x800b7135), d + 0x219, 0x24);
@@ -418,7 +418,7 @@ void Save_ResetExtra(void)
         x->hudPref[p] = 1;      /* DAT_800b715f / 7160 */
         x->pad797d[p] = 0xff;
         x->b7981[p] = 1;
-        x->nameTail[p] = 0;
+        x->recordPos[p] = 0;
     }
     x->b7995 = x->b7996 = 0;
     Save_ClearRecords(-1);

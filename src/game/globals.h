@@ -41,6 +41,7 @@ extern int       g_FrameCount;      /* DAT_800af728 */
 extern int       g_FrontendFrames;  /* DAT_800af17c */
 extern char      g_LevelPath[128];  /* DAT_800b0d70 */
 extern char      g_SelectedTrack[16]; /* DAT_800ab7a0: pista elegida en el front-end */
+extern int       g_RaceExit;        /* DAT_800af940: g_GameInfo->nextMode al acabar la carrera (0 terminada) */
 extern int       g_BootState;       /* DAT_800b7068: 0 primer arranque, 1 ya inicializado, 2 tras memcard */
 extern short     g_Venue;           /* DAT_800af386: sede de la carrera (directorio CW\\Loc<codigo>) */
 extern char      g_TrackName[32];   /* DAT_800b711d */

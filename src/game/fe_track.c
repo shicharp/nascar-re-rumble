@@ -1,7 +1,7 @@
 /* Pantalla 1300: eleccion de sede y pista (carrusel de sedes, lista de pistas, trazado 3D girando) y
  * montaje de la carrera (parrilla, rivales, fichero .trk) antes de salir del front-end.
- * Pendiente: records y copas ganadas (tablas de la tarjeta DAT_800b7998 / DAT_800b8418), pantallas
- * 1100 (nombre, campeonato) y 1400 (records de pista), configuracion de mandos (FUN_8008b160). */
+ * Pendiente: copas ganadas en el carrusel (tablas de la tarjeta DAT_800b7998 / DAT_800b8418) y configuracion
+ * de mandos (FUN_8008b160). */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,6 +20,7 @@
 #include "render.h"
 #include "frontend.h"
 #include "fe_internal.h"
+#include "savegame.h"
 
 #define GTE_OP_NCCS 0x0108041B
 
@@ -801,6 +802,7 @@ void Fe_Screen1300(void)
             if (!gs->champType)
             {
                 g_Venue = gs->venue;
+                g_SaveExtra.recordPos[0] = g_SaveExtra.recordPos[1] = -1;
                 fe->nextScreen = 1400;   /* records de la pista */
             }
         }

@@ -186,9 +186,11 @@ typedef struct
     char     vScrollAgain;  /* +0x946 */
     char     pad947;
     int      volumeSound;   /* +0x948 sonido de prueba de la pantalla de audio */
-    char     portPopup;     /* +0x94C aviso de mandos; en la pantalla 1300, empezar la carrera */
-    char     champReady[2]; /* +0x94D */
-    char     pad94f[0x9f2 - 0x94f];
+    char     portPopup;     /* +0x94C aviso de mandos; en la pantalla 1300, empezar la carrera; en la 1100,
+                               cuantos jugadores escriben su nombre */
+    char     champReady[2]; /* +0x94D pantalla 1100: texto (2000 + n) de cada jugador */
+    uint8_t  namePlayer[2]; /* +0x94F pantalla 1100: jugador de cada recuadro */
+    char     pad951[0x9f2 - 0x951];
     char     teamMode;      /* +0x9F2 cada jugador elige tambien compañero de equipo */
     char     pickOpponents; /* +0x9F3 el jugador elige los rivales */
     uint8_t  numOpponents;  /* +0x9F4 */
@@ -237,6 +239,7 @@ typedef struct
     /* pantalla 1300 y carrera */
     uint8_t venue;             /* DAT_800b7194: sede elegida (0-6 pistas, 7 WC, 8 EA) */
     uint8_t track;             /* DAT_800b7195: pista de la sede (0-2) */
+    uint8_t savedVenue;        /* DAT_800b7196: sede y pista elegidas antes de la copa (80090fb4) */
     uint8_t savedTrack;        /* DAT_800b7197 */
     uint8_t teamRace;          /* DAT_800b7167 */
     uint8_t champType;         /* DAT_800b7168: 0 carrera, 1 copa de sede, 2 WC, 3 EA */
@@ -314,6 +317,15 @@ void Fe_Screen400(void);                                                  /* 800
 void Fe_Screen500(void);                                                  /* 8007c540 */
 void Fe_Screen700(void);                                                  /* 8007cb6c: contrasena */
 void Fe_Screen800(void);                                                  /* 8007d32c: tarjeta de memoria */
+void Fe_Screen1100(void);                                                 /* 80080cbc: nombre de los jugadores */
+int  Fe_SavePrompt(int ask);                                              /* parte de 8007a994 */
+
+/* Vuelta de una carrera, records y copas (fe_records.c) */
+extern short g_FeSaveReturn;          /* DAT_800b7118: 1 = preguntar si guardar al volver al menu; despues, la
+                                         pantalla a la que se vuelve desde la 800 */
+int  Fe_AfterRace(void);                                                  /* 80090fb4: siguiente pantalla */
+int  Fe_DrawTime(int r, int g, int b, int x, int y, int t);               /* 8008ee98 */
+void Fe_Screen1400(void);                                                 /* 800855a0: records de la pista */
 int  Fe_DecodeGmdc(int index, int x, int y);                              /* 8008e21c */
 void Fe_Screen1200(void);                                                 /* 80081a9c */
 void Fe_Screen1300(void);                                                 /* 800838f8 */

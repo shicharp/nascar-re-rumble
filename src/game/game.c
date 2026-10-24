@@ -282,6 +282,7 @@ int Game_Main(void)
             if (!g_SelectedTrack[0])
                 break;
             Level_Run(g_SelectedTrack, 0);
+            g_RaceExit = g_GameInfo->nextMode;   /* 800793d8 */
         }
     }
     Game_Shutdown();
