@@ -315,6 +315,7 @@ void Fe_Screen200(void);                                                  /* 800
 void Fe_Screen300(void);                                                  /* 8007f4a0 */
 void Fe_Screen400(void);                                                  /* 8007bf00 */
 void Fe_Screen500(void);                                                  /* 8007c540 */
+void Fe_Screen600(void);                                                  /* 80088edc: Showcase (videos) */
 void Fe_Screen700(void);                                                  /* 8007cb6c: contrasena */
 void Fe_Screen800(void);                                                  /* 8007d32c: tarjeta de memoria */
 void Fe_Screen1100(void);                                                 /* 80080cbc: nombre de los jugadores */
@@ -323,6 +324,8 @@ int  Fe_SavePrompt(int ask);                                              /* par
 /* Vuelta de una carrera, records y copas (fe_records.c) */
 extern short g_FeSaveReturn;          /* DAT_800b7118: 1 = preguntar si guardar al volver al menu; despues, la
                                          pantalla a la que se vuelve desde la 800 */
+extern int8_t g_FeUnlockShow;        /* fe +0xA84: clase recien desbloqueada; -1 todo ganado en Elite (la 600 pone
+                                         el final), -2 el video de la intro */
 int  Fe_AfterRace(void);                                                  /* 80090fb4: siguiente pantalla */
 int  Fe_DrawTime(int r, int g, int b, int x, int y, int t);               /* 8008ee98 */
 void Fe_Screen1400(void);                                                 /* 800855a0: records de la pista */

@@ -56,7 +56,7 @@ static uint8_t   s_numWinners;
 static int8_t    s_teamCars[3][2];   /* fe +0x9E9: coches (hueco de la parrilla) de cada equipo */
 static int8_t    s_teamPos[3];       /* fe +0x9EB: puesto de cada equipo */
 static uint8_t*  s_unlock;           /* fe +0xA78: lo desbloqueado (0x24 bytes, ver Fe_CheckUnlocks) */
-static int8_t    s_unlockShow;       /* fe +0xA84: clase desbloqueada; -1 = todo ganado en Elite (pantalla 600) */
+int8_t           g_FeUnlockShow;     /* fe +0xA84: clase desbloqueada; -1 = todo ganado en Elite (pantalla 600) */
 static int       s_kidTime;          /* fe +0xA8C: tiempo de una copa de Rookie bajo el limite de 800abe64 */
 
 static uint32_t Rd32(const uint8_t* p) { return (uint32_t)(p[0] | p[1] << 8 | p[2] << 16 | (uint32_t)p[3] << 24); }
@@ -133,7 +133,7 @@ static int Fe_CheckUnlocks(void)
         return 0;
     free(s_unlock);
     s_unlock = (uint8_t*)calloc(1, 0x24);
-    s_unlockShow = 0;
+    g_FeUnlockShow = 0;
     int c = gs->racingClass - 1;
     if (s_kidTime == 0 || gs->maxClassUnlocked != 0)
         s_kidTime = 0;
@@ -142,7 +142,7 @@ static int Fe_CheckUnlocks(void)
         /* copa de Rookie con buen tiempo sin Pro: Pro, el segundo nivel de sedes y las pistas sueltas */
         gs->maxClassUnlocked = 1;
         s_unlock[0] = 1;
-        s_unlockShow = 1;
+        g_FeUnlockShow = 1;
         if (P(0x800b7136) == 0)
         {
             s_unlock[1] = 3;
@@ -172,11 +172,11 @@ static int Fe_CheckUnlocks(void)
             gs->maxClassUnlocked = gs->racingClass;
             s_unlock[0] = gs->racingClass;
             changed = 1;
-            s_unlockShow = (int8_t)gs->maxClassUnlocked;
+            g_FeUnlockShow = (int8_t)gs->maxClassUnlocked;
         }
         else if (!g_SaveExtra.b711c)
         {
-            s_unlockShow = -1;
+            g_FeUnlockShow = -1;
             g_SaveExtra.b711c = 1;
         }
     }
@@ -375,7 +375,7 @@ int Fe_AfterRace(void)
         }
         break;
     case 2000:
-        s_unlockShow = 0;   /* (el original los pone a 0 con el estado del front-end) */
+        g_FeUnlockShow = 0;   /* (el original los pone a 0 con el estado del front-end) */
         s_kidTime = 0;
         if (g_RaceExit != 0)
             break;   /* carrera abandonada */
@@ -430,7 +430,7 @@ menu:
         fe->raceMenu1P[gs->raceMenuCursor].active = 1;
     else if (gs->numPlayers == 2)
         fe->raceMenu2P[gs->raceMenuCursor].active = 1;
-    return s_unlockShow == -1 ? 600 : 100;
+    return g_FeUnlockShow == -1 ? 600 : 100;
 }
 
 /* ---------------------------------------------------------------- pantalla 1400: records de la pista */
@@ -1265,7 +1265,7 @@ void Fe_Screen1800(void)
         }
     free(s_unlock);
     s_unlock = NULL;
-    if (s_unlockShow > 0)
+    if (g_FeUnlockShow > 0)
     {
         /* clase nueva: los coches de los jugadores pasan a ella y el menu principal marca "Racing Class" */
         for (int i = 0; i < gs->numPlayers && i < 2; i++)

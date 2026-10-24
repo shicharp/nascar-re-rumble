@@ -17,6 +17,7 @@
 #include "memcard.h"
 #include "password.h"
 #include "exe.h"
+#include "game.h"
 
 /* ---------------------------------------------------------------- primitivas 2D */
 
@@ -1720,4 +1721,74 @@ int Fe_SavePrompt(int ask)
         fe->nextScreen = 800;
     }
     return 1;
+}
+
+/* ---------------------------------------------------------------- pantalla 600: Showcase */
+
+/* 80088edc: videos de CW\AboutEA (Prod1, Prod2, Credits y, con todo ganado en Elite (DAT_800b711c), Payoff). La
+ * primera vez despues de ganarlo todo (g_FeUnlockShow == -1) pone directamente el final; con -2, la intro y vuelve
+ * al menu. Despues de cada video, fundido desde negro. */
+void Fe_Screen600(void)
+{
+    FrontendState* fe = g_Frontend;
+    MenuItem* items = fe->showcaseMenu;
+    int count = g_SaveExtra.b711c ? 4 : 3;
+    char path[64];
+    path[0] = 0;
+    if (fe->firstFrame)
+    {
+        Fe_SetBackground(0);
+        Fe_ResetCars();   /* 80090a88(1) */
+        if (fe->preview)
+        {
+            Pool_Free(fe->preview);
+            fe->preview = NULL;
+        }
+        if (g_FeUnlockShow == -1)
+            fe->cursor = 3;
+        else if (g_FeUnlockShow == -2)
+            snprintf(path, sizeof(path), "CW\\Opening\\Intro.wve");
+        else
+            Fe_ResetMenu(items, count);
+    }
+    if (!path[0] && !(fe->firstFrame && g_FeUnlockShow == -1))
+    {
+        Fe_ReadPads();
+        if (Fe_MenuNavigate(items, count) != -1)
+        {
+            Fe_DrawBackground(20000);
+            Fe_DrawHelp(0, g_FeUnlockShow == 0 ? items[fe->cursor].help : HelpText(27), 0x21, 0xd5, 0x23, 0x109, 0);
+            for (int i = 0; i < count; i++)
+            {
+                int r, g, b;
+                Fe_ItemColor(&r, &g, &b, i == fe->cursor);
+                Fe_DrawMenuItem(r, g, b, items, i, count);
+            }
+            Fe_PadRepeatReset();
+            return;
+        }
+    }
+    if (!path[0])
+    {
+        if (fe->cursor == 2)
+            snprintf(path, sizeof(path), "CW\\AboutEA\\Credits.wve");
+        else if (fe->cursor == 3)
+            snprintf(path, sizeof(path), "CW\\AboutEA\\Payoff.wve");
+        else
+            snprintf(path, sizeof(path), "CW\\AboutEA\\Prod%d.wve", fe->cursor + 1);
+    }
+    /* el original libera los buffers de dibujo mientras dura el video (Gfx_FreeBuffers / Gfx_InitBuffers); en el
+     * port Movie_Play aun no reproduce WVE */
+    Snd_Pause(0);
+    Movie_Play(path, 4, 0, 0xc, 0x140, 0xf0);
+    Snd_Pause(1);
+    DrawSync(0);
+    if (g_FeUnlockShow < -1)
+        fe->screen = 100;
+    g_FeUnlockShow = 0;
+    fe->bgIndex = 0xff;
+    Fe_SetBackground(0);
+    g_FadeDir = 1;
+    g_FadeLevel = 0;
+    Fe_PadRepeatReset();
 }
