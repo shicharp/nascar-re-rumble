@@ -38,6 +38,7 @@ typedef struct
 TrackPreview* TrackPreview_Create(const NrAsset* a, int w, int h);                 /* 8001893c */
 void        TrackPreview_Draw(TrackPreview* tp, uint32_t color, const SVECTOR* light);   /* 80018ef0 */
 void        Fe_LoadVenueThumb(int image, int slot);                                       /* 8008e13c */
+int         Fe_WrapVenue(int v);                                                          /* 80090860 */
 void        Fe_DrawVenueThumb(int slot, int x, int y, int depth, int mode);               /* 8008c308 */
 
 /* fe_select.c */

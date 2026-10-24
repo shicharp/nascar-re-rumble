@@ -1276,3 +1276,407 @@ void Fe_Screen1800(void)
     }
     s_kidTime = 0;
 }
+
+/* ---------------------------------------------------------------- pantalla 900: Hall of Champs */
+
+/* tabla de copa de la sede del carrusel (7 y 8 = Winston Cup y EA: tablas 6 y 7; la 6 del carrusel no existe) */
+static int HallTable(void)
+{
+    int v = g_SaveExtra.b7995;
+    return v > 6 ? v - 1 : v;
+}
+
+/* 8008c5c0: ganador de una clase en la 900: clase (y "  " + 0xA2A en la tabla del modo 4), nombre (por equipos
+ * los dos) y, si hay, la copa girando y el tiempo; el elegido con el color del cursor */
+static void DrawHallEntry(int x, int y, int cls, int pos, int time, const char* name, const char* name2, int sel)
+{
+    int r = 0, g = 0, b = 0;
+    if (sel)
+        Fe_ItemColor(&r, &g, &b, 2);
+    Font_Select(0);
+    char s[48];
+    snprintf(s, sizeof(s), "%s%s%s", Fe_GetString(0x7e + cls), pos > 2 ? "  " : "", pos > 2 ? Fe_GetString(0xa2a) : "");
+    if (sel)
+        Font_DrawString(s, x + 1, y + 1, 0);
+    Font_DrawString(s, x, y, sel ? 9 : 8);
+    Font_Select(1);
+    int nx = x, ny = time == 0 ? y + 8 : y + 0xf;
+    if (name2 && time != 0)
+    {
+        Font_DrawString(name, x + 0x3c, y - 2, 8);
+        name = CupName(name2);
+        nx = x + 0x3c;
+        ny = y + 0xb;
+    }
+    Font_DrawString(name, nx, ny, 8);
+    if (time == 0)
+    {
+        Fe_DrawBox(0x3c, 0x3c, 0x3c, x - 0x28, y + 1, x - 4, y + 0x20, 0);
+        Fe_DrawFrame(r * 2 + 100, g * 2 + 100, b * 2 + 100, x - 0x29, y + 1, x - 4, y + 0x20);
+    }
+    else
+    {
+        Fe_DrawBox(0x10, 0x10, 0x3f, x - 0x28, y + 1, x - 4, y + 0x20, 0);
+        Fe_DrawFrame(r * 2 + 0x3c, g * 2 + 0x3c, b * 2 + 0x3c, x - 0x29, y + 1, x - 4, y + 0x20);
+        Fe_DrawSpinningModel(x - 0x16, y + 0x11, 26000, pos + 0xb, 2);
+        Font_Select(0);
+        Fe_DrawTime(0x1d, 0x1d, 3, x, y + 10, time);
+    }
+}
+
+static void HallThumb(int i)
+{
+    FrontendState* fe = g_Frontend;
+    Fe_LoadVenueThumb(fe->venues[fe->vcar[i].venue][fe->vcar[i].k].image, fe->vcar[i].slot);
+}
+
+static void HallDrawCarousel(int n, int scrolled)
+{
+    FrontendState* fe = g_Frontend;
+    for (int i = 0; i < n; i++)
+        Fe_DrawVenueThumb(fe->vcar[i].slot, i * 0x44 + (scrolled ? fe->vScrollX : 0) + 0x3a, 0x25, 0, 1);
+}
+
+/* el carrusel avanza (entra por la derecha la sede + 2) */
+static void HallShiftLeft(void)
+{
+    VenueCarousel* c = g_Frontend->vcar;
+    int8_t slot = c[0].slot;
+    c[0] = c[1];
+    c[1] = c[2];
+    c[2] = c[3];
+    c[3].slot = slot;
+}
+
+/* el carrusel retrocede (entra por la izquierda la sede - 2) */
+static void HallShiftRight(void)
+{
+    VenueCarousel* c = g_Frontend->vcar;
+    int v = g_SaveExtra.b7995;
+    int8_t slot = c[3].slot;
+    c[3] = c[2];
+    c[2] = c[1];
+    c[1] = c[0];
+    c[0].slot = slot;
+    c[0].k = 0;
+    c[0].venue = (uint8_t)(v < 2 ? v + 7 : Fe_WrapVenue(v - 2));
+    HallThumb(0);
+}
+
+/* 8007ddb4: carrusel de sedes (izquierda / derecha, DAT_800b7995) y, en tres filas, el ganador de la copa de cada
+ * clase (arriba / abajo elige, DAT_800b7996); individual o por equipos segun el ajuste del menu principal. X ensena
+ * los cuatro primeros (1600), triangulo vuelve al menu. */
+void Fe_Screen900(void)
+{
+    FrontendState* fe = g_Frontend;
+    GameSettings* gs = &g_Settings;
+    SaveExtra* x = &g_SaveExtra;
+    VenueCarousel* c = fe->vcar;
+    if (fe->firstFrame)
+    {
+        Fe_SetBackground(7);
+        gs->champType = 1;   /* (Fe_WrapVenue: las 9 sedes sin la 6) */
+        gs->gameMode = 0;
+        c[0].venue = (uint8_t)Fe_WrapVenue(x->b7995 - 1);
+        c[1].venue = x->b7995;
+        c[2].venue = (uint8_t)Fe_WrapVenue(x->b7995 + 1);
+        c[3].venue = 0;
+        for (int i = 0; i < 4; i++)
+        {
+            c[i].k = 0;
+            c[i].slot = (int8_t)i;
+            HallThumb(i);
+        }
+        fe->vScrollDir = 0;
+        fe->vScrollAgain = 0;
+        fe->vScrollX = 0;
+        fe->firstFrame = 0;
+    }
+    Fe_ReadPads();
+    Fe_DrawBackground(0x1000);
+    Fe_DrawHelp(0, HelpText(11), 0x21, 0xd5, 0x23, 300, 0);
+
+    int dir = fe->vScrollDir;
+    if (dir < 0)
+    {
+        int shift = fe->vScrollX < -0x43;
+        if (!shift)
+        {
+            fe->vScrollX = (short)(fe->vScrollX + dir);
+            if (fe->vScrollX < -0x43)
+            {
+                if (Fe_PadPressed(PADB_RIGHT, 0, 0))
+                {
+                    fe->vScrollAgain = 1;
+                    shift = 1;
+                }
+                else
+                    fe->vScrollX = -0x44;
+            }
+        }
+        if (!shift)
+            HallDrawCarousel(4, 1);
+        else
+        {
+            HallShiftLeft();
+            x->b7995 = c[1].venue;
+            if (!fe->vScrollAgain)
+            {
+                HallDrawCarousel(3, 0);
+                fe->vScrollDir = 0;
+            }
+            else
+            {
+                c[3].k = 0;
+                fe->vScrollX = (short)(fe->vScrollX + 0x44);
+                c[3].venue = (uint8_t)(x->b7995 < 7 ? Fe_WrapVenue(x->b7995 + 2) : x->b7995 - 7);
+                HallThumb(3);
+                HallDrawCarousel(4, 1);
+            }
+        }
+    }
+    else if (dir == 0)
+        HallDrawCarousel(3, 0);
+    else
+    {
+        int shift = fe->vScrollX >= 0;
+        if (!shift)
+        {
+            fe->vScrollX = (short)(fe->vScrollX + dir);
+            if (fe->vScrollX >= 0)
+            {
+                if (Fe_PadPressed(PADB_LEFT, 0, 0))
+                {
+                    fe->vScrollAgain = 1;
+                    shift = 1;
+                }
+                else
+                    fe->vScrollX = 0;
+            }
+        }
+        if (!shift)
+            HallDrawCarousel(4, 1);
+        else
+        {
+            x->b7995 = c[1].venue;
+            if (!fe->vScrollAgain)
+            {
+                HallDrawCarousel(3, 0);
+                fe->vScrollDir = 0;
+            }
+            else
+            {
+                fe->vScrollX = (short)(fe->vScrollX - 0x44);
+                HallShiftRight();
+                HallDrawCarousel(4, 1);
+            }
+        }
+    }
+
+    int team = gs->hallType == 1;
+    int xo = team ? 0x16 : 0, xr = team ? 0x1f : 0;
+    for (int i = 0; i < 2; i++)
+        Fe_DrawLine(0x28787878, xo + 0x1b, 0x86 + i * 0x28, 0x131 - xr, 0x86 + i * 0x28, 1);
+    int yy = (2 - x->b7996) * 0x28;
+    Fe_DrawCallout(0x7e, 0x24, 0x3f, 0x19, 10, 0x92 - xo, yy + 0x2b, 0xc);
+    Fe_DrawBox(0x44, 0x44, 0x44, xo + 0x1d, yy + 0x62, 0x131 - xr, yy + 0x82, 1);
+    Font_Select(2);
+    Fe_DrawTextRgb(0x1f, 0x1f, 0x1f, fe->venues[x->b7995][0].name, 0x9e, 0x45, 1);
+    Font_Select(4);
+    Fe_DrawTextRgb(0x1c, 0x1c, 10, Fe_GetString(0x90 + gs->hallType), 0xf2, 0x12, 1);   /* DAT_800b7000 */
+    int t = HallTable();
+    for (int cls = 0; cls < 3; cls++)
+    {
+        int y = (2 - cls) * 0x28 + 0x61;
+        int sel = x->b7996 == cls;
+        if (!team)
+        {
+            const uint8_t* e = x->cupRecs + t * 0x150 + cls * 0x70;
+            DrawHallEntry(0x45, y, cls, e[0x11], (int)Rd32(e), (const char*)e + 8, NULL, sel);
+            if (t < 7)
+                DrawHallEntry(0xc9, y, cls, e[0x1b] + 3, (int)Rd32(e + 4), (const char*)e + 0x12, NULL, sel);
+        }
+        else
+        {
+            const uint8_t* u = x->cupRecs2 + t * 0x120 + cls * 0x60;
+            DrawHallEntry(xo + 0x45, y, cls, u[0xd], (int)Rd32(u), (const char*)u + 4, (const char*)u + 0xe, sel);
+        }
+    }
+
+    if (Fe_PadPressed(PADB_RIGHT, -1, 0))
+    {
+        if (fe->vScrollDir == 0)
+        {
+            fe->vScrollDir = -7;
+            fe->vScrollX = 0;
+            c[3].k = 0;
+            c[3].venue = (uint8_t)(x->b7995 < 7 ? Fe_WrapVenue(x->b7995 + 2) : x->b7995 - 7);
+            HallThumb(3);
+            fe->valueDir = 1;
+        }
+        fe->vScrollAgain = 0;
+    }
+    else if (Fe_PadPressed(PADB_LEFT, -1, 0))
+    {
+        if (fe->vScrollDir == 0)
+        {
+            fe->vScrollDir = 7;
+            fe->vScrollX = -0x44;
+            HallShiftRight();
+            fe->valueDir = 1;
+        }
+        fe->vScrollAgain = 0;
+    }
+    else if (Fe_PadPressed(PADB_CROSS, -1, 1))
+        fe->nextScreen = 1600;
+    else if (Fe_PadPressed(PADB_TRIANGLE, -1, 1))
+        fe->nextScreen = 100;
+    else
+    {
+        int d = Fe_PadPressed(PADB_UP, -1, 1) ? 1 : Fe_PadPressed(PADB_DOWN, -1, 1) ? -1 : 0;
+        if (d)
+        {
+            x->b7996 = (uint8_t)Fe_Clamp(x->b7996 + d, 0, 2);
+            fe->cursor = fe->prevCursor == 0;   /* (para el sonido de mover el cursor) */
+        }
+    }
+    Fe_PadRepeatReset();
+    if (fe->vScrollDir > 0)
+        fe->vScrollDir = (char)g_FrameDelta;
+    else if (fe->vScrollDir < 0)
+        fe->vScrollDir = (char)-g_FrameDelta;
+    fe->modelAngle += g_FrameDelta;
+}
+
+/* ---------------------------------------------------------------- pantalla 1600: records de una copa */
+
+static int8_t s_hallTable;   /* DAT_800b8d18: 0 copa, 1 tabla del modo 4 (arriba / abajo) */
+
+/* 8007ea64: los cuatro primeros de la copa de la sede y clase elegidas en la 900 (puesto, nombre y tiempo) y la
+ * copa del primero girando; por equipos, los dos nombres. */
+void Fe_Screen1600(void)
+{
+    FrontendState* fe = g_Frontend;
+    GameSettings* gs = &g_Settings;
+    SaveExtra* x = &g_SaveExtra;
+    int ea = x->b7995 == 8;
+    int cls = x->b7996;
+    if (fe->firstFrame)
+    {
+        Fe_SetBackground(ea ? 0xb : gs->hallType + 10);
+        Fe_DecodeGmdc(0, 0x300, 0x100);
+        Fe_DecodeGmdc(0xc, 0x300, 0x120);
+        Fe_DecodeGmdc(6, 0x300, 0x140);
+        s_hallTable = 0;
+    }
+    Fe_DrawBackground(0x1000);
+    Fe_DrawHelp(0, HelpText(gs->hallType == 0 && !ea ? 22 + s_hallTable : 3), 0x21, 0xd5, 0x23, 300, 0);
+    int t = HallTable();
+    char title[64];
+    snprintf(title, sizeof(title), "%s%s", fe->venues[x->b7995][0].name, Fe_GetString(0xa29));
+    Font_Select(2);
+    Fe_DrawTextRgb(0x1f, 0x1f, 0x1f, title, 0x22, 0x17, 0);
+    Fe_DrawBox(0x48, 0x48, 0x48, 0xf8, 0x16, 0x130, 0x29, 1);
+    Fe_DrawFrame(0x8c, 0x8c, 0x96, 0xf8, 0x16, 0x130, 0x29);
+    Font_Select(1);
+    Fe_DrawTextRgb(0x1b, 0x1b, 2, Fe_GetString(0x7b + cls), 0x113, 0x14, 1);   /* DAT_800b6fcc */
+    int best = -1, mx = 0xff, my = 99;
+    if (gs->hallType == 0)
+    {
+        if (!ea)
+        {
+            int r, g, b;
+            Fe_ItemColor(&r, &g, &b, 1);
+            if (s_hallTable)
+                Fe_DrawVramRect(0x300, 0x100, 0x40, 0x20, 0x22, 0x3f, 0, 0);
+            Fe_DrawVramRect(0x300, 0x120, 0xf, 0x1a, 0x68, 0x41, 0, 0);
+            Fe_DrawFrame(r * -2 + 0x96, g * -2 + 0x96, b * -2 + 0xa0, 0x67, 0x41, 0x77, 0x5a);
+        }
+        else
+            Fe_DrawVramRect(0x300, 0x140, 0x28, 0xe, 0x2f, 0x44, 0, 0);
+        const uint8_t* tab = x->cupRecs + t * 0x150 + cls * 0x70;
+        for (int i = 0; i < 4; i++)
+        {
+            int y = ea ? i * 0x1e + 0x55 : i * 0x15 + 0x78;
+            const uint8_t* e = tab + i * 0x1c;
+            int pos = -1, time = 0;
+            const char* name = "";
+            if (s_hallTable == 0 && Rd32(e) != 0)
+            {
+                name = (const char*)e + 8;
+                pos = e[0x11];
+                time = (int)Rd32(e);
+            }
+            else if (s_hallTable == 1 && Rd32(e + 4) != 0)
+            {
+                name = (const char*)e + 0x12;
+                pos = e[0x1b];
+                time = (int)Rd32(e + 4);
+            }
+            if (pos < 0)
+            {
+                Font_Select(0);
+                Fe_DrawTextRgb(0x1f, 0x1f, 0x1f, "----", 0x47, y + 4, 1);
+                Fe_DrawTextRgb(0x1f, 0x1f, 0x1f, "----", 0x87, y + 4, 1);
+                Fe_DrawTextRgb(0x1f, 0x1f, 0x1f, "----", 0xb6, y + 4, 1);
+            }
+            else
+            {
+                Font_Select(4);
+                Fe_DrawTextRgb(0x1f, 0x1f, 0x1f, name, 0x35, y + 1, 0);
+                Font_Select(0);
+                Fe_DrawTextRgb(0x1f, 0x1f, 0x1f, Fe_GetString(0xa2d + pos), 0x87, y + 4, 1);   /* DAT_800b7058 */
+                Fe_DrawTime(0x1f, 0x1f, 0x1f, 0xa5, y + 4, time);
+            }
+        }
+        if (s_hallTable == 0 || ea)
+        {
+            if (Rd32(tab) != 0)
+                best = tab[0x11];
+        }
+        else if (Rd32(tab + 4) != 0)
+            best = tab[0x1b] + 3;
+        if (!ea)
+        {
+            mx = 0xfe;
+            my = 0x89;
+        }
+    }
+    else
+    {
+        Font_Select(0);
+        const uint8_t* tab = x->cupRecs2 + t * 0x120 + cls * 0x60;
+        for (int i = 0; i < 4; i++)
+        {
+            const uint8_t* u = tab + i * 0x18;
+            if (Rd32(u) == 0)
+            {
+                Font_Select(0);
+                Fe_DrawTextRgb(0x1f, 0x1f, 0x1f, "----", 0x42, 0x5d + i * 0x1e, 1);
+                Fe_DrawTextRgb(0x1f, 0x1f, 0x1f, "----", 0x88, 0x5d + i * 0x1e, 1);
+                Fe_DrawTextRgb(0x1f, 0x1f, 0x1f, "----", 0xb8, 0x5d + i * 0x1e, 1);
+            }
+            else
+            {
+                Fe_DrawTextRgb(0x1f, 0x1f, 0x1f, (const char*)u + 4, 0x30, 0x53 + i * 0x1e, 0);
+                Fe_DrawTextRgb(0x1f, 0x1f, 0x1f, CupName((const char*)u + 0xe), 0x30, 0x5f + i * 0x1e, 0);
+                Fe_DrawTextRgb(0x1f, 0x1f, 0x1f, Fe_GetString(0xa2d + u[0xd]), 0x88, 0x59 + i * 0x1e, 1);
+                Fe_DrawTime(0x1f, 0x1f, 0x1f, 0xa7, 0x59 + i * 0x1e, (int)Rd32(u));
+            }
+        }
+        if (Rd32(tab) != 0)
+            best = tab[0xd];
+    }
+    if (best >= 0)
+        Fe_DrawSpinningModel(mx, my, 0x34bc, best + 5, 2);
+    Fe_ReadPads();
+    if (Fe_PadPressed(PADB_TRIANGLE, -1, 1))
+        fe->nextScreen = 900;
+    else if (gs->hallType == 0 && !ea && (Fe_PadPressed(PADB_UP, 0, 1) || Fe_PadPressed(PADB_DOWN, 0, 1)))
+    {
+        s_hallTable = s_hallTable == 0;
+        fe->cursor = fe->prevCursor == 0;
+    }
+    Fe_PadRepeatReset();
+    fe->modelAngle += g_FrameDelta;
+}

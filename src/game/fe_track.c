@@ -102,7 +102,7 @@ static int NumVenues(void)
 }
 
 /* 80090860: sede v dando la vuelta; en campeonato se salta Jacksonville Trail (6) */
-static int Fe_WrapVenue(int v)
+int Fe_WrapVenue(int v)
 {
     int cur = g_Settings.venue;
     int n = NumVenues();
