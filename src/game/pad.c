@@ -7,6 +7,8 @@
 #include "pad.h"
 
 uint32_t g_PadButtons[2];
+uint32_t g_PadBinds[2][14];                 /* DAT_800b0570 */
+static uint8_t s_vibration[2] = { 1, 1 };   /* DAT_800b04ef + puerto * 0x28 */
 
 #define MAX_SCRIPT 256
 static struct { int frame, len; uint32_t mask; } s_script[MAX_SCRIPT];   /* --press "N:boton[*frames]" */
@@ -54,6 +56,8 @@ static unsigned char s_padBuf[2][34];
 
 void Pad_Init(void)
 {
+    Pad_ResetBinds(0);
+    Pad_ResetBinds(1);
     PadInitDirect(s_padBuf[0], s_padBuf[1]);
     PadStartCom();
 }
@@ -62,7 +66,8 @@ int Pad_GetType(int port)
 {
     if (port == 0 && s_scriptCount)
         return 4;
-    if (port < 0 || port > 1 || s_padBuf[port][0] != 0)
+    /* PsyCross marca el puerto vacio con id 0xFF pero deja el estado a 0 (en la PS1 el estado seria 0xFF) */
+    if (port < 0 || port > 1 || s_padBuf[port][0] != 0 || s_padBuf[port][1] == 0xff)
         return 0;
     return s_padBuf[port][1] >> 4;
 }
@@ -76,6 +81,50 @@ uint32_t Pad_GetButtons(int port)
         return 0;
     uint32_t word = s_padBuf[port][0] | s_padBuf[port][1] << 8 | s_padBuf[port][2] << 16 | (uint32_t)s_padBuf[port][3] << 24;
     return ~word & 0xffff0000u;
+}
+
+/* 8001d840: como Pad_GetType, pero -1 para los tipos que el juego no admite (ni 2, ni 4, ni 7) */
+int Pad_Kind(int port)
+{
+    int t = Pad_GetType(port);
+    return t == 0 || t == 2 || t == 4 || t == 7 ? t : -1;
+}
+
+/* 8001cedc */
+void Pad_ResetBinds(int player)
+{
+    static const uint32_t def[14] = { PADB_UP, PADB_DOWN, PADB_LEFT, PADB_RIGHT, PADB_SQUARE, PADB_CROSS, PADB_CIRCLE,
+                                      PADB_TRIANGLE, PADB_R1, PADB_L1, PADB_L2, PADB_R2, PADB_SELECT, PADB_START };
+    if (player >= 0 && player < 2)
+        memcpy(g_PadBinds[player], def, sizeof(def));
+}
+
+/* 8001d448 */
+int Pad_HasVibration(int port)
+{
+    return Pad_GetType(port & 1) == 7 && !(port == 0 && s_scriptCount);
+}
+
+/* 8001d520 */
+void Pad_SetVibration(int port, int on)
+{
+    port = port < 0 ? 0 : port > 1 ? 1 : port;
+    s_vibration[port] = (uint8_t)(on != 0);
+    if (!on)
+    {
+        unsigned char act[2] = { 0, 0 };
+        PadSetAct(port << 4, act, 2);
+    }
+}
+
+/* 8001d2c8 / 8001d308: el motor pequeño (el original lo deja 300 tics; SDL lo para solo a los 200 ms) */
+void Pad_TestVibration(int port)
+{
+    port = port < 0 ? 0 : port > 1 ? 1 : port;
+    if (!s_vibration[port])
+        return;
+    unsigned char act[2] = { 1, 0 };
+    PadSetAct(port << 4, act, 2);
 }
 
 /* 8005fc54 */

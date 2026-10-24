@@ -7,7 +7,7 @@
  *   +0x246 carrera (7162) y campeonato (7164) por jugadores, +0x24A / +0x24E opciones de carrera 1P / 2P,
  *   +0x253 piloto, coche, compañero y su coche de cada jugador, +0x25B / +0x260 los 5 rivales y sus coches,
  *   +0x265 sede y pista, +0x268 campeonatos (7 x 0x120), +0xA48 volumenes (4) y sonido, +0xA4D mando, +0xA4F
- *   cambio, +0xA51 DAT_800b7981 de cada jugador, +0xA65 / +0xA66 DAT_800b7995 / 7996, +0xA68 records
+ *   cambio, +0xA51 DAT_800vibration de cada jugador, +0xA65 / +0xA66 DAT_800b7995 / 7996, +0xA68 records
  *   (8 x 0x150), +0x14E8 copas (8 x 0x120), +0x1DE8 suma de i * byte y +0x1DEA suma de bytes de +0x200..+0x1DE7. */
 #include <string.h>
 #include "nr.h"
@@ -151,9 +151,9 @@ static void Save_Pack(void)
     d[0xa4c] = g->audioMode;
     for (int i = 0; i < 2; i++)
     {
-        d[0xa4d + i] = x->pad797d[i];
+        d[0xa4d + i] = x->padKind[i];
         d[0xa4f + i] = g->transmission[i];
-        d[0xa51 + i] = x->b7981[i];
+        d[0xa51 + i] = x->vibration[i];
     }
     d[0xa65] = x->b7995;
     d[0xa66] = x->b7996;
@@ -232,9 +232,9 @@ static void Save_Unpack(void)
     Snd_ApplySettings(g->volume, g->audioMode);
     for (int i = 0; i < 2; i++)
     {
-        x->pad797d[i] = d[0xa4d + i];
+        x->padKind[i] = d[0xa4d + i];
         g->transmission[i] = d[0xa4f + i];
-        x->b7981[i] = d[0xa51 + i];
+        x->vibration[i] = d[0xa51 + i];
     }
     x->b7995 = d[0xa65];
     x->b7996 = d[0xa66];
@@ -416,8 +416,8 @@ void Save_ResetExtra(void)
     for (int p = 0; p < 2; p++)
     {
         x->hudPref[p] = 1;      /* DAT_800b715f / 7160 */
-        x->pad797d[p] = 0xff;
-        x->b7981[p] = 1;
+        x->padKind[p] = 0xff;
+        x->vibration[p] = 1;
         x->recordPos[p] = 0;
     }
     x->b7995 = x->b7996 = 0;

@@ -16,8 +16,8 @@ typedef struct
     uint8_t  hudPref[2];       /* DAT_800b715f / 7160: nivel del marcador (Fe_StartRace lo copia a 7112) */
     int8_t   recordPos[2];     /* DAT_800b7106 / 7111 (ultimo byte de cada nombre): puesto del ultimo record de
                                   pista de cada jugador, +100 con el de la vuelta rapida (99: solo ese); -1 ninguno */
-    uint8_t  pad797d[2];       /* DAT_800b797d: mando de cada jugador (0xFF = el de su puerto) */
-    uint8_t  b7981[2];         /* DAT_800b7981 */
+    uint8_t  padKind[2];       /* DAT_800b797d: tipo de mando de cada jugador (pantalla 1000: 0 analogico, 1 digital, 2 / 3 neGcon) */
+    uint8_t  vibration[2];         /* DAT_800vibration */
     uint8_t  b7995, b7996;     /* DAT_800b7995 / 7996 */
     uint8_t  trackRecs[7 * 0x120];  /* DAT_800b7198: [sede][clase][6] x 0x10 (Clear Records "Track") */
     uint8_t  cupRecs[8 * 0x150];    /* DAT_800b7998: [sede][clase][4] x 0x1C (Clear Records "Cups") */

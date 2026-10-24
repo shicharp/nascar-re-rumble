@@ -145,7 +145,7 @@ static void Rle_Decode(const uint8_t* src, uint8_t* dst, int w, int h, int bits)
  * (0x200, 0xF0 + slot) con el color 0 sustituido por (r, g, b). Devuelve el id de CLUT.
  * Atlas: u16 numero de imagenes, u8 bits por pixel, paletas en +0xC (1 << bits colores cada una),
  * despues 4 bytes por imagen (u16 desplazamiento en palabras, u8 ancho-1, u8 alto-1) y los datos. */
-static int Fe_DecodeThumb(int r, int g, int b, const uint8_t* atlas, int image, int slot, int x, int y)
+int Fe_DecodeThumb(int r, int g, int b, const uint8_t* atlas, int image, int slot, int x, int y)
 {
     int count = NR_Read16(atlas);
     int bits = atlas[2] & 0x1f;

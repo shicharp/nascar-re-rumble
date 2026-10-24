@@ -1202,7 +1202,10 @@ pickTrack:
     g_GameInfo->unk5c = 0;
     g_GameInfo->numPlayers = np;
     g_GameInfo->racingClass = 1;
-    /* TODO: mandos de cada jugador (FUN_8008b160 con DAT_800b797d/797f) */
+    /* 8008a370: el tipo de cada mando y los botones del esquema de cada jugador (pantalla 1000) */
+    Pad_SetupControls(-1, 0, 0);
+    for (int p = 0; p < np; p++)
+        Pad_SetupControls(p, (int8_t)g_SaveExtra.padKind[p], gs->transmission[p]);
     g_GameInfo->powerUps = (gs->gameMode == 5 || gs->gameMode == 13) ? 0 : gs->powerUps;
     g_SplitScreen = np == 2;
 

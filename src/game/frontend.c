@@ -348,6 +348,7 @@ void Frontend_Update(void)
     case 700:  Fe_Screen700(); break;
     case 800:  Fe_Screen800(); break;
     case 900:  Fe_Screen900(); break;
+    case 1000: Fe_Screen1000(); break;
     case 1100: Fe_Screen1100(); break;
     case 1200: Fe_Screen1200(); break;
     case 1300: Fe_Screen1300(); break;
@@ -356,8 +357,8 @@ void Frontend_Update(void)
     case 1600: Fe_Screen1600(); break;
     case 1700: Fe_Screen1700(); break;
     case 1800: Fe_Screen1800(); break;
+    case 1900: Fe_Screen1900(); break;
     case 2000: Fe_Screen2000(); break;
-    /* 1000 FUN_8007f810, 1900 FUN_8008a52c */
     default: Fe_ScreenPending(); break;
     }
 
@@ -534,6 +535,8 @@ int Fe_DecodeLmdc(int index, int x, int y)
 
 /* 80092e08: Crle id 0 = imagen cruda para VRAM (0x240,0) (+ resto en (0x2C0,0));
  * otros ids = tabla que se queda en memoria */
+static const uint8_t* s_padAtlas;   /* fe +0x9D8 */
+
 int Fe_OnCrle(NrAsset* a)
 {
     if (a->id == 0)
@@ -564,7 +567,14 @@ int Fe_OnCrle(NrAsset* a)
         }
         return 1;   /* el original hace Pool_Free del asset y luego lo relee de VRAM */
     }
-    return 1;       /* TODO: tabla en DAT_800af950 + 0x9d8 */
+    /* otro id: atlas pequeño en memoria (los dibujos de los mandos de la pantalla 1000) en fe +0x9D8 */
+    s_padAtlas = a->data;
+    return 1;
+}
+
+const uint8_t* Fe_PadAtlas(void)
+{
+    return s_padAtlas;
 }
 
 /* 80092f5c: el original copia con StoreImage las filas subidas del Crle 0 y apunta las tablas de la

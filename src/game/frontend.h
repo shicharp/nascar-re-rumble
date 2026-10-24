@@ -318,7 +318,11 @@ void Fe_Screen500(void);                                                  /* 800
 void Fe_Screen600(void);                                                  /* 80088edc: Showcase (videos) */
 void Fe_Screen700(void);                                                  /* 8007cb6c: contrasena */
 void Fe_Screen800(void);                                                  /* 8007d32c: tarjeta de memoria */
+void Fe_Screen1000(void);                                                 /* 8007f810: configuracion de mandos */
 void Fe_Screen1100(void);                                                 /* 80080cbc: nombre de los jugadores */
+void Fe_Screen1900(void);                                                 /* 8008a52c: Hints and Tips */
+void Pad_SetupControls(int player, int kind, int preset);                 /* 8008b160 */
+const uint8_t* Fe_PadAtlas(void);                                         /* fe +0x9D8 (Crle de id distinto de 0) */
 int  Fe_SavePrompt(int ask);                                              /* parte de 8007a994 */
 
 /* Vuelta de una carrera, records y copas (fe_records.c) */

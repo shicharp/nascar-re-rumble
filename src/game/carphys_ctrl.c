@@ -295,8 +295,8 @@ void Human_ReadPad(RaceCar* e, int port)
 {
     uint8_t* ctrl = e->ctrl;
     uint32_t raw = g_PadButtons[port & 1], g = 0;
-    for (int i = 0; i < 14; i++)
-        if (raw & s_defaultBinds[i][0])
+    for (int i = 0; i < 14; i++)   /* 8001cf74: con el esquema de la pantalla 1000 (g_PadBinds) */
+        if (raw & g_PadBinds[port & 1][i])
             g |= s_defaultBinds[i][1];
     U32(ctrl, 8) = Pad_ActionBits(g);
     U8(ctrl, 0xe) = 4;

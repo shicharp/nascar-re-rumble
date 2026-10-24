@@ -42,6 +42,7 @@ int         Fe_WrapVenue(int v);                                                
 void        Fe_DrawVenueThumb(int slot, int x, int y, int depth, int mode);               /* 8008c308 */
 
 /* fe_select.c */
+int         Fe_DecodeThumb(int r, int g, int b, const uint8_t* atlas, int image, int slot, int x, int y); /* 8008e2ec */
 void        Fe_RequestCar(int p, int driver, int car);                                    /* 800923cc */
 void        Fe_ResetCars(void);                                                           /* 80090a88(1) */
 void        Fe_UpdateCars(void);                                                          /* 80090a88(0) */

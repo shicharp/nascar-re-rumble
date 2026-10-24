@@ -1,0 +1,19 @@
+diff --git a/src/render/PsyX_render.cpp b/src/render/PsyX_render.cpp
+index 9324471..d0e730b 100644
+--- a/src/render/PsyX_render.cpp
++++ b/src/render/PsyX_render.cpp
+@@ -1283,9 +1283,13 @@ void GR_SetTexture(TextureID texture, TexFormat texFormat)
+ 		texture = g_whiteTexture;
+ 	}
+ 
+-	if (g_lastBoundTexture == texture) {
++	// NASCAR Rumble: los samplers son de cada programa; con la misma textura pero otro shader (p. ej. de 4 a
++	// 8 bits) hay que volver a ponerlos, o el shader nuevo lee la paleta de la unidad equivocada
++	static ShaderID lastTexShader = -1;
++	if (g_lastBoundTexture == texture && lastTexShader == g_PreviousShader) {
+ 		return;
+ 	}
++	lastTexShader = g_PreviousShader;
+ 
+ #if USE_OPENGL
+ 	glUniform1i(texLoc, 0);

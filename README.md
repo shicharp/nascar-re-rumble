@@ -36,7 +36,7 @@ Estado actual: arranque real del juego. `main` → `Game_Init` → pantalla lega
 software) → vídeos (omitidos) → `Level_Run("Fe.trk")` → pantalla de carga `Feld.lsc` mientras llega
 `FE.TRK` por streaming hasta el `Cctr` → `Frontend_MainLoop` (pantalla 2000 con fundido → **menús**
 navegables: principal (100), tipo de carrera (200), opciones de carrera (300), opciones de juego (400) y
-audio (500), el Showcase (600, sin los vídeos), la contraseña (700), la tarjeta de memoria (800, emulada en `memcard1.mcd`), el Hall of Champs (900 y
+audio (500), el Showcase (600, sin los vídeos), la contraseña (700), la tarjeta de memoria (800, emulada en `memcard1.mcd`), la configuración de mandos (1000), Hints and Tips (1900), el Hall of Champs (900 y
 récords de copa 1600), el nombre (1100), los récords de pista (1400) y, al volver de una carrera, los récords, la
 copa (clasificación 1500, podio 1700), los desbloqueos (1800) y la pregunta de guardar, con cuadros de mensaje, la selección de piloto/coche (1200) con el coche 3D que llega por
 secciones del FE.TRK y la elección de sede/pista (1300) con el trazado en 3D; al confirmar se monta la
@@ -95,6 +95,7 @@ mostrando mas escenario a los lados; el marcador se ancla a los bordes.
 | `src/game/memcard.c` | driver de la tarjeta de memoria (8001f560, 8001f578, 8001fa3c, 8001fae8, 8001fd88, 8001f910) emulado sobre un .mcd |
 | `src/game/savegame.c` | partida guardada: 8009358c, 80093938, 800937f8, 800939fc, 80093f6c, Clear Records 800931d8 |
 | `src/game/password.c` | contraseña del progreso: 8008f344, 8008fb60, 80090008 |
+| `src/game/fe_pads.c` | configuración de mandos 1000 (8007f810), esquema de botones de cada jugador 8008b160 y Hints and Tips 1900 (8008a52c) |
 | `src/game/fe_records.c` | vuelta de la carrera 80090fb4, desbloqueos 80091ae0, tiempos 8008ee98 y pantallas 900 (8007ddb4), 1400 (800855a0), 1500 (80085d90), 1600 (8007ea64), 1700 (80087130), 1800 (80087fa8) |
 | `src/game/fe_select.c` | pantalla 1200 (80081a9c): tabla de pilotos 800aa5ec, atlas de miniaturas (80092f5c, 8008e2ec, RLE 8009307c), carrusel (8008b9d4, 8008bc34), coches del garaje (800923cc, 80090a88, 80090674), 8008aee4, 8008dc1c, 8008efec |
 | `src/game/fe_track.c` | pantalla 1300 (800838f8), trazado TkFE (8001893c, 80018ef0), 80090718, 80090860, 8008e13c, 8008c308, 8008b80c, montaje de la carrera Fe_StartRace 8008927c |
@@ -144,3 +145,11 @@ mostrando mas escenario a los lados; el marcador se ancla a los bordes.
   admite bien dos `DrawOTag` en el mismo frame.
 - La VRAM emulada no recibe lo dibujado en OpenGL (`StoreImage` del framebuffer da negro); las
   capturas leen el buffer frontal con `glReadPixels`.
+
+## Parches de PsyCross
+
+`third_party/PsyCross` es un submódulo; los arreglos propios van en su rama local `nascar` y, por si se vuelve a
+clonar limpio, también en `patches/` (aplicar con `git -C third_party/PsyCross apply ../../patches/<parche>`):
+
+- `psycross-samplers-8bit.patch`: `GR_SetTexture` no volvía a poner los samplers al cambiar de shader con la misma
+  textura, y el primer sprite de 8 bits detrás de un texto (4 bits) salía con los colores de otra parte de la VRAM.

@@ -25,6 +25,16 @@ void     Pad_Init(void);
 int      Pad_GetType(int port);   /* FUN_8001d840: 0 sin mando, 4 digital, 7 analogico, 2 neGcon */
 uint32_t Pad_GetButtons(int port);
 void     Pad_ReadAll(void);
+int      Pad_Kind(int port);      /* 8001d840: el tipo (2, 4, 7), 0 sin mando, -1 uno que el juego no admite */
+
+/* Botones de cada jugador en carrera (DAT_800b0570, 14 mascaras: arriba, abajo, izquierda, derecha, cuadrado,
+ * cruz, circulo, triangulo, R1, L1, L2, R2, SELECT, START); 8001cedc los pone por defecto y 8008b160
+ * (Pad_SetupControls, en fe_pads.c) los copia del esquema elegido en la pantalla 1000. */
+extern uint32_t g_PadBinds[2][14];
+void     Pad_ResetBinds(int player);            /* 8001cedc */
+int      Pad_HasVibration(int port);            /* 8001d448: el mando tiene motores (analogico) */
+void     Pad_SetVibration(int port, int on);    /* 8001d520 */
+void     Pad_TestVibration(int port);           /* 8001d2c8: el motor pequeño un momento */
 
 /* Pruebas: "frame:boton,frame:boton..." (up, down, left, right, cross, triangle, start...).
  * Cada pulsacion simulada dura 3 frames en el mando 1. */
