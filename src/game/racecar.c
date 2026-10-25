@@ -525,16 +525,38 @@ static int RaceCam_AvoidWalls(RaceCamView* v, const RaceCar* c)
     return 1;
 }
 
+/* clase del coche: byte 1 de su descriptor (fisica +0x1B4) */
+static int Car_Class(const RaceCar* c)
+{
+    return c->phys && PTR(c->phys, 0x1b4) ? PTR(c->phys, 0x1b4)[1] : 0;
+}
+
 /* 8005dc98: muelle hacia la posicion deseada, a la distancia de la cuerda y nunca por debajo de suelo +
  * altura. Durante la cuenta atras (y lejos) gira alrededor del coche. Al final aparta el ojo de los muros
- * (8005d6b8). Pendiente: el techo (80065844). */
+ * (8005d6b8). La altura sube con la clase del coche (descriptor +1: '0' y '3' 0x200, '/' 0x280, '4' 0x400) y 0x2000
+ * mientras vuela (+0x184); casi parado (+0x15C < 10), si un muro corta la recta del coche al punto deseado (bajado la
+ * altura) el ojo no se mueve. Volando y volcado (+0x198 & 0x11) tampoco. El tope de altura 80016d38 del original no
+ * hace nada (devuelve la altura que recibe). */
 static void RaceCam_Spring(RaceCamView* v, const RaceCar* c, int rest, int height, const int* desired, int dt)
 {
+    const uint8_t* ph = c->phys;
+    int cls = Car_Class(c);
+    height += cls == '0' || cls == '3' ? 0x200 : cls == '/' ? 0x280 : cls == '4' ? 0x400 : 0;
+    int blocked = 0;
+    if (ph && I32(ph, 0x15c) < 10)
+    {
+        int low[3] = { desired[0], desired[1] - height, desired[2] };
+        blocked = Track_RayWall(c->obj.pos, low, NULL, NULL);
+    }
+    int flying = ph && I16(ph, 0x184) != 0;
+    if (flying)
+        height += 0x2000;
+    unsigned air = ph ? U16(ph, 0x198) : 0;
     int start = g_RaceTime < 900;
     int d[3] = { v->eye[0] - c->obj.pos[0], v->eye[1] - c->obj.pos[1], v->eye[2] - c->obj.pos[2] };
     int len = Vec_NormalizeLen(d);
     int far = len >= rest + 0x80;
-    if (!(far && start))
+    if (!(far && start) && !flying)
     {
         Vec_Scale(rest, d);
         for (int k = 0; k < 3; k++)
@@ -553,51 +575,55 @@ static void RaceCam_Spring(RaceCamView* v, const RaceCar* c, int rest, int heigh
         k0 = 0x2d000;
         shift = 2;
     }
-    else if ((c->speed >> 8) < 2)
+    else if (c->speed < 2)
     {
         k0 = 0x9000;
         shift = 2;
     }
     else
     {
-        k0 = 0x240000;      /* DAT_800af8b0[vista] == 0 */
+        k0 = 0x240000;      /* DAT_800af8b0[vista]: nadie lo pone a 1 */
         shift = 4;
     }
-    int pred[3], acc[3];
-    for (int k = 0; k < 3; k++)
+    if (!blocked || (far && start))
     {
-        pred[k] = v->eye[k] + (v->vel[k] * dt >> 8);
-        acc[k] = ((Fix_Mul16(k0, delta[k]) * dt) >> 8) + ((v->eye[k] - pred[k]) << shift);
-    }
-    int m2 = Vec_LenSq16(acc);
-    if (m2 > 0x80)
-    {
-        int l = (Math_SquareRoot12(m2) << 2) >> 8;
-        if (l != 0)
-            for (int k = 0; k < 3; k++)
-                acc[k] = acc[k] * 0xb / l;
-    }
-    if ((c->speed >> 8) == 0 && abs(delta[0]) < 0x80 && abs(delta[1]) < 0x80 && abs(delta[2]) < 0x80)
-    {
-        memset(v->vel, 0, sizeof(v->vel));
-        memcpy(pred, desired, sizeof(pred));
-    }
-    else
+        int pred[3], acc[3];
         for (int k = 0; k < 3; k++)
-            v->vel[k] += acc[k];
-    for (int k = 0; k < 3; k++)
-        v->eye[k] = pred[k] + (v->vel[k] * dt >> 8);
-    v->ground = Track_FindSurface(&v->tpos, v->eye, NULL, 1);
+        {
+            pred[k] = v->eye[k] + (v->vel[k] * dt >> 8);
+            acc[k] = ((Fix_Mul16(k0, delta[k]) * dt) >> 8) + ((v->eye[k] - pred[k]) << shift);
+        }
+        int m2 = Vec_LenSq16(acc);
+        if (m2 > 0x80)
+        {
+            int l = (Math_SquareRoot12(m2) << 2) >> 8;
+            if (l != 0)
+                for (int k = 0; k < 3; k++)
+                    acc[k] = acc[k] * 0xb / l;
+        }
+        if (c->speed == 0 && abs(delta[0]) < 0x80 && abs(delta[1]) < 0x80 && abs(delta[2]) < 0x80)
+        {
+            memset(v->vel, 0, sizeof(v->vel));
+            memcpy(pred, desired, sizeof(pred));
+        }
+        else
+            for (int k = 0; k < 3; k++)
+                v->vel[k] += acc[k];
+        if ((far && start) || (air & 0x11) != 0x11)
+            for (int k = 0; k < 3; k++)
+                v->eye[k] = pred[k] + (v->vel[k] * dt >> 8);
+        v->ground = Track_FindSurface(&v->tpos, v->eye, NULL, 1);
+    }
 
     if (v->ground != TRACK_NO_SURFACE && (c->obj.shadowY << 4) < v->eye[1] && v->eye[1] < v->ground + height)
         v->eye[1] = v->ground + height;
 
-    if (!(far && start))
+    if (!(far && start) && !flying)
     {
         int r[3] = { v->eye[0] - c->obj.pos[0], v->eye[1] - c->obj.pos[1], v->eye[2] - c->obj.pos[2] };
         Vec_NormalizeLen(r);
         const int* fwd = c->obj.rot + 6;
-        int dot = Vec_Dot16(r, fwd);
+        int dot = (air & 0x10) ? -0xd000 : Vec_Dot16(r, fwd);   /* en el aire no se fuerza a quedar detras */
         if (dot > -0xd000)
         {
             for (int k = 0; k < 3; k++)
@@ -661,8 +687,10 @@ void RaceCam_Update(int view, int dt)
     }
     else if (p->type == 1)
         memset(v->vel, 0, sizeof(v->vel));
-    else
-        RaceCam_Spring(v, c, p->rest, p->height, desired, dt);
-    int look[3] = { c->obj.pos[0], c->obj.pos[1] + p->lookH, c->obj.pos[2] };
+    else   /* (ningun preset es de tipo 4, que pondria el ojo en la posicion deseada) */
+        RaceCam_Spring(v, c, Car_Class(c) == '4' ? p->rest2 : p->rest, p->height, desired, dt);
+    /* las clases '/' y '4' se miran 0x100 mas arriba */
+    int look[3] = { c->obj.pos[0], c->obj.pos[1] + p->lookH + (Car_Class(c) == '/' || Car_Class(c) == '4' ? 0x100 : 0),
+                    c->obj.pos[2] };
     Camera_LookAt(v->eye, look);
 }
