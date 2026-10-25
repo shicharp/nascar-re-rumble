@@ -24,5 +24,6 @@ int  Level_WaitLoaded(void);                        /* 800252b0 */
 void Frontend_MainLoop(void);                       /* 8002865c */
 void Level_Unload(const char* name);                /* 80025448 */
 void Frame_Wait(void);                              /* 800285e4 */
+void Frame_WaitUntil(int ticks);                    /* 800269c0 (repeticion): el frame dura 'ticks' */
 
 #endif

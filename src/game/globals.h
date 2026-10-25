@@ -27,7 +27,7 @@ typedef struct
     int unk50[2];
     int powerUps;       /* +0x58 */
     int unk5c;
-    int isRestart;      /* +0x60: Level_Run lo pone a 1 al reiniciar */
+    int isReplay;       /* +0x60: 1 durante la repeticion (Level_Run 80029be4) */
     int unk64[13];
     int unk98;          /* main: 1 */
     int unk9c[4];

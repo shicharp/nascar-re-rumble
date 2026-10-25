@@ -47,7 +47,8 @@ cuenta atrás y la física original de los coches (X acelera, cuadrado frena, c�
 L1/L2 cambio manual, triángulo vuelve a la pista), la IA que corre por la red de trazadas, los choques entre
 coches, las vueltas y las posiciones, y el marcador (mapa, cuentarrevoluciones, tiempos; SELECT largo cambia de
 nivel, corto de camara), la pausa con START (camara, marcador, audio, reiniciar, salir), dos jugadores a pantalla partida y los resultados al
-terminar; "Exit Race" vuelve al front-end). Actores de la pista: objetos (conos, vallas, carteles) que salen despedidos al golpearlos y se rompen, objetos
+terminar; "Exit Race" vuelve al front-end; "Show Replay" repite la carrera con las camaras de TV, volviendo a
+simularla con los mandos grabados). Actores de la pista: objetos (conos, vallas, carteles) que salen despedidos al golpearlos y se rompen, objetos
 que giran y cajas de poder que reaparecen;
 los coches recogen un poder segun su puesto y lo usan (la IA sola, el jugador con R2), con sus efectos (escudo,
 turbo, ruedas grandes, embestida, onda expansiva, objetos que se sueltan en la pista, tormenta, helada y
@@ -59,7 +60,7 @@ start, select, l1, r1, l2, r2).
 Variables de depuracion: `NR_LAPS=n` vueltas, `NR_CAMCAR=n` camara en el coche n, `NR_POWER=n` poder n en la
 mano del jugador al salir, `NR_POWERLOG=1` cajas recogidas y poderes usados en el log, `NR_SNDLOG=1` sonidos,
 `NR_FXLOG=1` efectos creados, `NR_FXTEST=clase[,golpe]` crea un efecto en el coche del jugador cada segundo,
-`NR_BODYLOG=1` golpes a los objetos sueltos, `NR_SCRIPTLOG=1` guiones, `NR_TRIGTEST=1` el coche humano toca todos los disparadores, `NR_KILLTEST=id` rompe ese actor a los 5 s (guiones de golpe y de muerte), `NR_VEHLOG=1` nodos que cruzan los vehiculos de la pista, `NR_ENDRACE=t` el jugador 1 termina la carrera a los t tics, `NR_SCREENLOG=1` cambios de pantalla del front-end, `--press` admite el mando 2 con el prefijo `2` (`900:2cross`), `--movie <fichero>` pone ese vídeo y sale (`--skip-legal` también salta los vídeos de arranque),
+`NR_BODYLOG=1` golpes a los objetos sueltos, `NR_SCRIPTLOG=1` guiones, `NR_TRIGTEST=1` el coche humano toca todos los disparadores, `NR_KILLTEST=id` rompe ese actor a los 5 s (guiones de golpe y de muerte), `NR_VEHLOG=1` nodos que cruzan los vehiculos de la pista, `NR_ENDRACE=t` el jugador 1 termina la carrera a los t tics, `NR_SCREENLOG=1` cambios de pantalla del front-end, `NR_REPLAYLOG=1` suma de control de los coches cada 150 tics (la carrera y su repeticion deben coincidir), `--press` admite el mando 2 con el prefijo `2` (`900:2cross`), `--movie <fichero>` pone ese vídeo y sale (`--skip-legal` también salta los vídeos de arranque),
 `NR_POWERUPS=n` / `NR_CLASS=n` fuerzan los poderes y la clase de la carrera, `NR_TVLOG=1` camaras de TV, `NR_TVCAM=1` empieza con las camaras de TV (`vN`: la virtual N), `NR_PSXLOD=1`
 niveles de detalle de la PS1 (por defecto, todo con el detalle completo).
 `--viewer` es el visor de páginas Cpag (flechas para cambiar de página).

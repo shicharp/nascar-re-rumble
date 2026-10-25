@@ -32,6 +32,8 @@
 #include "vecmath.h"
 #include "fx.h"
 #include "carphys_int.h"
+#include "carphys.h"
+#include "replay.h"
 
 uint8_t g_CarLoadOrder[8];
 int     g_CarsLoaded;
@@ -58,6 +60,11 @@ void Race_Load(const char* path)
         if (cl)
             g_GameInfo->racingClass = atoi(cl) & 3;
     }
+    /* 80074d90 + 8001836c + 800182ec: aleatorios con los frames del front-end como semilla (en la repeticion, la
+     * grabada; tambien vuelve a poner la clase de la carrera grabada) */
+    int seed = Replay_Begin(g_FrontendFrames);
+    Physics_Init();
+    Rand_SetSeed(seed);
     g_HaveStart = 0;
     strcpy(g_LevelPath, path);
     Gfx_InitBuffers(0x9c4);
@@ -336,9 +343,56 @@ static void Race_DebugEnd(void)
         g_RaceEndTimer = 5;
 }
 
+/* Solo en el port (depuracion): NR_REPLAYLOG=1 apunta cada 150 tics de carrera una suma de la posicion y la
+ * velocidad de todos los coches; la de la carrera y la de su repeticion deben coincidir en cada tiempo */
+static void Race_DebugReplay(void)
+{
+    static int s_on = -1;
+    if (s_on < 0)
+        s_on = getenv("NR_REPLAYLOG") != NULL;
+    if (!s_on || g_RaceTime / 150 == g_PrevRaceTime / 150)
+        return;
+    uint32_t sum = 0;
+    for (int i = 0; i < g_NumCars; i++)
+    {
+        const RaceCar* e = &g_Cars[i];
+        for (int k = 0; k < 3; k++)
+            sum = sum * 31 + (uint32_t)e->obj.pos[k];
+        if (e->phys)
+            for (int k = 0; k < 3; k++)
+                sum = sum * 31 + (uint32_t)I32(e->phys, 0x154 + k * 4);
+    }
+    NR_Log("[repeticion] %s t %d suma %08x\n", g_GameInfo->isReplay ? "rep" : "car", g_RaceTime, sum);
+}
+
+/* 800269c0: espera el frame y lee el mando de los humanos. Fuera de la repeticion graba el frame (80074ac8) si hay
+ * humanos, no esta en pausa y el ultimo no ha terminado; en la repeticion pone los mandos y el dt grabados
+ * (80074860) y el frame dura ese dt. Devuelve el dt del frame. */
+static int Race_UpdateTime(void)
+{
+    Frame_Wait();
+    Race_ReadPads();
+    if (!g_GameInfo->isReplay)
+    {
+        if (g_NumHumans > 0 && !g_RacePaused && g_NumCars > 0 && I32(g_CarPhys[g_NumCars - 1], 0x330) == 0)
+            Replay_RecordFrame(g_FrameDelta);
+    }
+    else if (!g_RacePaused)
+    {
+        int dt = Replay_PlayFrame();
+        if (dt >= 0)
+            Frame_WaitUntil(dt);
+        else
+            Pause_ReplayEnded();
+    }
+    else
+        Pause_ReplayWait();
+    return g_FrameDelta;
+}
+
 /* 800299a8 con Race_Frame1P 80026f28 o, con dos jugadores, Race_Frame2P 8002767c: cada vista con su camara
- * (8005f034), su proyeccion de media pantalla y su marcador, en su mitad (Race_SetDrawHalf). Pendiente: la
- * repeticion. */
+ * (8005f034), su proyeccion de media pantalla y su marcador, en su mitad (Race_SetDrawHalf). En la repeticion
+ * (GameInfo +0x60) los mandos y el dt salen de la grabacion (Race_UpdateTime). */
 void Race_MainLoop(void)
 {
     Font_SetDeferUpload(0);
@@ -370,11 +424,12 @@ void Race_MainLoop(void)
     Snd_Pause(1);                      /* 8003fe7c(1) (Level_WaitLoaded) */
     Camera3D viewCam[2];               /* camara de cada vista (DAT_800b6160 + vista * 0x40) */
     memset(viewCam, 0, sizeof(viewCam));
+    g_FrameCount = 0;                  /* DAT_800af728 */
     while (g_GameState == GAMESTATE_RUNNING || g_GameState == GAMESTATE_RESULTS)
     {
-        Frame_Wait();
+        g_FrameCount++;
+        int dt = Race_UpdateTime();    /* 800269c0 */
         Gfx_BeginFrame(0, 0, 0);       /* el original no borra: el horizonte cubre el fondo */
-        int dt = g_FrameDelta;
         if (!g_RacePaused)
         {
             g_PrevRaceTime = g_RaceTime;
@@ -389,6 +444,7 @@ void Race_MainLoop(void)
             Actors_Update(dt);         /* 80048dec(6) */
             Race_UpdateCars(dt);
             Race_DebugEnd();
+            Race_DebugReplay();
             Actors_PostUpdate();       /* 80048e84 */
             Fx_Update(dt);             /* 80038b50 */
             Hud_Update(dt);            /* 80042330 */
@@ -443,6 +499,7 @@ void Race_MainLoop(void)
         Race_UpdateState(dt);          /* 80027e90 */
     }
     Snd_StopRace();                    /* 8003d04c */
+    Replay_End();                      /* 800747a4 (8002456c, fuera de la repeticion) */
     Script_Disable();                  /* 80067880 (8002456c) */
     Fx_FreeAll(2);                     /* 80038e28 (8002456c) */
     TvCam_Free();                      /* RaceCam_ResetPresets 80072348 (8002456c) */

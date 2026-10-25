@@ -5,7 +5,7 @@
  * (8002cd84). Graficos de la pagina de texturas 8 (Cpag): mapa en (0,0) y esfera en (0x80,0).
  * Iconos de poderes 80042544. Con dos jugadores: mapa abajo de cada mitad (0x76 / 0x69), textos arriba en 0x16 / 2,
  * poderes activos de dos en dos y el cuentarrevoluciones compacto (barra, marcha y velocidad; sin aguja, 80042330 no
- * la mueve). Pendiente: repeticion y el marcador sin humanos (8004304c). */
+ * la mueve). En la repeticion, "REPLAY" parpadeando arriba. Pendiente: el marcador sin humanos (8004304c). */
 #include <stdio.h>
 #include <string.h>
 #include "libgte.h"
@@ -304,13 +304,23 @@ static void Hud_Messages(int view, int y, int level)
         return;
     uint8_t* ctrl = h->ctrl;
     uint8_t* c = h->phys;
-    int off = level == 2 || g_GameInfo->isRestart ? 0x13 : 0;
+    int off = level == 2 || g_GameInfo->isReplay ? 0x13 : 0;
     /* con el retrovisor (R1, ctrl +0x40 == 3) los mensajes bajan por debajo de el */
     int mir = !g_SplitScreen && I32(c, 0x330) == 0 && I32(ctrl, 0x40) == 3 ? (off ? 0xc : 0x1f) : 0;
     Font_Select(4);
+    if (g_GameInfo->isReplay)
+    {
+        /* en la repeticion, "REPLAY" arriba en la vista del jugador 1, parpadeando (DAT_800af714 & 0x100) */
+        if (view == 0 && (g_Ticks & 0x100))
+        {
+            int w, hh;
+            Font_Measure("REPLAY", &w, &hh);
+            Font_DrawString("REPLAY", 0xa0 - w / 2, y, 1);
+        }
+    }
     /* sin usar el poder 18000 tics (1 minuto): "To Use" alternando con "Press R2" (DAT_800af714 & 0x100, reloj de
      * tics de 1/300 s; aqui el tiempo de carrera). Con la asignacion de botones por defecto el poder va en R2. */
-    if (I32(c, 0x330) == 0 && I32(ctrl, 0x68) > 18000)
+    else if (I32(c, 0x330) == 0 && I32(ctrl, 0x68) > 18000)
     {
         int blink = g_RaceTime & 0x100;
         Font_DrawString(blink ? "Press" : "To", HUD_L(0x1e), y + 0xd, blink ? 9 : 1);

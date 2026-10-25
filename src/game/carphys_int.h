@@ -41,6 +41,7 @@ static inline int Div_(int a, int b)
 int  Rand_A(void);                                       /* 800181ac */
 int  Rand_B(void);                                       /* 80018208 */
 void Rand_Init(void);
+void Rand_SetSeed(int seed);                                /* 800182ec */
 void Mat_MulT(const int* m, const int* v, int* out);     /* 800198a8: m^T v (columnas) */
 void Mat_MulTAdd(const int* m, const int* v, int* out);  /* 800199fc: m^T v + m[9..11] */
 void Mat_Mul(const int* m, const int* v, int* out);      /* 8004e6c4: filas de m por v */

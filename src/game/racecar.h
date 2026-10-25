@@ -71,6 +71,7 @@ extern int      g_HaveStart;
 void Race_SetStart(const int* pos);       /* 800317a0 (con la posicion del tACT tipo 0x55) */
 void Race_CreateCars(void);               /* 8003132c */
 void Race_FreeCars(void);
+void Race_ReadPads(void);                 /* Race_UpdateTime 800269c0: mando de los humanos */
 void Race_UpdateCars(int dt);             /* parte de Race_UpdateSim 80030cac */
 void Race_AddCarsToDrawList(void);
 void Race_RestoreCarModels(void);         /* solo en el port: tras Render_DrawList */

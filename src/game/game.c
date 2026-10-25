@@ -89,6 +89,21 @@ void Frame_Wait(void)
     s_lastFrameTime = g_GameTime;
 }
 
+/* 800269c0 (repeticion): el frame dura los tics grabados; tras Frame_Wait espera a que pasen desde el frame anterior.
+ * Si ya han pasado mas, el resto se pierde (como en el original: la repeticion va mas lenta, nunca mas deprisa) */
+void Frame_WaitUntil(int ticks)
+{
+    int start = s_lastFrameTime - g_FrameDelta;
+    while (g_GameTime - start < ticks)
+    {
+        Pad_ReadAll();
+        Timer_Update();
+    }
+    g_FrameTime = g_GameTime;
+    g_FrameDelta = ticks;
+    s_lastFrameTime = g_GameTime;
+}
+
 /* 8009233c */
 const char* Level_GetDataDir(void)
 {
@@ -220,12 +235,14 @@ void Level_Unload(const char* name)
     Asset_ClearRegistry();
 }
 
-/* 80029be4 (sin la logica de reinicio de carrera) */
+/* 80029be4: "Show Replay" / "Restart Replay" (DAT_800af690) vuelven a cargar la pista con GameInfo +0x60 = 1;
+ * "Restart Race" (DAT_800af691), sin la repeticion */
 int Level_Run(const char* name, int isFrontend)
 {
     for (;;)
     {
         g_RaceRestart = 0;
+        g_ShowReplay = 0;
         g_IsFrontend = isFrontend;
         if (!Level_Load(name))
             return 0;
@@ -236,6 +253,12 @@ int Level_Run(const char* name, int isFrontend)
         else
             Race_MainLoop();
         Level_Unload(name);
+        if (g_ShowReplay)
+        {
+            g_GameInfo->isReplay = 1;
+            continue;
+        }
+        g_GameInfo->isReplay = 0;
         if (!g_RaceRestart)
             break;
         /* "Restart Race": borra la posicion final y el tiempo de cada registro y vuelve a cargar */

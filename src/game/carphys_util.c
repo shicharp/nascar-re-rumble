@@ -86,8 +86,15 @@ void Rand_Init(void)
             s >>= e;
         s_invSqrt[i] = (uint16_t)(s << 5 | (uint32_t)(e & 0x1f));
     }
+    Rand_SetSeed(0x457);
+}
+
+/* 800182ec: rellena las dos tablas de aleatorios desde la semilla (Race_Load la pone con DAT_800af17c, los frames del
+ * front-end, o con la de la repeticion) */
+void Rand_SetSeed(int seed)
+{
     s_randIdx[0] = s_randIdx[1] = 0x14;
-    s_seed = 0x457;
+    s_seed = (uint32_t)seed;
     for (int t = 0; t < 2; t++)
         for (int i = 0; i < 0x14; i++)
             s_randTab[t][i] = Rand_Seed();

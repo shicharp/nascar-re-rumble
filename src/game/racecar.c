@@ -123,7 +123,7 @@ static void Human_InitCtrl(uint8_t* ctrl)
     *(int*)(ctrl + 0x60) = 0;
     *(int*)(ctrl + 0x68) = -1;
     *(int*)(ctrl + 4) = -1;                                      /* 8005fca4: tiempo en contra direccion */
-    ctrl[0x58] = (uint8_t)(g_GameInfo->isRestart ? 0 : Hud_GetSetting(ctrl[0x59]));   /* nivel del marcador */
+    ctrl[0x58] = (uint8_t)(g_GameInfo->isReplay ? 0 : Hud_GetSetting(ctrl[0x59]));   /* nivel del marcador */
 }
 
 /* 8003132c: parrilla en dos columnas (+-0xA00 a los lados, 13 * 0x200 hacia atras por coche) a partir de la
@@ -131,12 +131,6 @@ static void Human_InitCtrl(uint8_t* ctrl)
  * o AiCar_Create 8002cfbc (controlador, ruedas y fisica 8004e830, que lo orienta sobre la pista). */
 void Race_CreateCars(void)
 {
-    static int s_physInit;
-    if (!s_physInit)
-    {
-        Physics_Init();
-        s_physInit = 1;
-    }
     const uint8_t* net = g_NumNets ? g_Nets[0] : NULL;
     int dir[3] = { 0, 0, 0x10000 };
     if (net && Cnet_Count(net) > 0)
@@ -239,6 +233,14 @@ void Race_FreeCars(void)
     Ai_Reset();
 }
 
+/* Race_UpdateTime 800269c0: mando de cada humano (8005fc54 + 8005f928), cada frame y tambien en pausa */
+void Race_ReadPads(void)
+{
+    for (int i = 0; i < 2; i++)
+        if (g_Humans[i] && g_Humans[i]->ctrl)
+            Human_ReadPad(g_Humans[i], g_Humans[i]->ctrl[0x59]);
+}
+
 /* Race_UpdateSim 80030cac: posiciones (8002fc9c), mando de los humanos (8005ffbc -> 8004cae8), vueltas
  * (8003014c), poderes (8002ec00), IA (80030928, 8002de7c, 8002f4ac) y fisica (80056c6c). */
 void Race_UpdateCars(int dt)
@@ -251,8 +253,7 @@ void Race_UpdateCars(int dt)
         RaceCar* c = g_Humans[i];
         if (!c)
             continue;
-        Human_ReadPad(c, c->ctrl[0x59]);
-        Human_UpdateButtons(c, dt);
+        Human_UpdateButtons(c, dt);   /* (el mando ya lo ha leido Race_ReadPads, o la repeticion) */
         Human_Control(c);
         Human_Buttons(c);
     }
@@ -390,21 +391,39 @@ RaceCar* RaceCam_GetTarget(int view)
     return s_views[view & 1].target;
 }
 
-/* 8005ed10 (parte): siguiente vista (3 de persecucion y la de dentro del coche). Desde las camaras de TV vuelve a
- * la vista sin avanzar si se pasaria del principio o del final de la lista */
+/* 8005ed10: siguiente vista (3 de persecucion y la de dentro del coche). Desde las camaras de TV vuelve a la vista
+ * sin avanzar si se pasaria del principio o del final de la lista. Con dir 0 (o en la repeticion al pasarse de un
+ * extremo) prueba las camaras de TV; si no hay ninguna, sigue hacia delante */
 void RaceCam_CycleView(int view, int dir)
 {
-    int m = s_viewMode[view & 1];
-    if (TvCam_IsActive(view))
+    view &= 1;
+    int tv = TvCam_IsActive(view), tried = 0, m;
+    for (;;)
     {
-        TvCam_Leave(view);
-        if ((dir == 1 && m == 0) || (dir == -1 && m == 3))
+        if (dir == 0)
+        {
+            if (!tried && TvCam_Enter(view))
+                return;
+            tried = 1;
+            dir = 1;
+        }
+        m = s_viewMode[view];
+        if (!tv || (dir == 1 && m != 0) || (dir == -1 && m != 3))
+            m += dir;
+        if (m >= 0 && m < 4)
+            break;
+        if (g_GameInfo->isReplay && !tv && !tried)
+        {
             dir = 0;
+            continue;
+        }
+        m = m < 0 ? 3 : 0;
+        break;
     }
-    if (dir)
-        m = (m + dir + 4) % 4;
-    s_viewMode[view & 1] = m;
-    memset(s_views[view & 1].vel, 0, sizeof(s_views[view & 1].vel));
+    if (tv)
+        TvCam_Leave(view);
+    s_viewMode[view] = m;
+    memset(s_views[view].vel, 0, sizeof(s_views[view].vel));
 }
 
 int RaceCam_GetSegment(int view)
@@ -612,6 +631,10 @@ void RaceCam_Update(int view, int dt)
             TvCam_SelectIndex(view, s_tvAtStart - 2);
         s_tvAtStart = 0;
     }
+    /* sin humanos o en la repeticion, en los primeros frames empieza con las camaras de TV (al final de 8005f034 en el
+     * original: alli el primer frame aun es la de persecucion) */
+    if (g_FrameCount < 3 && (g_NumHumans == 0 || g_GameInfo->isReplay) && !TvCam_IsActive(view))
+        RaceCam_CycleView(view, 0);
     if (TvCam_IsActive(view))
     {
         TvCam_Update(view, dt, &v->tpos);

@@ -4,8 +4,9 @@
  * 800aa89c + menu * 0x38; Pause_SetQuitItem 80025a60 cambia la ultima opcion), Pause_UpdateTexts 8002552c,
  * Race_Results 8002896c (estado 0xD), Race_Finalize 800266f0 (tiempos estimados de los que no han terminado y
  * posiciones finales en los registros DAT_800b12ac + id * 0x18).
- * Pendiente: repeticion ("Show Replay" / "Restart Replay"), sonido de los menus (8003f6fc), menu de audio sin
- * efecto hasta portar el sonido, dos jugadores y campeonatos (Quit Series / Continue). */
+ * En la repeticion (GameInfo +0x60, replay.c) el menu es "Replay Paused" con Restart Replay y Quit Replay, y al
+ * acabarse la grabacion la carrera se para hasta que se pulsa un boton (DAT_800af688).
+ * Pendiente: sonido de los menus (8003f6fc) y el final de los campeonatos en los resultados (Continue). */
 #include <stdio.h>
 #include <string.h>
 #include "libgte.h"
@@ -24,10 +25,13 @@
 #include "pause.h"
 #include "snd.h"
 #include "script.h"
+#include "tvcam.h"
 
 int g_RacePaused;              /* DAT_800af710 */
 int g_RaceEndTimer;            /* DAT_800af740 */
 int g_RaceRestart;             /* DAT_800af691 */
+int g_ShowReplay;              /* DAT_800af690: "Show Replay" / "Restart Replay" */
+int g_ReplayEnd;               /* DAT_800af688: 1 se acabo la repeticion (espera un boton), 2 ya en los resultados */
 int g_PauseCamPreview;         /* DAT_800af1d0: tics de camara en movimiento tras cambiarla en la pausa */
 
 static int  s_pausePlayer = -1;    /* DAT_800af69c */
@@ -99,8 +103,8 @@ static void SetTail(char* s, const char* mark, const char* value)
 
 static void Quit_Texts(void)
 {
-    /* Race_UpdateState: "Quit Race" (campeonato: "Quit Series") */
-    const char* w = g_Settings.champType ? "Series" : "Race";
+    /* Race_UpdateState: "Quit Race" (campeonato: "Quit Series"; repeticion: "Quit Replay") */
+    const char* w = g_GameInfo->isReplay ? "Replay" : g_Settings.champType ? "Series" : "Race";
     for (int i = 10; i <= 12; i++)
     {
         char tmp[40];
@@ -133,15 +137,16 @@ static void Pause_UpdateTexts(RaceCar* h)
         snprintf(sm + 1, 40 - (size_t)(sm + 1 - s_text[1][4]), " %s", modes[g_Settings.audioMode % 3]);
     static const char* const cams[4] = { "Standard", "Follow", "Follow Close", "Bumper" };
     char* sc = strchr(s_text[0][2], 0x13);
-    if (sc)
-        snprintf(sc + 1, 40 - (size_t)(sc + 1 - s_text[0][2]), " %s", cams[RaceCam_GetViewMode(0) & 3]);
+    if (sc)   /* con las camaras de TV, "Replay" (DAT_800af1ac) */
+        snprintf(sc + 1, 40 - (size_t)(sc + 1 - s_text[0][2]), " %s",
+                 TvCam_IsActive(0) ? "Replay" : cams[RaceCam_GetViewMode(0) & 3]);
     static const char* const gauge[3] = { "Off", "Standard", "Full" };
     char* sg = strchr(s_text[0][3], 0x13);
     if (sg && h)
         snprintf(sg + 1, 40 - (size_t)(sg + 1 - s_text[0][3]), " %s", gauge[h->ctrl[0x58] % 3]);
 }
 
-/* 80025a60 */
+/* 80025a60: las ultimas opciones del menu: b (Quit) y, en la repeticion, antes a (Restart Replay) */
 static void Pause_SetQuitItem(int a, int b)
 {
     int i = 4;
@@ -150,9 +155,28 @@ static void Pause_SetQuitItem(int a, int b)
         s_items[0][4] = 4;
         i = 5;
     }
-    (void)a;
-    s_items[0][i] = (int8_t)b;
-    s_items[0][i + 1] = -1;
+    if (!g_GameInfo->isReplay)
+    {
+        s_items[0][i] = (int8_t)b;
+        s_items[0][i + 1] = -1;
+    }
+    else
+    {
+        s_items[0][i] = (int8_t)a;
+        s_items[0][i + 1] = (int8_t)b;
+        s_items[0][i + 2] = -1;
+    }
+}
+
+/* la marca de la opcion elegida en "NO/YES" parpadea (DAT_800af714 & 0x40: color 0x13 o 0xF) */
+static void Blink(char* s)
+{
+    for (; *s; s++)
+        if (*s == 0x13 || *s == 0x0f)
+        {
+            *s = (g_Ticks & 0x40) ? 0x13 : 0x0f;
+            return;
+        }
 }
 
 void Pause_Init(void)
@@ -160,6 +184,7 @@ void Pause_Init(void)
     g_RacePaused = 0;
     g_RaceEndTimer = 0;
     g_RaceRestart = 0;
+    g_ReplayEnd = 0;
     s_pausePlayer = -1;
     s_resume = 0;
     s_resTime = -1;
@@ -186,6 +211,49 @@ static void Pause_Begin(int player)
             s_hold[player][b] = 3;
 }
 
+/* resultados (estado 0xD) con la primera opcion elegida; cruz y START cuentan como pulsados hasta soltarlos */
+static void Pause_ShowResults(void)
+{
+    g_GameState = GAMESTATE_RESULTS;
+    s_resSel = 0;
+    s_resConfirm = 0;
+    for (int p = 0; p < 2; p++)
+    {
+        s_hold[p][B_CROSS] = 3;
+        s_hold[p][B_START] = 3;
+    }
+}
+
+/* Race_UpdateTime 800269c0 con 80074860 = -2: se acabo la grabacion. La carrera se para con los tiempos de los
+ * registros (los de la carrera de verdad) */
+void Pause_ReplayEnded(void)
+{
+    if (g_GameState != GAMESTATE_RESULTS && g_ReplayEnd == 0)
+        g_ReplayEnd = 1;
+    g_RacePaused = 1;
+    Snd_Pause(0);                 /* 8003fec4 */
+    for (int i = 0; i < g_NumCars; i++)
+    {
+        uint8_t* c = g_CarPhys[i];
+        int slot = ((RaceCar*)ENT(c))->id - 1000;
+        if (slot < 0 || slot >= 6)
+            continue;
+        I32(c, 0x330) = g_CarRecords[slot].a * 3;
+        I32(c, 0x334) = g_CarRecords[slot].b * 3;
+    }
+    Race_UpdatePositions(0);
+}
+
+/* Race_UpdateTime 800269c0: parado al final de la repeticion, cualquier boton pasa a los resultados */
+void Pause_ReplayWait(void)
+{
+    if (g_ReplayEnd == 1 && (g_PadButtons[0] || (g_NumHumans == 2 && g_PadButtons[1])))
+    {
+        g_ReplayEnd = 2;
+        Pause_ShowResults();
+    }
+}
+
 /* Race_UpdateState 80027e90 (un jugador): fin de carrera y START */
 void Race_UpdateState(int dt)
 {
@@ -196,14 +264,7 @@ void Race_UpdateState(int dt)
         if (g_RaceEndTimer < 1)
         {
             g_RaceEndTimer = -1;
-            g_GameState = GAMESTATE_RESULTS;
-            s_resSel = 0;
-            s_resConfirm = 0;
-            for (int p = 0; p < 2; p++)
-            {
-                s_hold[p][B_CROSS] = 3;
-                s_hold[p][B_START] = 3;
-            }
+            Pause_ShowResults();
         }
     }
     for (int p = 0; p < 2; p++)
@@ -217,7 +278,7 @@ void Race_UpdateState(int dt)
                 Pause_Begin(p);
         }
     }
-    if (g_RacePaused && s_pausePlayer < 0 && g_GameState != GAMESTATE_RESULTS)
+    if (g_RacePaused && s_pausePlayer < 0 && g_GameState != GAMESTATE_RESULTS && g_ReplayEnd == 0)
         g_RacePaused = 0;
 }
 
@@ -228,16 +289,21 @@ void Pause_Menu(void)
         return;
     int p = s_pausePlayer;
     RaceCar* h = g_Humans[p];
-    int w = 0x11a, count = 6;
-    if (g_Settings.champType && s_menu == 0)
-        count--;
+    int replay = g_GameInfo->isReplay;
+    int w = replay ? 0x12e : 0x11a, count = 0;
+    while (count < 8 && s_items[s_menu][count] >= 0)
+        count++;
+    static const int blinkTexts[6] = { 5, 6, 8, 9, 11, 12 };
+    for (int i = 0; i < 6; i++)
+        Blink(s_text[0][blinkTexts[i]]);
     int x2 = (0x280 - w) >> 1;
     Hud_Rect15(0x422, x2 - 2, 0x86, w + 4, count * 0x1c + 0x2a, 1);
     Hud_Rect15(0x422, x2 - 2, 0x86, w + 4, count * 0x1c + 0x2a, 1);
     Hud_Rect15(0x35ae, x2, 0xa4, w, count * 0x1c + 10, 1);
+    const char* title = replay ? "Replay Paused" : "Game Paused";
     int tw, th;
-    Font_Measure("Game Paused", &tw, &th);
-    Font_DrawString("Game Paused", 0xa0 - tw / 2, 0x44, 9);
+    Font_Measure(title, &tw, &th);
+    Font_DrawString(title, 0xa0 - tw / 2, 0x44, 9);
     int y = 0x55;
     for (int i = 0; s_items[s_menu][i] >= 0; i++, y += 0xe)
     {
@@ -313,6 +379,8 @@ void Pause_Menu(void)
                             break;
                         case 5: s_items[0][4] = 6; break;
                         case 6: s_items[0][4] = 5; break;
+                        case 8: Pause_SetQuitItem(9, 10); break;
+                        case 9: Pause_SetQuitItem(8, 10); break;
                         case 0xb: Pause_SetQuitItem(7, 0xc); break;
                         case 0xc: Pause_SetQuitItem(7, 0xb); break;
                         }
@@ -346,10 +414,17 @@ void Pause_Menu(void)
                 g_GameState = 5;
                 s_items[0][4] = 4;
                 break;
+            case 7: Pause_SetQuitItem(8, 10); break;
+            case 8: Pause_SetQuitItem(7, 10); break;
+            case 9:   /* "Restart Replay" */
+                g_ShowReplay = 1;
+                g_GameState = 5;
+                Pause_SetQuitItem(7, 10);
+                break;
             case 10: Pause_SetQuitItem(7, 0xb); break;
             case 0xb: Pause_SetQuitItem(7, 10); break;
-            case 0xc:
-                g_GameState = 5;
+            case 0xc:   /* "Quit Race" (la repeticion sale con 0xB, como "Exit Race") */
+                g_GameState = replay ? 0xb : 5;
                 Pause_SetQuitItem(7, 10);
                 break;
             }
@@ -361,9 +436,10 @@ void Pause_Menu(void)
     Font_Measure(l1, &w1, &hh);
     Font_Measure(l2, &w2, &hh);
     int wm = w1 > w2 ? w1 : w2;
-    Hud_Rect15(0x422, (0xa0 - wm / 2) * 2 - 10, (0xba - 0xb) * 2, wm * 2 + 0x14, 0x2e, 1);
-    Font_DrawString(l1, 0xa0 - w1 / 2, 0xba - 0xb, 9);
-    Font_DrawString(l2, 0xa0 - w2 / 2, 0xba, 9);
+    int yh = replay ? 200 : 0xba;
+    Hud_Rect15(0x422, (0xa0 - wm / 2) * 2 - 10, (yh - 0xb) * 2, wm * 2 + 0x14, 0x2e, 1);
+    Font_DrawString(l1, 0xa0 - w1 / 2, yh - 0xb, 9);
+    Font_DrawString(l2, 0xa0 - w2 / 2, yh, 9);
     if (s_resume && !(g_PadButtons[p] & (PADB_CROSS | PADB_TRIANGLE | PADB_START)))
     {
         s_resume = 0;
@@ -492,6 +568,8 @@ void Race_Results(int dt)
                 strcat(o, ": \x13NO\x12/YES ?");
             else if (s_resConfirm == 2)
                 strcat(o, ": \x12NO/\x13YES \x12?");
+            if (s_resConfirm)
+                Blink(o + strlen(opts[i]));
             Hud_Rect15(0, 0x3c, yy * 2, 0x11c, 0x18, 1);
         }
         Font_DrawString(o, 0x26, yy, i == s_resSel ? 0xeb5f : 0x10);
@@ -513,15 +591,12 @@ void Race_Results(int dt)
                 s_resConfirm = 1;
             else if (s_resConfirm == 2)
             {
-                if (s_resSel == 1)
-                    s_resConfirm = 0;   /* repeticion: pendiente */
-                else
-                {
-                    Race_Finalize();
-                    g_GameState = 0xb;
-                    if (s_resSel == 0)
-                        g_RaceRestart = 1;
-                }
+                Race_Finalize();
+                g_GameState = 0xb;
+                if (s_resSel == 0)
+                    g_RaceRestart = 1;
+                else if (s_resSel == 1)
+                    g_ShowReplay = 1;
             }
         }
         else if (le == 0 || ri == 0)
