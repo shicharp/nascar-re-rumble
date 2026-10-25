@@ -7,6 +7,10 @@
 
 #define LSC_VRAM_X 0x140
 
+#include <stdint.h>
+
+extern uint8_t g_LoadHelp;   /* DAT_800b7117 */
+
 int  Lsc_DecodeToVram(const unsigned char* img, int size, int x, int y);
 void Lsc_LoadToVram(const char* name, int show);
 const char* LoadScreen_GetName(void);

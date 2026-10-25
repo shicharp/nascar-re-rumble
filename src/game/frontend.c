@@ -229,6 +229,7 @@ void Frontend_InitScreens(void)
         g_FeSaveReturn = 0;
         g_Settings.savedTrack = 0xff;
         g_DemoCount = 0;
+        g_LoadHelp = 1;            /* DAT_800b7117: la ayuda de los mandos en la primera carga de carrera */
         g_BootState = 1;
         fe->nextScreen = 100;
     }

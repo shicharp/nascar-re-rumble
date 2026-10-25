@@ -9,7 +9,10 @@
 #include "globals.h"
 #include "frontend.h"
 #include "game.h"
+#include "savegame.h"
 #include "lsc.h"
+
+uint8_t g_LoadHelp;   /* DAT_800b7117: la proxima carga de carrera pone la ayuda de los mandos */
 
 /* FUN_80095d70: el original prepara el MDEC (DecDCTin/out) y espera; aqui se decodifica por software */
 int Lsc_DecodeToVram(const unsigned char* img, int size, int x, int y)
@@ -52,15 +55,24 @@ void Lsc_LoadToVram(const char* name, int show)
     }
 }
 
-/* 800921a0: front-end "Feld.lsc"; carrera "<sede><pista>{a,b,c}.lsc" (letra al azar). Pendiente: las
- * pantallas de ayuda HelpScrn\Help%ld.lsc antes de la primera carrera (DAT_800b7117). */
+/* 800921a0: front-end "Feld.lsc"; carrera "<sede><pista>{a,b,c}.lsc" (letra al azar). La primera carrera tras
+ * arrancar o cargar la partida (DAT_800b7117), con un jugador, mando analogico o digital (0 / 1: Help1 / Help2), el
+ * transmision 0 (DAT_800b797f) y fuera de la demostracion, pone en su lugar la ayuda de los mandos
+ * (CW\HelpScrn\Help%ld.lsc). */
 const char* LoadScreen_GetName(void)
 {
     static char name[64];
     if (g_IsFrontend)
         snprintf(name, sizeof(name), "%sFeld.lsc", Level_GetDataDir());
+    else if (g_Settings.numPlayers == 1 && g_LoadHelp && g_Settings.transmission[0] == 0 &&
+             g_SaveExtra.padKind[0] < 2 && !g_Settings.demo)
+    {
+        snprintf(name, sizeof(name), "%s%sHelp%d.lsc", "CW\\", "HelpScrn\\", g_SaveExtra.padKind[0] + 1);
+        g_LoadHelp = 0;
+    }
     else
     {
+        g_LoadHelp = 0;
         int track = g_Settings.champType ? g_Settings.curTrack : g_Settings.track;
         snprintf(name, sizeof(name), "%s%s%d%c.lsc", Level_GetDataDir(), Fe_VenueCode(g_Venue), track + 1,
                  "abc"[g_Ticks % 3]);
@@ -73,7 +85,7 @@ int LoadScreen_Show(void)
 {
     if (!LoadLscFile(LoadScreen_GetName()))
         return 0;
-    /* FUN_80024d10(0): pinta el texto de consejos (pendiente) */
+    /* 80024d10(0): la imagen en dos sprites de 160 x 240 (tpages 0x705 / 0x715) = Fe_DrawBackground(0) */
     Gfx_BeginFrame(0, 0, 0);
     Fe_DrawBackground(0);
     Gfx_Flip(GFX_FLIP_FULL);
