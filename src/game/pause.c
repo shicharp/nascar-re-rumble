@@ -6,7 +6,7 @@
  * posiciones finales en los registros DAT_800b12ac + id * 0x18).
  * En la repeticion (GameInfo +0x60, replay.c) el menu es "Replay Paused" con Restart Replay y Quit Replay, y al
  * acabarse la grabacion la carrera se para hasta que se pulsa un boton (DAT_800af688).
- * Pendiente: sonido de los menus (8003f6fc) y el final de los campeonatos en los resultados (Continue). */
+ * Pendiente: el final de los campeonatos en los resultados (Continue). */
 #include <stdio.h>
 #include <string.h>
 #include "libgte.h"
@@ -332,20 +332,20 @@ void Pause_Menu(void)
         int sq = Edge(p, B_SQUARE, b), cr = Edge(p, B_CROSS, b), ci = Edge(p, B_CIRCLE, b), tr = Edge(p, B_TRIANGLE, b);
         int le = Edge(p, B_LEFT, b), ri = Edge(p, B_RIGHT, b), up = Edge(p, B_UP, b), dn = Edge(p, B_DOWN, b);
         int st = Edge(p, B_START, b);
-        (void)sq;
-        (void)ci;
         int item = s_items[s_menu][s_sel];
-        if (up == 0 || dn == 0 || cr == 0 || ((ri == 0 || le == 0) && s_menu == 0))
-            Snd_PlayUi(0x22, h);  /* 8002651c */
-        if (up == 0)
+        /* 8002651c: el sonido 0x22 solo con lo que hace algo: mover, elegir una opcion con efecto, cambiar un ajuste,
+         * salir (triangulo / START) y, en el menu principal, cuadrado o circulo */
+        int snd = s_menu == 0 && (sq == 0 || ci == 0);
+        if (up == 0 || dn == 0)
         {
-            if (--s_sel < 0)
+            s_sel += up == 0 ? -1 : 1;
+            if (s_sel < 0)
                 s_sel = count - 1;
-        }
-        else if (dn == 0)
-        {
-            if (++s_sel >= count)
+            else if (s_sel >= count)
                 s_sel = 0;
+            snd = 1;
+            if (s_menu == 0)
+                Pause_SetQuitItem(7, 10);   /* al moverse se deshacen las preguntas NO / YES */
         }
         else if (cr != 0)
         {
@@ -369,17 +369,21 @@ void Pause_Menu(void)
                 else if (ri == 0 || le == 0)
                 {
                     int d = ri == 0 ? 1 : -1;
+                    snd = 0;
                     if (s_menu == 1)
                     {
                         if (item == 4)
                         {
                             g_Settings.audioMode = (uint8_t)((g_Settings.audioMode + 3 + d) % 3);
                             Snd_ApplySettings(g_Settings.volume, g_Settings.audioMode);
-                            Snd_PlayUi(0x22, h);
+                            snd = 1;
                             Pause_UpdateTexts(h);
                         }
                     }
                     else
+                    {
+                        snd = item == 2 || item == 3 || item == 5 || item == 6 || item == 8 || item == 9 ||
+                              item == 0xb || item == 0xc;
                         switch (item)
                         {
                         case 2:
@@ -399,18 +403,24 @@ void Pause_Menu(void)
                         case 0xb: Pause_SetQuitItem(7, 0xc); break;
                         case 0xc: Pause_SetQuitItem(7, 0xb); break;
                         }
+                    }
                 }
             }
-            else if (s_menu == 1)
-            {
-                s_menu = 0;
-                s_sel = 0;
-            }
             else
-                s_resume = 1;
+            {
+                snd = 1;
+                if (s_menu == 1)
+                {
+                    s_menu = 0;
+                    s_sel = 0;
+                }
+                else
+                    s_resume = 1;
+            }
         }
         else if (s_menu == 1)
         {
+            snd = item == 5;
             if (item == 5)
             {
                 s_menu = 0;
@@ -418,6 +428,8 @@ void Pause_Menu(void)
             }
         }
         else
+        {
+            snd = item != 2 && item != 3;   /* la camara y el marcador solo cambian con izquierda / derecha */
             switch (item)
             {
             case 0: s_resume = 1; break;
@@ -443,6 +455,9 @@ void Pause_Menu(void)
                 Pause_SetQuitItem(7, 10);
                 break;
             }
+        }
+        if (snd)
+            Snd_PlayUi(0x22, h);
     }
     /* ayuda: "Edit: ^ $" y "Select: * Exit: ~" (iconos de botones de la fuente) */
     const char* l1 = ExeStr(0x80010ad4);
@@ -596,8 +611,8 @@ void Race_Results(int dt)
         uint32_t b = g_PadButtons[p];
         int cr = Edge(p, B_CROSS, b), le = Edge(p, B_LEFT, b), ri = Edge(p, B_RIGHT, b);
         int up = Edge(p, B_UP, b), dn = Edge(p, B_DOWN, b);
-        if (cr == 0 || le == 0 || ri == 0 || up == 0 || dn == 0)
-            Snd_PlayUi(0x22, g_Humans[p]);   /* 80029950 */
+        if (cr == 0 || ((le == 0 || ri == 0) && s_resConfirm != 0) || up == 0 || dn == 0)
+            Snd_PlayUi(0x22, g_Humans[p]);   /* 80029950 (izquierda / derecha, solo con la pregunta NO / YES) */
         if (cr == 0)
         {
             if (s_resConfirm == 1)
