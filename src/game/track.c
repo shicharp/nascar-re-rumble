@@ -318,7 +318,7 @@ void Track_Parse(uint8_t* data, int size)
         {
             int pos[3] = { (int16_t)NR_Read16(c + 8) << 7, (int16_t)NR_Read16(c + 10) << 7,
                            (int16_t)NR_Read16(c + 12) << 7 };
-            Light_SetSun(pos, c[0x10], c[0x11], c[0x12]);   /* c[0x13]: destello (pendiente) */
+            Light_SetSun(pos, c[0x10], c[0x11], c[0x12], c[0x13]);   /* c[0x13]: tipo de destello */
             break;
         }
         case TAG_THOR:

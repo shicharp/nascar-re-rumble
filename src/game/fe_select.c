@@ -755,7 +755,7 @@ void Fe_DrawCarModel(int p, int x, int y, int dist, int reflection)
             break;
 
         static const int under[3] = { 0, -0x1000000, -0x800000 };
-        Light_SetSun(under, 0x40, 0x40, 0x40);
+        Light_SetSun(under, 0x40, 0x40, 0x40, 0);
         Render_DrawList(1);
         reflection = 0;
         SetGeomOffset(x, y);
@@ -767,7 +767,7 @@ void Fe_DrawCarModel(int p, int x, int y, int dist, int reflection)
         floorY = 0;
     }
     static const int sun[3] = { 0x2000000, 0x1000000, 0x2000000 };
-    Light_SetSun(sun, 0x80, 0x80, 0x80);
+    Light_SetSun(sun, 0x80, 0x80, 0x80, 0);
     Render_DrawList(0);
     car->flags |= 0x10;
     SetGeomOffset(160, 120);

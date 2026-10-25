@@ -187,6 +187,125 @@ void Gfx_AddPrim(int z, void* prim)
     s_pendCount++;
 }
 
+/* ---------------------------------------------------------------- prueba de visibilidad del sol */
+
+/* Solo en el port. El original (Gfx_DrawLensFlare 8001551c) copia con DR_MOVE los 5x5 pixeles del sol justo despues
+ * de dibujar el cielo (en la OT a la profundidad del sol) y al final del frame, y cuenta los que no han cambiado.
+ * PsyCross dibuja en la ventana y no ve lo dibujado a mitad de frame, asi que aqui se cuentan los 25 puntos que no
+ * cubre ninguna primitiva anadida durante la vista por delante del sol (indice de OT entre 1 y el suyo; el 0 es el
+ * del marcador y del propio destello). */
+static int s_probeStart = -1, s_probeIdx, s_probeX, s_probeY;
+
+void Gfx_ProbeBegin(int x, int y, int depth)
+{
+    if (depth > 0xffff)
+        depth = 0xffff;
+    s_probeIdx = depth > 0 ? s_depthBase[depth >> 12] + (depth >> s_depthShift[depth >> 12]) : 0;
+    s_probeX = x;
+    s_probeY = y;
+    s_probeStart = s_pendCount;
+}
+
+/* 1 si (px, py) esta dentro del triangulo (en cualquier sentido) */
+static int InTri(float px, float py, float x0, float y0, float x1, float y1, float x2, float y2)
+{
+    float d0 = (x1 - x0) * (py - y0) - (y1 - y0) * (px - x0);
+    float d1 = (x2 - x1) * (py - y1) - (y2 - y1) * (px - x1);
+    float d2 = (x0 - x2) * (py - y2) - (y0 - y2) * (px - x2);
+    return (d0 >= 0 && d1 >= 0 && d2 >= 0) || (d0 <= 0 && d1 <= 0 && d2 <= 0);
+}
+
+/* esquinas de una primitiva de poligono o rectangulo; 0 si no tapa nada (lineas, comandos de dibujo...) */
+static int PrimCorners(const void* p, float* x, float* y)
+{
+    int code = getcode(p);
+    if ((code & 0xe0) == 0x20)
+    {
+        int quad = code & 8, n = quad ? 4 : 3;
+        switch (code & 0x1c)
+        {
+#define CORNERS(T) { const T* q = (const T*)p; x[0] = (float)q->x0; y[0] = (float)q->y0; x[1] = (float)q->x1; \
+    y[1] = (float)q->y1; x[2] = (float)q->x2; y[2] = (float)q->y2; }
+        case 0x00: CORNERS(POLY_F3) break;
+        case 0x04: CORNERS(POLY_FT3) break;
+        case 0x08: CORNERS(POLY_F4) x[3] = (float)((const POLY_F4*)p)->x3; y[3] = (float)((const POLY_F4*)p)->y3; break;
+        case 0x0c: CORNERS(POLY_FT4) x[3] = (float)((const POLY_FT4*)p)->x3; y[3] = (float)((const POLY_FT4*)p)->y3; break;
+        case 0x10: CORNERS(POLY_G3) break;
+        case 0x14: CORNERS(POLY_GT3) break;
+        case 0x18: CORNERS(POLY_G4) x[3] = (float)((const POLY_G4*)p)->x3; y[3] = (float)((const POLY_G4*)p)->y3; break;
+        case 0x1c: CORNERS(POLY_GT4) x[3] = (float)((const POLY_GT4*)p)->x3; y[3] = (float)((const POLY_GT4*)p)->y3; break;
+#undef CORNERS
+        }
+        return n;
+    }
+    if ((code & 0xe0) == 0x60)
+    {
+        /* TILE / SPRT: tamano libre (w, h) o fijo de 1, 8 o 16 */
+        static const int fixed[4] = { 0, 1, 8, 16 };
+        float x0, y0, w, h;
+        if (code & 4)
+        {
+            const SPRT* s = (const SPRT*)p;
+            x0 = (float)s->x0;
+            y0 = (float)s->y0;
+            w = (code & 0x18) ? (float)fixed[(code >> 3) & 3] : (float)s->w;
+            h = (code & 0x18) ? (float)fixed[(code >> 3) & 3] : (float)s->h;
+        }
+        else
+        {
+            const TILE* t = (const TILE*)p;
+            x0 = (float)t->x0;
+            y0 = (float)t->y0;
+            w = (code & 0x18) ? (float)fixed[(code >> 3) & 3] : (float)t->w;
+            h = (code & 0x18) ? (float)fixed[(code >> 3) & 3] : (float)t->h;
+        }
+        x[0] = x0, y[0] = y0, x[1] = x0 + w, y[1] = y0, x[2] = x0, y[2] = y0 + h, x[3] = x0 + w, y[3] = y0 + h;
+        return 4;
+    }
+    return 0;
+}
+
+int Gfx_ProbeEnd(void)
+{
+    if (s_probeStart < 0)
+        return 0;
+    uint32_t covered = 0;   /* bit k: punto (k % 5, k / 5) */
+    for (int i = s_probeStart; i < s_pendCount && covered != 0x1ffffff; i++)
+    {
+        if (s_pendIdx[i] == 0 || s_pendIdx[i] >= s_probeIdx)
+            continue;
+        float x[4], y[4];
+        int n = PrimCorners(s_pendPrim[i], x, y);
+        if (!n)
+            continue;
+        float minX = x[0], maxX = x[0], minY = y[0], maxY = y[0];
+        for (int k = 1; k < n; k++)
+        {
+            minX = x[k] < minX ? x[k] : minX;
+            maxX = x[k] > maxX ? x[k] : maxX;
+            minY = y[k] < minY ? y[k] : minY;
+            maxY = y[k] > maxY ? y[k] : maxY;
+        }
+        if (maxX < s_probeX || minX > s_probeX + 5 || maxY < s_probeY || minY > s_probeY + 5)
+            continue;
+        for (int k = 0; k < 25; k++)
+        {
+            if (covered & (1u << k))
+                continue;
+            float px = s_probeX + k % 5 + 0.5f, py = s_probeY + k / 5 + 0.5f;
+            /* el cuadrilatero de la PS1 son los triangulos 0-1-2 y 1-3-2 */
+            if (InTri(px, py, x[0], y[0], x[1], y[1], x[2], y[2]) ||
+                (n == 4 && InTri(px, py, x[1], y[1], x[3], y[3], x[2], y[2])))
+                covered |= 1u << k;
+        }
+    }
+    s_probeStart = -1;
+    int n = 0;
+    for (int k = 0; k < 25; k++)
+        n += !(covered & (1u << k));
+    return n;
+}
+
 static void LinkPendingPrims(GfxBuffer* buf)
 {
     for (int i = s_pendCount - 1; i >= 0; i--)

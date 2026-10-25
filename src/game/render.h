@@ -89,7 +89,9 @@ void Render_LoadCameraRotation(void);                           /* 8001032c */
 void Math_SinCos(int angle, int* s, int* c);                    /* 800176c0: 4096 = vuelta, 16.16 */
 void Math_RotMatrix(int ay, int ax, int az, int* m);            /* 80017ad8 */
 void Camera_LookAt(const int* eye, const int* target);          /* 80016bfc + 80017a68 */
-void Light_SetSun(const int* pos, int r, int g, int b);         /* 800153e4 (sin el destello) */
+void Light_SetSun(const int* pos, int r, int g, int b, int flare); /* 800153e4 (flare: tipo de destello, 0 ninguno) */
+void Render_DrawLensFlare(int view);                           /* 8001551c (al empezar la vista) */
+void Render_EndLensFlare(int view);                            /* solo en el port: al acabar la vista */
 
 void Obj_Init(GfxObj* o, ModelHdr* m);                          /* 800139fc */
 /* 80013db0: nivel de detalle por la distancia a la camara (0 cerca .. 3 muy lejos); deja en +0x54 el brillo del

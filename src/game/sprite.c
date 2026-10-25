@@ -1,10 +1,13 @@
 #include <stdint.h>
+#include <stdlib.h>
 #include "libgte.h"
 #include "libgpu.h"
 #include "nr.h"
 #include "gfx.h"
 #include "render.h"
 #include "sprite.h"
+#include "globals.h"
+#include "vecmath.h"
 
 /* 800aab44: puntos de las formas (x, y en 1/32768 del tamano) */
 static const int16_t s_points[124][2] = {
@@ -250,4 +253,71 @@ void Sprite_DrawAll(void)
             Gfx_AddPrimDepthPgxp(s->sz, prim, 0xffff);
         }
     }
+}
+
+/* ---------------------------------------------------------------- destello del sol (800457e0) */
+
+static void Flare_Add(int type, int b, int g, int r, int b2, int g2, int r2, int x, int y, int size)
+{
+    Sprite_Add(type, (uint32_t)(b << 16 | g << 8 | r), (uint32_t)(b2 << 16 | g2 << 8 | r2),
+               (uint32_t)(y << 16 | (x & 0xffff)), 0, size, (float)x, (float)y);
+}
+
+/* (x, y): esquina del cuadrado de 5x5 del sol en pantalla; intensity: lo que se ve de el (16.16, suavizado);
+ * type: el byte 0x13 del TSUN (1 a 4). Las manchas van del sol hacia el centro de la pantalla y siguen por el otro
+ * lado; se apagan con la distancia al centro (1.0 = 200 pixeles) y con el brillo de la luz del sol */
+void Sprite_AddLensFlare(int x, int y, int intensity, int type, int bright)
+{
+    int cy = g_SplitScreen ? 0x3c : 0x78;
+    int dx = 0xa0 - x, dy = cy - y;
+    int ax = (abs(dx) << 16) / 200, ay = (abs(dy) << 16) / 200;
+    int dist = Math_SquareRoot12(Fix_Mul16(ax, ax) + Fix_Mul16(ay, ay)) * 4;
+    unsigned k = (unsigned)(0x10000 - (dist > 0x10000 ? 0x10000 : dist));
+    k = (unsigned)(((uint64_t)k * (unsigned)intensity) >> 16);
+    k = (unsigned)(((uint64_t)k * (unsigned)bright) >> 16);
+    if ((int)k > 0x10000)
+        k = 0x10000;
+    /* l = k^(1/4) / 4 en 16.16 (dos raices); s = 4 l */
+    int l = Math_SquareRoot12(Math_SquareRoot12((int)k) << 2);
+    unsigned fade = (unsigned)(0x10000 - l * 4);   /* lo que le falta para el maximo */
+#define L(c) ((l * (c)) >> 16)
+#define S(n, m) (((int)((fade * (n)) >> 16) + (m)) * 8)
+    switch (type)
+    {
+    case 1:
+        Flare_Add(1, L(0x44), L(100), L(0x50), L(0x20), L(0x30), L(0x28), x - (dx * 3 >> 3), y - (dy * 3 >> 3), S(0x1e, 10));
+        Flare_Add(0xd, 0, L(0x14), L(0xb4), 0, 0, 0, x, y, S(0x3c, 0x20));
+        Flare_Add(0xb, L(300), L(0x168), L(0x168), 0, 0, 0, x, y, S(0x32, 0x14));
+        Flare_Add(4, L(0x28), L(0x28), L(0x3c), 0, 0, 0, x + (dx >> 1), y + (dy >> 1), 0x48);
+        Flare_Add(4, L(0x28), L(0x50), L(0x50), 0, 0, 0, x + (dx * 3 >> 2), y + (dy * 3 >> 2), S(0x1e, 10));
+        Flare_Add(4, L(0x28), L(0x3c), L(0x28), 0, 0, 0, 0xa0, cy, 0x28);
+        Flare_Add(4, L(0x14), L(0x34), L(0x50), 0, 0, 0, 0xa0 + (dx >> 2), cy + (dy >> 2), S(0x19, 10));
+        Flare_Add(1, L(0x3c), L(0x3c), L(0x3c), L(0x3c), L(0x14), 0, 0xa0 + (dx * 5 >> 3), cy + (dy * 5 >> 3),
+                  S(0x1e, 0x14));
+        Flare_Add(8, L(100), L(0x34), L(0x14), L(0x1c), L(8), 0, 0xa0 + dx, cy + dy, S(0x1e, 0x11));
+        Flare_Add(1, L(0xf0), L(0xf0), L(0xf0), 0, 0, 0, 0xa0 + dx, cy + dy, S(0x1e, 0xf));
+        /* las dos ultimas, reflejadas en x */
+        Flare_Add(4, L(0x28), L(0x28), L(0x3c), 0, 0, 0, 0x140 - x + (dx >> 2), cy + dy + (dy >> 2), 0x40);
+        Flare_Add(4, L(0x28), L(0x28), L(0x3c), 0, 0, 0, 0x140 - x + (dx >> 1), cy + dy + (dy >> 1), 0x38);
+        break;
+    case 2:
+        Flare_Add(4, L(0x44), L(100), L(0x50), 0, 0, 0, x - (dx >> 1), y - (dy >> 1), S(0x1e, 10));
+        Flare_Add(1, L(0x140), L(0x140), L(0x140), 0, 0, 0, x, y, S(0x32, 0x14));
+        Flare_Add(4, L(0x28), L(0x50), L(0x50), 0, 0, 0, x + (dx >> 1), y + (dy >> 1), S(0x1e, 10));
+        Flare_Add(4, L(0x20), L(0x20), L(0x28), 0, 0, 0, 0xa0, cy, S(10, 10));
+        Flare_Add(4, L(0x14), L(0x14), L(0x28), 0, 0, 0, 0xa0 + (dx >> 2), cy + (dy >> 2), S(0x19, 10));
+        Flare_Add(4, L(0x78), L(0x78), L(0x78), 0, 0, 0, 0xa0 + (dx * 3 >> 2), cy + (dy * 3 >> 2), S(0x1e, 0xf));
+        Flare_Add(4, L(0x50), L(0x34), L(0x14), 0, 0, 0, 0xa0 + dx + (dx >> 1), cy + dy + (dy >> 1), S(0x19, 0xf));
+        Flare_Add(4, L(0x30), L(0x28), 0, 0, 0, 0, 0xa0 + dx * 2, cy + dy * 2, S(0x1e, 0x14));
+        break;
+    case 3:
+        Flare_Add(1, L(0x8c), L(0x104), L(0x104), 0, 0, 0, x, y, S(0x1e, 0xf));
+        Flare_Add(0xd, L(0x3c), L(0x50), L(0xa0), 0, 0, 0, x, y, S(0x37, 0x16));
+        break;
+    case 4:   /* un brillo fijo, sin depender de lo que se vea */
+        Flare_Add(0xd, 0x0f, 0x0a, 0x0a, 0, 0, 0, x, y, 0x1a8);
+        break;
+    }
+#undef L
+#undef S
 }

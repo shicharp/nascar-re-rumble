@@ -9,6 +9,7 @@
 #include "render.h"
 #include "globals.h"
 #include "texslot.h"
+#include "sprite.h"
 #include "PsyX/PsyX_public.h"
 
 Camera3D g_Camera;
@@ -16,6 +17,12 @@ Light    g_DefaultLight;
 
 static uint16_t s_sinTable[0x401];  /* 800a9c98: round(32768 * sin(i * pi / 2048)) */
 static SVECTOR s_lightDir;          /* DAT_800afa24: direccion del sol (4.12) */
+static int     s_sunPos[3];         /* DAT_800afa10: posicion del sol en el mundo (TSUN) */
+static int     s_sunFlare;          /* DAT_800afa20: tipo de destello (0 ninguno, 1 a 4) */
+static int     s_sunBright;         /* DAT_800af850: brillo de la luz del sol (16.16, 0x80 = 1.0) */
+static int     s_flareLevel;        /* DAT_800af568: lo que se ve del sol, suavizado (16.16) */
+static int     s_flareSeen[2];      /* lo que se vio del sol en cada vista el frame anterior (de 25 pixeles) */
+static int     s_flareProbe = -1;   /* vista con la prueba de visibilidad en marcha */
 
 /* Proyeccion del preset activo (DAT_800afa30..3f y scratchpad 1f800000, ver Camera_ApplyProjection) */
 static RenderProj s_frustum = { 4, 1, 4, 3, 20, 25, 360, { 3, 3 } };
@@ -367,9 +374,15 @@ void Camera_LookAt(const int* eye, const int* target)
     g_Camera.pos[2] = eye[2];
 }
 
-/* 800153e4: direccion del sol (normalizada, 4.12) y color de la luz 1 */
-void Light_SetSun(const int* pos, int r, int g, int b)
+/* 800153e4: direccion del sol (normalizada, 4.12), color de la luz 1 y destello */
+void Light_SetSun(const int* pos, int r, int g, int b, int flare)
 {
+    s_sunPos[0] = pos[0];
+    s_sunPos[1] = pos[1];
+    s_sunPos[2] = pos[2];
+    s_sunFlare = flare;
+    /* brillo: el color si es gris; si no, la media de los tres */
+    s_sunBright = (r == g && g == b ? r : (r + g + b) / 3) << 9;
     double x = pos[0], y = pos[1], z = pos[2];
     double len = sqrt(x * x + y * y + z * z);
     if (len > 0)
@@ -393,7 +406,10 @@ void Render_Init(void)
     g_DefaultLight.rgb[0] = g_DefaultLight.rgb[1] = g_DefaultLight.rgb[2] = 0x80;
     g_DefaultLight.bk[0] = g_DefaultLight.bk[1] = g_DefaultLight.bk[2] = 0x600;
     static const int sun[3] = { 0x2000000, 0x1000000, 0x2000000 };
-    Light_SetSun(sun, 0x80, 0x80, 0x80);
+    Light_SetSun(sun, 0x80, 0x80, 0x80, 0);
+    s_flareLevel = 0;
+    s_flareSeen[0] = s_flareSeen[1] = 0;
+    s_flareProbe = -1;
     s_listCount = 0;
 }
 
@@ -523,6 +539,46 @@ static void Render_TransformVerts(const int16_t* v, int n, int shift)
         }
         s_clip[i] = clip;
     }
+}
+
+/* 8001551c: destello del sol, al empezar a dibujar una vista (no en el retrovisor). Proyecta el sol (relativo a la
+ * camara, >> 8) y, si cae en pantalla, empieza la prueba de visibilidad de los 5x5 pixeles que lo rodean (en el
+ * original, dos DR_MOVE: tras el cielo y al final; aqui Gfx_ProbeBegin / Render_EndLensFlare). Con lo que se vio
+ * el frame anterior (de 25) suaviza la intensidad (3/4 la anterior) y anade las manchas a la lista de destellos
+ * (800457e0); si no se vio nada, ni manchas ni cambio de intensidad. */
+void Render_DrawLensFlare(int view)
+{
+    s_flareProbe = -1;
+    if (!s_sunFlare)
+        return;
+    int16_t v[4] = { (int16_t)((s_sunPos[0] - g_Camera.pos[0]) >> 8), (int16_t)((s_sunPos[1] - g_Camera.pos[1]) >> 8),
+                     (int16_t)((s_sunPos[2] - g_Camera.pos[2]) >> 8), 0 };
+    Render_LoadCameraRotation();
+    Render_TransformVerts(v, 1, 0);
+    if (s_clip[0] & 1)
+        return;
+    int x = (int16_t)s_scrXY[0] - 2, y = (int16_t)(s_scrXY[0] >> 16) - 2, sz = s_scrZ[0];
+    /* en pantalla (en panoramico, tambien en los margenes) y delante de la camara */
+    if (x + 5 < -g_WideMargin || y + 5 < 0 || sz <= 0 || x > 0x140 + g_WideMargin ||
+        y > (g_SplitScreen ? 0x78 : 0xf0))
+        return;
+    s_flareProbe = view & 1;
+    Gfx_ProbeBegin(x, y, sz * 2 + 0x7ff0);   /* DAT_800af760: la profundidad de la copia de referencia */
+    int seen = s_flareSeen[view & 1];
+    if (seen == 0)
+        return;
+    int lvl = (seen * 0x10000 + 0xc) / 0x19 + s_flareLevel * 3;
+    s_flareLevel = (lvl + 2) >> 2;
+    Sprite_AddLensFlare(x, y, s_flareLevel, s_sunFlare, s_sunBright);
+}
+
+/* Solo en el port: al acabar la vista, lo que se ve del sol para el frame siguiente (Gfx_Flip 8001a24c guardaba las
+ * copias con StoreImage2 en DAT_800b0e78) */
+void Render_EndLensFlare(int view)
+{
+    if (s_flareProbe == (view & 1))
+        s_flareSeen[view & 1] = Gfx_ProbeEnd();
+    s_flareProbe = -1;
 }
 
 /* 80015a88: uv del mapa de reflejos (pagina 8) de las n primeras normales. d = del objeto a la camara en el espacio

@@ -14,5 +14,7 @@ void Sprite_Clear(void);
 /* colorA = centro (RGB de GPU), colorB = borde; sxy/sz de pantalla (sz 0 = sin escala por distancia) */
 void Sprite_Add(int type, uint32_t colorA, uint32_t colorB, uint32_t sxy, int sz, int size, float px, float py);
 void Sprite_DrawAll(void);                                  /* 80045268 */
+/* 800457e0: manchas del destello del sol; (x, y) esquina de su cuadrado de 5x5, intensity y bright en 16.16 */
+void Sprite_AddLensFlare(int x, int y, int intensity, int type, int bright);
 
 #endif

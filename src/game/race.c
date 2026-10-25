@@ -185,6 +185,7 @@ int Ctrk_OnLoaded(NrAsset* a)
 static void Race_DrawViewAll(int view)
 {
     Sprite_Clear();
+    Render_DrawLensFlare(view);    /* 8001551c */
     int seg = RaceCam_GetSegment(view);
     if (seg == 0xff)
         seg = Track_FindSegment(g_Camera.pos);
@@ -198,6 +199,7 @@ static void Race_DrawViewAll(int view)
     Race_RestoreCarModels();
     Fx_Draw(view);                 /* 80038ccc */
     Sprite_DrawAll();              /* 80045268 */
+    Render_EndLensFlare(view);
     Hud_Draw(view);                /* 80043520 */
 }
 

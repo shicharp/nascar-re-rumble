@@ -31,6 +31,10 @@ void  Gfx_AddPrimDepthPgxp(int depth, void* prim, unsigned pgxpIndex);
 /* Gfx_Flip(0) del original en el front-end: lo acumulado se dibuja antes y lo que se anada despues
  * queda por encima de todo ello (una vez por frame) */
 void  Gfx_FlushPartial(void);
+/* Solo en el port (destello del sol, 8001551c): cuenta de los 25 pixeles del cuadrado de 5x5 en (x, y) los que no
+ * tapa ninguna primitiva anadida entre Begin y End por delante de la profundidad 'depth' (sin el indice 0 de la OT) */
+void  Gfx_ProbeBegin(int x, int y, int depth);
+int   Gfx_ProbeEnd(void);
 void  Gfx_Flip(int mode);
 int   Gfx_GetDrawBufferY(void);                 /* y del buffer que se esta dibujando (0 o 256) */
 int   Gfx_GetDisplayBufferY(void);              /* y del buffer que se ve */
