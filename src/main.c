@@ -5,6 +5,7 @@
  *                 [--press frame:boton,...]                pulsaciones simuladas (pruebas)
  *                 [--movie fichero.wve]                    pone ese video y sale
  *                 [--viewer [fichero] [--page N]]          visor de paginas Cpag
+ *                 [--display N]                            abre la ventana en el monitor N de SDL
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +13,8 @@
 #include <sys/stat.h>
 
 #include "PsyX/PsyX_public.h"
+#define SDL_MAIN_HANDLED   /* main propio (PsyCross ya inicializa SDL) */
+#include "SDL.h"
 
 #include "game/nr.h"
 #include "game/file.h"
@@ -20,6 +23,23 @@
 #include "game/game.h"
 #include "debug_viewer.h"
 #include "crash_log.h"
+
+/* Solo en el port: lleva la ventana al centro del monitor 'display' (indices de SDL; se apuntan en el log). PsyCross
+ * la crea donde quiere el sistema; es la ventana del contexto de OpenGL actual. */
+static void MoveToDisplay(int display)
+{
+    int n = SDL_GetNumVideoDisplays();
+    for (int i = 0; i < n; i++)
+    {
+        SDL_Rect r;
+        if (SDL_GetDisplayBounds(i, &r) == 0)
+            NR_Log("Monitor %d: %s (%d, %d) %d x %d\n", i, SDL_GetDisplayName(i), r.x, r.y, r.w, r.h);
+    }
+    SDL_Window* w = SDL_GL_GetCurrentWindow();
+    if (!w || display < 0 || display >= n)
+        return;
+    SDL_SetWindowPosition(w, SDL_WINDOWPOS_CENTERED_DISPLAY(display), SDL_WINDOWPOS_CENTERED_DISPLAY(display));
+}
 
 static int DirExists(const char* path)
 {
@@ -48,6 +68,7 @@ int main(int argc, char** argv)
     const char* shot = NULL;
     int shotFrame = 120;
     int page = 0;
+    int display = -1;
 
     for (int i = 1; i < argc; i++)
     {
@@ -60,10 +81,13 @@ int main(int argc, char** argv)
         else if (!strcmp(argv[i], "--skip-legal")) g_Options.skipLegal = 1;
         else if (!strcmp(argv[i], "--movie") && i + 1 < argc) g_Options.movie = argv[++i];
         else if (!strcmp(argv[i], "--press") && i + 1 < argc) Pad_SetScript(argv[++i]);
+        else if (!strcmp(argv[i], "--display") && i + 1 < argc) display = atoi(argv[++i]);
     }
 
     PsyX_Initialise((char*)"NASCAR Rumble", 960, 720, 0);
     CrashLog_Install();   /* solo en el port: la pila del fallo en la salida */
+    if (display >= 0)
+        MoveToDisplay(display);
 
     if (!disc)
         disc = FindDiscRoot();

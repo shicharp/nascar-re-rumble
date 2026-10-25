@@ -65,6 +65,7 @@ mano del jugador al salir, `NR_POWERLOG=1` cajas recogidas y poderes usados en e
 `NR_POWERUPS=n` / `NR_CLASS=n` fuerzan los poderes y la clase de la carrera, `NR_TVLOG=1` camaras de TV, `NR_TVCAM=1` empieza con las camaras de TV (`vN`: la virtual N), `NR_PSXLOD=1`
 niveles de detalle de la PS1 (por defecto, todo con el detalle completo).
 `--viewer` es el visor de páginas Cpag (flechas para cambiar de página).
+`--display N` abre la ventana en el monitor N (índices de SDL; el log los lista al arrancar con la opción).
 
 ## Controles
 
