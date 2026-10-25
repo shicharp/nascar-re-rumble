@@ -290,7 +290,9 @@ void Human_UpdateButtons(RaceCar* e, int dt)
         Car_PlaySfx(5, e);   /* 80041be8: bocina */
 }
 
-/* Lectura del mando (Race_UpdateTime: 8005fc54 + 8005f928 para cada humano). Mando digital (tipo 4). */
+/* Lectura del mando (Race_UpdateTime: 8005fc54 + 8005f928 para cada humano): digital (tipo 4) o analogico (tipo 7:
+ * el stick izquierdo en +0xC / +0xD, con zona muerta de 0x61 a 0x9F; Human_Control gira con +0xC). El neGcon (tipo
+ * 2, giro calibrado) no esta: PsyCross no lo emula. */
 void Human_ReadPad(RaceCar* e, int port)
 {
     uint8_t* ctrl = e->ctrl;
@@ -299,7 +301,15 @@ void Human_ReadPad(RaceCar* e, int port)
         if (raw & g_PadBinds[port & 1][i])
             g |= s_defaultBinds[i][1];
     U32(ctrl, 8) = Pad_ActionBits(g);
-    U8(ctrl, 0xe) = 4;
+    int x, y;
+    if (Pad_GetStick(port & 1, &x, &y))
+    {
+        U8(ctrl, 0xc) = (uint8_t)((unsigned)(x - 0x61) < 0x3f ? 0x80 : x);
+        U8(ctrl, 0xd) = (uint8_t)((unsigned)(y - 0x61) < 0x3f ? 0x80 : y);
+        U8(ctrl, 0xe) = 7;
+    }
+    else
+        U8(ctrl, 0xe) = 4;
 }
 
 /* 8004c9d0: acelerador / freno (con el cambio automatico, el freno parado engrana la marcha atras) */

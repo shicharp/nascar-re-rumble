@@ -66,6 +66,7 @@ mano del jugador al salir, `NR_POWERLOG=1` cajas recogidas y poderes usados en e
 niveles de detalle de la PS1 (por defecto, todo con el detalle completo).
 `--viewer` es el visor de páginas Cpag (flechas para cambiar de página).
 `--display N` abre la ventana en el monitor N (índices de SDL; el log los lista al arrancar con la opción).
+Mando analógico (DualShock): SELECT + START a la vez en el mando lo pasa a analógico o a digital (PsyCross); en analógico se gira con el stick izquierdo y en los menús hace de cruceta. El neGcon no está (PsyCross no lo emula). En `--press`, `lx=v` / `ly=v` (0 a 255) mueven el stick simulado y hacen el mando analógico.
 
 ## Controles
 

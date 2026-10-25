@@ -26,6 +26,7 @@ int      Pad_GetType(int port);   /* FUN_8001d840: 0 sin mando, 4 digital, 7 ana
 uint32_t Pad_GetButtons(int port);
 void     Pad_ReadAll(void);
 int      Pad_Kind(int port);      /* 8001d840: el tipo (2, 4, 7), 0 sin mando, -1 uno que el juego no admite */
+int      Pad_GetStick(int port, int* x, int* y);   /* 8001d10c: stick izquierdo del analogico (0x80 centro) */
 
 /* Botones de cada jugador en carrera (DAT_800b0570, 14 mascaras: arriba, abajo, izquierda, derecha, cuadrado,
  * cruz, circulo, triangulo, R1, L1, L2, R2, SELECT, START); 8001cedc los pone por defecto y 8008b160
@@ -37,7 +38,8 @@ void     Pad_SetVibration(int port, int on);    /* 8001d520 */
 void     Pad_TestVibration(int port);           /* 8001d2c8: el motor pequeño un momento */
 
 /* Pruebas: "frame:boton,frame:boton..." (up, down, left, right, cross, triangle, start...).
- * Cada pulsacion simulada dura 3 frames en el mando 1. */
+ * Cada pulsacion simulada dura 3 frames en el mando 1 ("boton*n": n frames; "2boton": el mando 2). "lx=v" / "ly=v"
+ * mueven el stick izquierdo (0..255) y hacen el mando simulado analogico. */
 void     Pad_SetScript(const char* script);
 
 extern uint32_t g_PadButtons[2];   /* DAT_800af700 */

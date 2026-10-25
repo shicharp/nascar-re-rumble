@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include "gfx.h"
+#include "globals.h"
+#include "pause.h"
 #include "pad.h"
 
 uint32_t g_PadButtons[2];
@@ -11,9 +13,11 @@ uint32_t g_PadBinds[2][14];                 /* DAT_800b0570 */
 static uint8_t s_vibration[2] = { 1, 1 };   /* DAT_800b04ef + puerto * 0x28 */
 
 #define MAX_SCRIPT 256
-static struct { int frame, len, port; uint32_t mask; } s_script[MAX_SCRIPT];   /* --press "N:[2]boton[*frames]" */
+/* --press "N:[2]boton[*frames]"; el stick izquierdo con "N:[2]lx=valor[*frames]" / "ly=valor" (axis 0 / 1) */
+static struct { int frame, len, port, axis, value; uint32_t mask; } s_script[MAX_SCRIPT];
 static int s_scriptCount;
-static int s_scriptPorts;   /* mandos con pulsaciones simuladas (bit 0 siempre; bit 1 si hay alguna "2boton") */
+static int s_scriptPorts;    /* mandos con pulsaciones simuladas (bit 0 siempre; bit 1 si hay alguna "2boton") */
+static int s_scriptAnalog;   /* mandos simulados con stick: son analogicos (tipo 7) */
 
 void Pad_SetScript(const char* script)
 {
@@ -37,11 +41,25 @@ void Pad_SetScript(const char* script)
             c++;
         }
         s_scriptPorts |= 1 | 1 << port;
+        if ((c[0] == 'l' && (c[1] == 'x' || c[1] == 'y') && c[2] == '=') && s_scriptCount < MAX_SCRIPT)
+        {
+            const char* star = strchr(c, '*');
+            const char* comma = strchr(c, ',');
+            s_script[s_scriptCount].frame = frame;
+            s_script[s_scriptCount].port = port;
+            s_script[s_scriptCount].axis = c[1] == 'y';
+            s_script[s_scriptCount].value = atoi(c + 3);
+            s_script[s_scriptCount].mask = 0;
+            s_script[s_scriptCount].len = star && (!comma || star < comma) ? atoi(star + 1) : 3;
+            s_scriptCount++;
+            s_scriptAnalog |= 1 << port;
+        }
         for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
             if (!strncmp(c, names[i].name, strlen(names[i].name)))
             {
                 s_script[s_scriptCount].frame = frame;
                 s_script[s_scriptCount].port = port;
+                s_script[s_scriptCount].axis = -1;
                 s_script[s_scriptCount].mask = names[i].mask;
                 s_script[s_scriptCount].len = c[strlen(names[i].name)] == '*' ? atoi(c + strlen(names[i].name) + 1) : 3;
                 s_scriptCount++;
@@ -61,6 +79,17 @@ static uint32_t ScriptButtons(int port)
             m |= s_script[i].mask;
     return m;
 }
+
+/* eje del stick simulado: el ultimo valor activo, o el centro */
+static int ScriptStick(int port, int axis)
+{
+    int v = 0x80, f = Gfx_GetFlipCount();
+    for (int i = 0; i < s_scriptCount; i++)
+        if (s_script[i].port == port && s_script[i].axis == axis && f >= s_script[i].frame &&
+            f < s_script[i].frame + s_script[i].len)
+            v = s_script[i].value;
+    return v;
+}
 static unsigned char s_padBuf[2][34];
 
 void Pad_Init(void)
@@ -74,22 +103,61 @@ void Pad_Init(void)
 int Pad_GetType(int port)
 {
     if (port >= 0 && port < 2 && (s_scriptPorts >> port & 1))
-        return 4;
+        return (s_scriptAnalog >> port & 1) ? 7 : 4;
     /* PsyCross marca el puerto vacio con id 0xFF pero deja el estado a 0 (en la PS1 el estado seria 0xFF) */
     if (port < 0 || port > 1 || s_padBuf[port][0] != 0 || s_padBuf[port][1] == 0xff)
         return 0;
     return s_padBuf[port][1] >> 4;
 }
 
-/* 8001dac0. El original anade bits sinteticos para neGcon (tipo 2) y analogico (tipo 7): pendiente. */
+/* 8001d10c(.., 0): el stick izquierdo (bytes 6 y 7 del buffer: 0 izquierda / arriba, 0x80 centro, 0xFF derecha /
+ * abajo); 0 si el mando no es analogico */
+int Pad_GetStick(int port, int* x, int* y)
+{
+    if (Pad_Kind(port) != 7)
+        return 0;
+    if (s_scriptPorts >> port & 1)
+    {
+        *x = ScriptStick(port, 0);
+        *y = ScriptStick(port, 1);
+    }
+    else
+    {
+        *x = s_padBuf[port][6];
+        *y = s_padBuf[port][7];
+    }
+    return 1;
+}
+
+/* 8001dac0. Con el mando analogico (tipo 7), en el front-end, en la pausa y en los resultados el stick izquierdo hace
+ * de cruceta (pasado un tercio del recorrido). El neGcon (tipo 2: I, II y L como cruz, cuadrado y L1 segun su
+ * calibracion) no esta: PsyCross solo emula el DualShock. */
 uint32_t Pad_GetButtons(int port)
 {
+    uint32_t m;
     if (port >= 0 && port < 2 && (s_scriptPorts >> port & 1))
-        return ScriptButtons(port);
-    if (port < 0 || port > 1 || s_padBuf[port][0] != 0)
-        return 0;
-    uint32_t word = s_padBuf[port][0] | s_padBuf[port][1] << 8 | s_padBuf[port][2] << 16 | (uint32_t)s_padBuf[port][3] << 24;
-    return ~word & 0xffff0000u;
+        m = ScriptButtons(port);
+    else
+    {
+        if (port < 0 || port > 1 || s_padBuf[port][0] != 0)
+            return 0;
+        uint32_t word = s_padBuf[port][0] | s_padBuf[port][1] << 8 | s_padBuf[port][2] << 16 |
+                        (uint32_t)s_padBuf[port][3] << 24;
+        m = ~word & 0xffff0000u;
+    }
+    int x, y;
+    if ((g_IsFrontend || g_RacePaused || g_GameState == GAMESTATE_RESULTS) && Pad_GetStick(port, &x, &y))
+    {
+        if (x > 0xaa)
+            m |= PADB_RIGHT;
+        else if (x < 0x56)
+            m |= PADB_LEFT;
+        if (y >= 0xab)
+            m |= PADB_DOWN;
+        else if (y <= 0x55)
+            m |= PADB_UP;
+    }
+    return m;
 }
 
 /* 8001d840: como Pad_GetType, pero -1 para los tipos que el juego no admite (ni 2, ni 4, ni 7) */
