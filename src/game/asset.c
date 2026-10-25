@@ -122,8 +122,6 @@ static int Asset_Dispatch(NrAsset* a)
     case ASSET_Tmdc:
     case ASSET_Gmdc:
         return Fe_OnMdc(a);
-    /* TODO: Ctrk 80062680, Cact 8004942c, Cnet 8004c368,
-     *       menus del front-end (Bmdc/Lmdc/Gmdc/Tmdc/McIc/TkFE)... */
     default:
         return 0;
     }

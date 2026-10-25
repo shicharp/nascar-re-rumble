@@ -341,7 +341,7 @@ int Actor_DefaultHandler(int msg, Actor* a, intptr_t p1, intptr_t p2)
     case 0xf:
         return Math_Atan2(a->vel[0], a->vel[2]) & 0xfff;
     case 4:
-        /* 8002c594: muere una vez (0x1000000 la protege; el sonido de la clase 800354d4 queda pendiente) */
+        /* 8002c594: muere una vez (0x1000000 la protege) con el efecto de su clase de objeto (800354d4) */
         if (a->flags2c & 0x1000000)
             return 0;
         a->flags2c |= 0x1000010;
@@ -360,7 +360,7 @@ int Actor_DefaultHandler(int msg, Actor* a, intptr_t p1, intptr_t p2)
     case 0xb:
     {
         /* Entity_OnCollide 8002c6a0: el choque ya lo resuelve el coche (los coches tienen clase 0); aqui solo
-         * el dano (el +0x1E del otro: 1 para los coches) y la bandera 0x2000000 (el guion 80067890, pendiente) */
+         * el dano (el +0x1E del otro: 1 para los coches), la bandera 0x2000000 y el guion de golpe (80067890) */
         const RaceCar* o = (const RaceCar*)p1;
         int dmg = o ? (o->type == 1 || o->type == 0x11 ? 1 : o->unk1e) : 0;
         if (!(a->flags2c & 0x80) && dmg > 0)
@@ -1425,7 +1425,7 @@ void Actors_AddToDrawList(int view)
 
 /* 80061808 / 80061608 / 800613b4 (coche contra actor): misma celda de TCRV (curva >> 2) o la siguiente,
  * alguno con 0x2200, el que tenga 0x800000 pregunta con el mensaje 10 (los coches dicen que si) y, si se
- * tocan, mensaje 0xB al actor (al coche tambien en el original: cuerpos sueltos, pendiente). */
+ * tocan, mensaje 0xB al coche (Body_CarHitsActor: cuerpos sueltos) y al actor. */
 void Actors_CollideCars(void)
 {
     int cells = g_Track && g_Track->numCurve > 0 ? (g_Track->numCurve >> 2) + 1 : 1;

@@ -430,7 +430,7 @@ static void Fe_DrawOptionValue(int r, int g, int b, MenuItem* it, const char* va
 
 /* 8008d5f4: barra de ayuda inferior; si no cabe se desplaza con los bordes difuminados.
  * port: mando cuyo tipo se comprueba (1 = el segundo); edges: 0 ambos degradados, 1 solo el izquierdo,
- * 2 solo el derecho, 3 ninguno. Pendiente: sustitucion de iconos para el mando neGcon (tipo 2). */
+ * 2 solo el derecho, 3 ninguno. Sin la sustitucion de iconos del neGcon (tipo 2): PsyCross no lo emula. */
 void Fe_DrawHelp(int port, const char* text, int x, int y, int clipX0, int clipX1, int edges)
 {
     FrontendState* fe = g_Frontend;
@@ -880,8 +880,8 @@ static const char* GameOptValue(int item)
     }
 }
 
-/* 8007bf00. popup: -1 nada, 0/1 confirmar borrado (pistas/copas), 10/11 borrado hecho.
- * Pendiente: el borrado real de records (FUN_800931d8). */
+/* 8007bf00. popup: -1 nada, 0/1 confirmar borrado (pistas/copas), 10/11 borrado hecho (Save_ClearRecords
+ * 800931d8). */
 void Fe_Screen400(void)
 {
     FrontendState* fe = g_Frontend;

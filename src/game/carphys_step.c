@@ -459,8 +459,8 @@ static int Car_Suspension(uint8_t* c, int ground, int sdt, int* minComp, int8_t*
 }
 
 /* 80056c6c: paso de la fisica de todos los coches (dos sub-pasos si dt >= 0x10; los contactos de la caja y los
- * choques solo en el ultimo). Pendiente: sonidos y efectos (chispas al aterrizar 8007734c / 800773d4, marcas
- * de las ruedas 80076500, humo del escape 80077c60, 80040600 / 8003dbb0) y los poderes (0x33A bits 2 / 4). */
+ * choques solo en el ultimo), con las marcas de las ruedas (80076500), las chispas al aterrizar (8007734c /
+ * 800773d4), el motor (80040600), su fuente de sonido (8003dbb0) y el humo del escape (80077c60). */
 void Physics_StepAll(int dt)
 {
     static int ground[RACE_MAX_CARS];   /* DAT_800b6100 */
@@ -824,8 +824,9 @@ static void Car_PlaceWheels(uint8_t* c)
                 w[k]->pos[1] -= dy;
 }
 
-/* 8004f54c (desde Race_DrawView): coloca las ruedas de los coches visibles. Pendiente: los bits de
- * visibilidad y nivel de detalle de la entidad (+0x25) y el modelo de rueda borrosa. */
+/* 8004f54c (desde Race_DrawView): coloca las ruedas. Port: las de todos los coches; el original solo las de los
+ * visibles en la vista con nivel de detalle 0 o 1 (entidad +0x25, marca +0x3F5). Las ruedas borrosas las elige
+ * racecar.c. */
 void Physics_PlaceWheelsAll(int view)
 {
     (void)view;

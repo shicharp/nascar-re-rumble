@@ -1,6 +1,6 @@
 /* Carga de la carrera y bucle de carrera.
  * Original: Race_Load 80024284, coche siguiente FUN_80023ef4, progreso FUN_80024f08, Ctrk_OnLoaded 80062680,
- * Cars_RegisterModels 800134f0, Race_MainLoop 800299a8 (pendiente). */
+ * Cars_RegisterModels 800134f0, Race_MainLoop 800299a8. */
 #ifndef NR_RACE_H
 #define NR_RACE_H
 

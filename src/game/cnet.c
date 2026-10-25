@@ -43,7 +43,8 @@ static void Write16(uint8_t* p, int v)
     p[1] = (uint8_t)(v >> 8);
 }
 
-/* 8004c368. Pendiente: las banderas de superficie de la red principal (FUN_80065ee8, bits 0-1). */
+/* 8004c368: altura de cada nodo sobre el suelo. Pendiente: en la red principal, los bits 0-1 de las banderas del
+ * nodo segun el tipo de superficie (Track_SurfaceType: 2 / 3 -> 1, 4 / 8 -> 2, 5 / 6 / 7 -> 3; si no, 0). */
 int Cnet_OnLoaded(NrAsset* a)
 {
     Asset_Register(a);

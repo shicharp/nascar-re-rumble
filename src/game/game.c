@@ -29,8 +29,9 @@ GameOptions g_Options;
 
 static int s_lastFrameTime;   /* DAT_800af718 */
 
-/* 80079470. Pendiente: InitHeap3 (malloc del host), FUN_80074ee8, FUN_80016dac, CdInit (no hay CD),
- * callback de VSync (FUN_8001ce28(FUN_8008b160)), FUN_8001a884, memoria. */
+/* 80079470. En el PC no hacen falta InitHeap3 (malloc), CdInit (no hay CD) ni el callback de VSync
+ * (FUN_8001ce28; el tiempo lo lleva Timer_Update); el bufer de la repeticion (80074ee8) es estatico en replay.c.
+ * Sin portar: FUN_80016dac y FUN_8001a884. */
 int Game_Init(void)
 {
     g_GameInfo = (GameInfo*)Mem_Alloc(sizeof(GameInfo), 3);
@@ -115,9 +116,8 @@ const char* Level_GetDataDir(void)
     return dir;
 }
 
-/* 80024080 (parte imprescindible). Pendiente: FUN_80023e70, pools (FUN_80016e2c), FUN_8001836c/182ec,
- * FUN_8001930c, FUN_800185fc, FUN_8003cfd0, FUN_80067680, camaras (FUN_800167c8), FUN_80046978,
- * FUN_800137d8, FUN_80061cd0/80012be0, FUN_80060b98, FUN_800446b8, FUN_80066fe0. */
+/* 80024080 (parte). Port: solo la ruta y las primitivas; el resto de lo que prepara el original (pools 80016e2c,
+ * camaras 800167c8, render 800137d8...) lo inicializa cada modulo del port al cargar el front-end. */
 void Frontend_Load(const char* path)
 {
     strcpy(g_LevelPath, path);

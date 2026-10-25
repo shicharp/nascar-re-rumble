@@ -1,5 +1,7 @@
 /* Sonido del juego (ver snd.h). Las estructuras siguen a las del original (tamanos y campos) pero en C; nada
- * de fuera accede a ellas por desplazamientos. Motores en snd_car.c. Pendiente: streaming de musica y voces (80021464..80022300, 80023258, 80022f24) y comentarios (8002b920). */
+ * de fuera accede a ellas por desplazamientos. Motores en snd_car.c, musica en snd_music.c (lee los VAGM del
+ * fichero en vez de recibirlos por el stream, 80021464..80022300) y comentarista en snd_speech.c (80023258,
+ * 80022f24, 8002b920). */
 #include <stdlib.h>
 #include <string.h>
 #include "nr.h"

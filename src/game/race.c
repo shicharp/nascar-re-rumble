@@ -38,8 +38,8 @@
 uint8_t g_CarLoadOrder[8];
 int     g_CarsLoaded;
 
-/* 80024284 (parte imprescindible). Pendiente: los ~30 subsistemas de la carrera (sonido, IA, red de
- * trazadas Cnet, actores Cact, camaras, HUD, power-ups...). */
+/* 80024284. Port: aqui lo que hace falta antes de leer el stream (actores, efectos, pista, aleatorios, render);
+ * los coches, las camaras, el marcador y el sonido se preparan al empezar Race_MainLoop. */
 void Race_Load(const char* path)
 {
     g_CarsLoaded = 0;              /* FUN_80023e70 */

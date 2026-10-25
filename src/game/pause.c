@@ -6,7 +6,8 @@
  * posiciones finales en los registros DAT_800b12ac + id * 0x18).
  * En la repeticion (GameInfo +0x60, replay.c) el menu es "Replay Paused" con Restart Replay y Quit Replay, y al
  * acabarse la grabacion la carrera se para hasta que se pulsa un boton (DAT_800af688).
- * Pendiente: el final de los campeonatos en los resultados (Continue). */
+ * Pendiente en los resultados: en campeonato, "Continue" en vez de "Restart Race" (8002896c, DAT_800b7168) y, con
+ * equipos (DAT_800b7167), la tabla de tiempos por equipo. */
 #include <stdio.h>
 #include <string.h>
 #include "libgte.h"

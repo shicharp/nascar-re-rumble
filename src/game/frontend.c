@@ -135,7 +135,8 @@ static void FreeMenu(MenuItem* items, int count)
     }
 }
 
-/* 80079684 (parte del front-end; la camara 3D del garaje queda pendiente) */
+/* 80079684 (parte): el estado del front-end. Port: la proyeccion de los modelos 3D la pone cada pantalla
+ * (SetGeomOffset en fe_select.c / fe_records.c) */
 void Frontend_InitCamera(void)
 {
     if (!g_Frontend)
@@ -168,8 +169,8 @@ void Frontend_Free(void)
     g_Frontend = NULL;
 }
 
-/* 80079814. Pendiente: el resto de menus (FUN_8007a684 sobre 800ab7fc...800ab950), coches y pilotos
- * del garaje, modelos 3D (FUN_800139fc) y la vuelta de una carrera (FUN_80090fb4). */
+/* 80079814. Port: los menus se preparan en sus pantallas (Fe_ResetMenu), los coches del garaje en
+ * Fe_CreateGarageObjects y la vuelta de una carrera es Fe_AfterRace (80090fb4). */
 void Frontend_InitScreens(void)
 {
     FrontendState* fe = g_Frontend;
@@ -294,7 +295,8 @@ static void Fe_ScreenPending(void)
     FntPrint("\n\n\n\n\n\n\n\n\n\n\n\n\n     PANTALLA %d SIN PORTAR\n", g_Frontend->screen);
 }
 
-/* 8007a994. Pendiente: Camera_ApplyProjection y avisos de mando desconectado (FUN_8008ec2c). */
+/* 8007a994. Pendiente: los avisos de mando desconectado en todas las pantallas (Fe_DrawTextBox 8008ec2c con las
+ * cadenas 0xFA2 / 0xFA3; ahora solo en la 1000) y Camera_ApplyProjection(fe +0xC0) (el port deja el preset 1). */
 void Frontend_Update(void)
 {
     FrontendState* fe = g_Frontend;

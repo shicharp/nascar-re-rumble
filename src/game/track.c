@@ -236,7 +236,8 @@ void Track_Animate(int dt)
     }
 }
 
-/* 80062088. Pendiente: la tabla de TCRV DAT_800af8e8. */
+/* 80062088. Port: sin la tabla de celdas de TCRV DAT_800af8e8 (el original reparte en ella las entidades para
+ * los choques y la visibilidad, 80060b98 / 80061c40); el port recorre todos los actores. */
 void Track_Parse(uint8_t* data, int size)
 {
     Track_Free();
@@ -504,7 +505,9 @@ void Track_DrawView(int view, int curSeg, int mirrorCam)
     if (!t || t->numSegs == 0)
         return;
     Render_LoadCameraRotation();
-    Track_SetLodDistances(mirrorCam);   /* TODO: tambien con pantalla partida (DAT_800af708) */
+    /* Pendiente: con pantalla partida (DAT_800af708) el original tambien usa las distancias cortas y un segmento
+     * menos por delante y por detras (extra 0 en vez de 1) */
+    Track_SetLodDistances(mirrorCam);
     memset(s_segFlags[view], 0, sizeof(s_segFlags[view]));
     const TrackSegHdr* h = t->segs[curSeg].hdr;
     int extra = (mirrorCam ? -4 : 1) + ((Render_GetProjection()->h - 0x78) >> 9);

@@ -317,7 +317,8 @@ static void LinkPendingPrims(GfxBuffer* buf)
     s_pendCount = 0;
 }
 
-/* 8001a24c. Pendiente: modos de pantalla partida y retrovisor (cambian area de dibujo y offset). */
+/* 8001a24c. Port: el area de dibujo y el desplazamiento de la pantalla partida y del retrovisor van como DR_AREA /
+ * DR_OFFSET en la OT (race.c), no aqui. */
 void Gfx_Flip(int mode)
 {
     (void)mode;

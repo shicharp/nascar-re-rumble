@@ -255,7 +255,7 @@ static void Stream_ProcessChunks(const uint8_t* block, int len)
             break;
         case TAG_VAGB:
         case TAG_VAGM:
-            s_stats.vagChunks++;   /* TODO: audio (FUN_80022e50 / cola VAGM) */
+            s_stats.vagChunks++;   /* la musica la lee snd_music.c del fichero (el original, 80022e50 / cola VAGM) */
             break;
         case TAG_CTRL:
             if (s_offset == 0 && off == 0 && size >= 0x18)
