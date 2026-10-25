@@ -343,12 +343,21 @@ void Race_AddCarsToDrawList(void)
 /* 800ab408: {eje de la matriz del coche, detras, tipo (2 dentro del coche, 3 persecucion), altura,
  * distancia, longitud de la cuerda, con +0x200, altura del punto mirado} (las cuerdas en RaceCam_Init) */
 typedef struct { int axis, back, type, height, dist, rest, rest2, lookH; } CamPreset;
-static CamPreset s_presets[4] = {
-    { 2, 1, 3, 0x700, 0xf00, 0, 0, 0 },
-    { 2, 1, 3, 0x570, 0x1000, 0, 0, 0 },
-    { 2, 1, 3, 0x700, 0xb80, 0, 0, 0 },
-    { 2, 1, 2, 0, 0, 0, 0, 0 },
+static CamPreset s_presetTab[2][4] = {
+    {
+        { 2, 1, 3, 0x700, 0xf00, 0, 0, 0 },
+        { 2, 1, 3, 0x570, 0x1000, 0, 0, 0 },
+        { 2, 1, 3, 0x700, 0xb80, 0, 0, 0 },
+        { 2, 1, 2, 0, 0, 0, 0, 0 },
+    },
+    {   /* 800ab488: con dos jugadores (DAT_800af6e8 == 2), mas lejos y mirando mas alto para la vista mas baja */
+        { 2, 1, 3, 0x600, 0x12c0, 0, 0, 0x300 },
+        { 2, 1, 3, 0x500, 0x1000, 0, 0, 0x300 },
+        { 2, 1, 3, 0x580, 0xe00, 0, 0, 0x300 },
+        { 2, 1, 2, 0, 0, 0, 0, 0x300 },
+    },
 };
+#define s_presets (s_presetTab[g_NumHumans == 2])
 
 /* DAT_800b6160 + vista * 0x40 */
 typedef struct
@@ -406,13 +415,16 @@ int RaceCam_GetSegment(int view)
 /* 8005d4c8 */
 void RaceCam_Init(void)
 {
-    for (int i = 0; i < 4; i++)
-        if (s_presets[i].type == 3)
+    for (int t = 0; t < 2; t++)
+        for (int i = 0; i < 4; i++)
         {
-            int h = s_presets[i].height, d = s_presets[i].dist;
-            s_presets[i].rest = Math_SquareRoot12(Fix_Mul16(h, h) + Fix_Mul16(d, d)) << 2;
+            CamPreset* p = &s_presetTab[t][i];
+            if (p->type != 3)
+                continue;
+            int h = p->height, d = p->dist;
+            p->rest = Math_SquareRoot12(Fix_Mul16(h, h) + Fix_Mul16(d, d)) << 2;
             d += 0x200;
-            s_presets[i].rest2 = Math_SquareRoot12(Fix_Mul16(h, h) + Fix_Mul16(d, d)) << 2;
+            p->rest2 = Math_SquareRoot12(Fix_Mul16(h, h) + Fix_Mul16(d, d)) << 2;
         }
     memset(s_views, 0, sizeof(s_views));
     s_viewMode[0] = s_viewMode[1] = 0;
@@ -421,13 +433,16 @@ void RaceCam_Init(void)
         s_views[v].tpos.seg = 0xff;
         s_views[v].tpos.curve = -1;
     }
-    /* 8003132c: la vista 0 sigue al primer humano */
-    for (int i = 0; i < g_NumCars; i++)
-        if (g_Cars[i].type == 1)
-        {
-            s_views[0].target = &g_Cars[i];
-            break;
-        }
+    /* 8003132c: cada vista sigue a su jugador (DAT_800b6188 + jugador * 0x40); sin humanos, el primer coche */
+    for (int v = 0; v < 2; v++)
+        s_views[v].target = g_Humans[v];
+    if (!s_views[0].target)
+        for (int i = 0; i < g_NumCars; i++)
+            if (g_Cars[i].type == 1)
+            {
+                s_views[0].target = &g_Cars[i];
+                break;
+            }
     if (!s_views[0].target && g_NumCars > 0)
         s_views[0].target = &g_Cars[0];
     /* solo en el port (depuracion): NR_CAMCAR=n sigue al coche del hueco n */

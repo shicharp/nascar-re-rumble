@@ -174,10 +174,45 @@ int Ctrk_OnLoaded(NrAsset* a)
     return 1;
 }
 
-/* 80043520: Hud_Draw (hud.c) */
-static void Race_DrawHud(void)
+/* Race_DrawView 8006422c + Fx_Draw + Sprite_DrawAll + el marcador (80043520) de una vista con la camara en g_Camera */
+static void Race_DrawViewAll(int view)
 {
-    Hud_Draw(0);
+    Sprite_Clear();
+    int seg = RaceCam_GetSegment(view);
+    if (seg == 0xff)
+        seg = Track_FindSegment(g_Camera.pos);
+    Track_DrawView(view, seg, 0);
+    Track_DrawHorizon(view, 0);
+    Track_DrawSegments(view, 0);
+    Render_ClearList();
+    Race_AddCarsToDrawList();
+    Actors_AddToDrawList(view);    /* 80061a0c + Actors_DrawView 80061b28 */
+    Render_DrawList(0);
+    Race_RestoreCarModels();
+    Fx_Draw(view);                 /* 80038ccc */
+    Sprite_DrawAll();              /* 80045268 */
+    Hud_Draw(view);                /* 80043520 */
+}
+
+/* Pantalla partida (8001a6fc por vista): la vista 'view' se dibuja en su mitad (y 0 o 120) con el area de dibujo
+ * recortada y el desplazamiento de dibujo de la mitad, como el original; cada una en su capa de la OT para que no
+ * se mezclen por profundidad. half < 0: vuelve a la pantalla entera (para la pausa y los resultados). */
+static void Race_SetDrawHalf(int half, int otIndex)
+{
+    int y0 = Gfx_GetDrawBufferY();
+    DR_AREA* area = (DR_AREA*)Gfx_AllocPrim(sizeof(DR_AREA));
+    DR_OFFSET* ofs = (DR_OFFSET*)Gfx_AllocPrim(sizeof(DR_OFFSET));
+    if (!area || !ofs)
+        return;
+    int y = half < 0 ? 0 : half * (GFX_SCREEN_H / 2);
+    RECT16 rc = { 0, (short)(y0 + y), GFX_SCREEN_W, (short)(half < 0 ? GFX_SCREEN_H : GFX_SCREEN_H / 2) };
+    SetDrawArea(area, &rc);
+    /* SetDrawOffset (PsyCross no la trae): comando 0xE5 con x en los bits 0-10 e y en los 11-21. Una sola palabra:
+     * PsyCross para en un 0 dentro del paquete y lee lo que siga en memoria como otra primitiva */
+    setlen(ofs, 1);
+    ofs->code[0] = 0xe5000000u | (uint32_t)((y0 + y) & 0x7ff) << 11;
+    Gfx_AddPrim(otIndex, area);
+    Gfx_AddPrim(otIndex, ofs);
 }
 
 /* Race_Frame1P 80026f28 (parte): retrovisor con R1 mantenido (un jugador, despues de la salida y sin haber
@@ -268,28 +303,42 @@ static void Race_UpdateListener(int view)
 }
 
 /* Solo en el port (depuracion): NR_ENDRACE=t da por terminada la carrera del jugador 1 a los t tics, como si
- * cruzara la meta (la vuelta rapida, si no tiene, es el tiempo total) */
+ * cruzara la meta (la vuelta rapida, si no tiene, es el tiempo total); con dos jugadores el 2 termina 300 tics
+ * despues */
 static void Race_DebugEnd(void)
 {
     static int s_end = -1;
     if (s_end < 0)
         s_end = getenv("NR_ENDRACE") ? atoi(getenv("NR_ENDRACE")) : 0;
-    RaceCar* e = g_Humans[0];
-    if (s_end <= 0 || g_RaceTime < s_end || !e || !e->phys || I32(e->phys, 0x330) != 0)
+    if (s_end <= 0)
         return;
-    I32(e->phys, 0x330) = g_RaceTime - 900;
-    int slot = e->id - 1000;
-    if (slot >= 0 && slot < 6 && g_CarRecords[slot].b == 0)
-        g_CarRecords[slot].b = (g_RaceTime - 900) / 3;
-    if (g_NumHumans < 2)
+    int done = 0;
+    for (int p = 0; p < 2; p++)
+    {
+        RaceCar* e = g_Humans[p];
+        if (!e || !e->phys)
+            continue;
+        if (I32(e->phys, 0x330) != 0)
+        {
+            done++;
+            continue;
+        }
+        if (g_RaceTime < s_end + p * 300)
+            continue;
+        I32(e->phys, 0x330) = g_RaceTime - 900;
+        int slot = e->id - 1000;
+        if (slot >= 0 && slot < 6 && g_CarRecords[slot].b == 0)
+            g_CarRecords[slot].b = (g_RaceTime - 900) / 3;
+        done++;
+        NR_Log("[depuracion] NR_ENDRACE: el jugador %d termina a los %d tics\n", p + 1, g_RaceTime);
+    }
+    if (done == g_NumHumans && g_RaceEndTimer == 0)
         g_RaceEndTimer = 5;
-    NR_Log("[depuracion] NR_ENDRACE: el jugador 1 termina a los %d tics\n", g_RaceTime);
 }
 
-/* 800299a8 + 80026f28 (un jugador). Del bucle original estan: tiempo de carrera, texturas animadas,
- * camara de persecucion (8005f034), visibilidad y dibujo de la pista (Track_DrawView 800644c0 +
- * Race_DrawView 8006422c), parte del HUD y la fisica (80030cac / 80056c6c). Pendiente: IA, poderes, actores,
- * sonido, pausa (START vuelve al front-end de momento) y pantalla partida. */
+/* 800299a8 con Race_Frame1P 80026f28 o, con dos jugadores, Race_Frame2P 8002767c: cada vista con su camara
+ * (8005f034), su proyeccion de media pantalla y su marcador, en su mitad (Race_SetDrawHalf). Pendiente: la
+ * repeticion. */
 void Race_MainLoop(void)
 {
     Font_SetDeferUpload(0);
@@ -319,6 +368,8 @@ void Race_MainLoop(void)
     }
     Snd_ApplySettings(g_Settings.volume, g_Settings.audioMode);
     Snd_Pause(1);                      /* 8003fe7c(1) (Level_WaitLoaded) */
+    Camera3D viewCam[2];               /* camara de cada vista (DAT_800b6160 + vista * 0x40) */
+    memset(viewCam, 0, sizeof(viewCam));
     while (g_GameState == GAMESTATE_RUNNING || g_GameState == GAMESTATE_RESULTS)
     {
         Frame_Wait();
@@ -341,37 +392,48 @@ void Race_MainLoop(void)
             Actors_PostUpdate();       /* 80048e84 */
             Fx_Update(dt);             /* 80038b50 */
             Hud_Update(dt);            /* 80042330 */
-            RaceCam_Update(0, dt);     /* 8005f034 */
+            for (int v = 0; v < (g_SplitScreen ? 2 : 1); v++)
+            {
+                RaceCam_Update(v, dt); /* 8005f034 */
+                viewCam[v] = g_Camera;
+            }
         }
         else if (g_PauseCamPreview > 0)
         {
             g_PauseCamPreview = g_PauseCamPreview < dt ? 0 : g_PauseCamPreview - dt;
             RaceCam_Update(0, dt);
+            viewCam[0] = g_Camera;
         }
 
-        Sprite_Clear();                /* Race_DrawView 8006422c */
-        int seg = RaceCam_GetSegment(0);
-        if (seg == 0xff)
-            seg = Track_FindSegment(g_Camera.pos);
-        Track_DrawView(0, seg, 0);
-        Track_DrawHorizon(0, 0);
-        Track_DrawSegments(0, 0);
-        Render_ClearList();
-        Race_AddCarsToDrawList();
-        Actors_AddToDrawList(0);       /* 80061a0c + Actors_DrawView 80061b28 */
-        Render_DrawList(0);
-        Race_RestoreCarModels();
-        Fx_Draw(0);                    /* 80038ccc */
-        Sprite_DrawAll();              /* 80045268 */
-        Race_DrawHud();
-        Race_DrawMirror();
+        if (!g_SplitScreen)            /* Race_Frame1P 80026f28 */
+        {
+            g_Camera = viewCam[0];
+            Race_DrawViewAll(0);
+            Race_DrawMirror();
+            Race_UpdateListener(0);    /* 800299a8: 8003dd84 por vista */
+        }
+        else                           /* Race_Frame2P 8002767c */
+        {
+            for (int v = 0; v < 2; v++)
+            {
+                if (v == 1)
+                    Gfx_FlushPartial();
+                Race_SetDrawHalf(v, GFX_OT_LEN - 1);
+                g_Camera = viewCam[v];
+                Render_SetPreset(TvCam_CurrentPreset(v));   /* Camera_ApplyProjection(DAT_800b6162 + vista * 0x40) */
+                Race_DrawViewAll(v);
+                if (v == 0)
+                    Hud_Rect15(1, 0, 0xee, 0x280, 2, 0);    /* raya negra entre las dos mitades */
+                Race_UpdateListener(v);
+            }
+            Race_SetDrawHalf(-1, 0);
+        }
         if (g_GameState == GAMESTATE_RESULTS)
             Race_Results(dt);          /* 8002896c */
         else if (g_RacePaused)
             Pause_Menu();              /* 80025ad4 */
 
-        Race_UpdateListener(0);        /* 800299a8: 8003dd84 por vista */
-        Snd_SetListenerCount(1);       /* 8003d48c */
+        Snd_SetListenerCount(g_SplitScreen ? 2 : 1);   /* 8003d48c */
         Snd_Update();                  /* 8003e848 */
 
         if (!g_RacePaused)

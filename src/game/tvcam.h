@@ -14,6 +14,7 @@ void TvCam_Free(void);                          /* 80072254 / 80072348 */
 void TvCam_AddFromDef(const uint8_t* def);      /* 80071f50 (tACT tipo 0x54) */
 void TvCam_PostLoad(void);                      /* 80072320 (Level_Run) */
 int  TvCam_IsActive(int view);                  /* DAT_800af8c8 */
+int  TvCam_CurrentPreset(int view);
 int  TvCam_CurrentType(int view);               /* (DAT_800af930 +0x1B) */
 int  TvCam_Enter(int view);                     /* RaceCam_CycleView 8005ed10 (con 0): 1 si hay camara */
 void TvCam_Leave(int view);

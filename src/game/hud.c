@@ -1,10 +1,11 @@
-/* Marcador de la carrera (Race_DrawHud 80043520, un jugador).
+/* Marcador de la carrera (Race_DrawHud 80043520; con dos jugadores, uno por vista en su mitad).
  * Nivel del marcador (controlador del humano +0x58; ajuste DAT_800b7112, 1 por defecto, cambia con SELECT
  * largo o con L1 en automatico, 8005efec): 0 solo posicion y vuelta, 1 + mapa (8004274c) y cuentarrevoluciones
  * con marcha y velocidad (800430e4), 2 + tiempos de vuelta y diferencia con el coche de delante / detras
  * (8002cd84). Graficos de la pagina de texturas 8 (Cpag): mapa en (0,0) y esfera en (0x80,0).
- * Iconos de poderes 80042544. Pendiente: dos jugadores, repeticion y el marcador sin
- * humanos (8004304c). */
+ * Iconos de poderes 80042544. Con dos jugadores: mapa abajo de cada mitad (0x76 / 0x69), textos arriba en 0x16 / 2,
+ * poderes activos de dos en dos y el cuentarrevoluciones compacto (barra, marcha y velocidad; sin aguja, 80042330 no
+ * la mueve). Pendiente: repeticion y el marcador sin humanos (8004304c). */
 #include <stdio.h>
 #include <string.h>
 #include "libgte.h"
@@ -147,7 +148,8 @@ static void Hud_Map(int view, int* w, int* h, int* y)
         *h = (r[2] - r[0]) + 1;
         if (*w < 0x80 && *h < 0x80)
         {
-            *y = 0xdc - *h;
+            /* con pantalla partida, abajo de cada mitad (cada vista se dibuja con su desplazamiento) */
+            *y = (g_SplitScreen ? (view == 0 ? 0x76 : 0x69) : 0xdc) - *h;
             Hud_Sprite(r, 0, 0, *w, *h, 1, HUD_L(8), *y);
             drawn = 1;
         }
@@ -156,7 +158,7 @@ static void Hud_Map(int view, int* w, int* h, int* y)
     {
         *w = 0x40;
         *h = 0x30;
-        *y = 0xac;
+        *y = g_SplitScreen ? (view == 0 ? 0x46 : 0x3e) : 0xac;
     }
     RaceCar* target = RaceCam_GetTarget(view);
     for (int i = 0; i < g_NumCars; i++)
@@ -173,6 +175,44 @@ static void Hud_Map(int view, int* w, int* h, int* y)
 static void Hud_Gauge(uint8_t* c, int y)
 {
     RaceCar* e = (RaceCar*)ENT(c);
+    if (g_NumHumans != 1)
+    {
+        /* con dos jugadores, compacto: fondo oscuro, barra de revoluciones (region (200, 0x1F), hasta 0x37 pixeles)
+         * y el marco (0xC4, 0) con la marcha y la velocidad */
+        Hud_Rect15(1, HUD_R(0xf8) * 2, y * 2, 0x76, 0x40, 1);
+        const uint8_t* bar = Cpag_FindRegion(8, 200, 0x1f);
+        int du = 0, dv = 0, tp = TexSlot_GetTPage(8, 0, &du, &dv);
+        POLY_FT4* p = bar && tp >= 0 ? (POLY_FT4*)Gfx_AllocPrim(sizeof(POLY_FT4)) : NULL;
+        if (p)
+        {
+            int len = ((I32(c, 0x3ec) * 0x3c >> 8) * 0x37) / 10000;
+            if (len > 0x37)
+                len = 0x37;
+            int x0 = HUD_R(0xfa);
+            setPolyFT4(p);
+            setSemiTrans(p, 1);
+            setRGB0(p, 0x80, 0x80, 0x80);
+            setXY4(p, x0, y + 2, x0 + len, y + 2, x0, y + 0xb, x0 + len, y + 0xb);
+            setUV4(p, 200 + du, 0x1f + dv, 200 + len + du, 0x1f + dv, 200 + du, 0x20 + dv, 200 + len + du, 0x20 + dv);
+            p->clut = NR_Read16(bar + 4);
+            p->tpage = (u_short)(tp & 0x9ff);
+            Gfx_AddPrimDepth(0, p);
+        }
+        const uint8_t* fr = Cpag_FindRegion(8, 0xc4, 0);
+        if (!fr)
+            return;
+        Hud_Sprite(fr, 0xc4, 0, 0x3b, 0x1e, 0, HUD_R(0xf8), y);
+        Font_Select(2);
+        char s2[16];
+        int g2 = I8(c, 0x3f4);
+        s2[0] = g2 == 0 ? 'R' : g2 < 0 ? 'N' : (char)('0' + g2);
+        s2[1] = 0;
+        Font_DrawString(s2, HUD_R(0xfc), y + 0xf, 8);
+        snprintf(s2, sizeof(s2), "%03d", e->speed);
+        Font_DrawString(s2, HUD_R(0x111), y + 0xf, 8);
+        Font_Select(1);
+        return;
+    }
     const uint8_t* r = Cpag_FindRegion(8, 0x80, 0);
     if (!r)
         return;
@@ -322,10 +362,10 @@ void Hud_Draw(int view)
     if (!t || (t->type != 1 && t->type != 0x11) || g_NumHumans == 0)
         return;
     int level = g_Humans[view] ? g_Humans[view]->ctrl[0x58] : 0;
-    int mapW = 0, mapH = 0, mapY = 0xdc;
+    int mapW = 0, mapH = 0, mapY = g_SplitScreen ? (view == 0 ? 0x78 : 0x6e) : 0xdc;
     if (level)
         Hud_Map(view, &mapW, &mapH, &mapY);
-    int ty = 0x16;
+    int ty = g_SplitScreen && view == 1 ? 2 : 0x16;   /* fila de arriba (la mitad de abajo empieza pegada a la raya) */
     if (t->type == 1)
         Hud_Messages(view, ty, level);
     if (g_RaceTime < 0x4b0)
@@ -336,7 +376,7 @@ void Hud_Draw(int view)
         Font_Select(3);
         int w, h;
         Font_Measure(txt[k], &w, &h);
-        Font_DrawString(txt[k], 0xa0 - w / 2, 0x2a, col[k]);
+        Font_DrawString(txt[k], 0xa0 - w / 2, g_SplitScreen ? 0x30 : 0x2a, col[k]);
         Font_Select(1);
     }
     uint8_t* c = t->phys;
@@ -406,7 +446,12 @@ void Hud_Draw(int view)
         Hud_PowerIcon(Exe_U8(0x800aa90fu + (uint32_t)held * 4), 0, held == POWER_MYSTERY ? I16(c, 0x33e) : 0, 0, ty);
     }
     for (int i = 0; i < U8(c, 0x339); i++)
-        Hud_PowerIcon(Exe_U8(0x800aa90fu + (uint32_t)I8(c, 0x340 + i * 4) * 4), i + 1, I16(c, 0x342 + i * 4), 0, ty);
+    {
+        /* con pantalla partida los activos van de dos en dos en columnas hacia la izquierda */
+        int slot = g_SplitScreen ? (i & 1) + 1 : i + 1, dx = g_SplitScreen ? (i / 2) * -0x1e : 0;
+        Hud_PowerIcon(Exe_U8(0x800aa90fu + (uint32_t)I8(c, 0x340 + i * 4) * 4), slot, I16(c, 0x342 + i * 4), dx,
+                      g_SplitScreen ? ty - 10 : ty);
+    }
     if (g_RaceTime < 0x4b1 || level != 2)
         return;
     if (ahead && I32(ahead, 0x330) != 0)

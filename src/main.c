@@ -19,6 +19,7 @@
 #include "game/pad.h"
 #include "game/game.h"
 #include "debug_viewer.h"
+#include "crash_log.h"
 
 static int DirExists(const char* path)
 {
@@ -62,6 +63,7 @@ int main(int argc, char** argv)
     }
 
     PsyX_Initialise((char*)"NASCAR Rumble", 960, 720, 0);
+    CrashLog_Install();   /* solo en el port: la pila del fallo en la salida */
 
     if (!disc)
         disc = FindDiscRoot();

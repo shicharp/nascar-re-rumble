@@ -300,16 +300,19 @@ void Render_SetPreset(int preset)
 {
     if (preset < 0 || preset > 9)
         return;
+    /* con pantalla partida (DAT_800af708) la vista mide 320 x 120: centro en (160, 60) y las pendientes y la
+     * holgura vertical de la variante "split" del preset (r_ysplit, shiftYsplit) */
+    int split = g_SplitScreen != 0;
     s_frustum.sx0 = s_presets[preset].sx[0];
     s_frustum.sx1 = s_presets[preset].sx[1];
-    s_frustum.sy0 = s_presets[preset].sy[0];
-    s_frustum.sy1 = s_presets[preset].sy[1];
+    s_frustum.sy0 = split ? s_presets[preset].sys[0] : s_presets[preset].sy[0];
+    s_frustum.sy1 = split ? s_presets[preset].sys[1] : s_presets[preset].sy[1];
     s_frustum.rx = s_presets[preset].rx;
-    s_frustum.ry = s_presets[preset].ry;
+    s_frustum.ry = split ? s_presets[preset].rys : s_presets[preset].ry;
     s_frustum.h = s_presets[preset].h;
     s_frustum.lod[0] = s_presets[preset].lod[0];
     s_frustum.lod[1] = s_presets[preset].lod[1];
-    SetGeomOffset(160, 120);
+    SetGeomOffset(160, split ? 60 : 120);
     SetGeomScreen(s_presets[preset].h);
     Camera_SetLodScale(s_presets[preset].h, 0);
 }

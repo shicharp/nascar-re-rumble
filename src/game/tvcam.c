@@ -865,6 +865,13 @@ int TvCam_IsActive(int view)
     return s_tv[view & 1].active;
 }
 
+/* preset de la proyeccion de la vista (el de su camara de TV, o el 1 de la camara de persecucion) */
+int TvCam_CurrentPreset(int view)
+{
+    const TvView* v = &s_tv[view & 1];
+    return v->active && v->cur ? v->cur->preset : 1;
+}
+
 /* tipo de la camara de TV de la vista (-1 sin ninguna; 8 = pegada al coche) */
 int TvCam_CurrentType(int view)
 {

@@ -11,8 +11,9 @@ uint32_t g_PadBinds[2][14];                 /* DAT_800b0570 */
 static uint8_t s_vibration[2] = { 1, 1 };   /* DAT_800b04ef + puerto * 0x28 */
 
 #define MAX_SCRIPT 256
-static struct { int frame, len; uint32_t mask; } s_script[MAX_SCRIPT];   /* --press "N:boton[*frames]" */
+static struct { int frame, len, port; uint32_t mask; } s_script[MAX_SCRIPT];   /* --press "N:[2]boton[*frames]" */
 static int s_scriptCount;
+static int s_scriptPorts;   /* mandos con pulsaciones simuladas (bit 0 siempre; bit 1 si hay alguna "2boton") */
 
 void Pad_SetScript(const char* script)
 {
@@ -29,10 +30,18 @@ void Pad_SetScript(const char* script)
         if (!c)
             break;
         c++;
+        int port = 0;
+        if (*c == '2')
+        {
+            port = 1;   /* "2cross": el mando 2 */
+            c++;
+        }
+        s_scriptPorts |= 1 | 1 << port;
         for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
             if (!strncmp(c, names[i].name, strlen(names[i].name)))
             {
                 s_script[s_scriptCount].frame = frame;
+                s_script[s_scriptCount].port = port;
                 s_script[s_scriptCount].mask = names[i].mask;
                 s_script[s_scriptCount].len = c[strlen(names[i].name)] == '*' ? atoi(c + strlen(names[i].name) + 1) : 3;
                 s_scriptCount++;
@@ -43,12 +52,12 @@ void Pad_SetScript(const char* script)
     }
 }
 
-static uint32_t ScriptButtons(void)
+static uint32_t ScriptButtons(int port)
 {
     uint32_t m = 0;
     int f = Gfx_GetFlipCount();
     for (int i = 0; i < s_scriptCount; i++)
-        if (f >= s_script[i].frame && f < s_script[i].frame + s_script[i].len)
+        if (s_script[i].port == port && f >= s_script[i].frame && f < s_script[i].frame + s_script[i].len)
             m |= s_script[i].mask;
     return m;
 }
@@ -64,7 +73,7 @@ void Pad_Init(void)
 
 int Pad_GetType(int port)
 {
-    if (port == 0 && s_scriptCount)
+    if (port >= 0 && port < 2 && (s_scriptPorts >> port & 1))
         return 4;
     /* PsyCross marca el puerto vacio con id 0xFF pero deja el estado a 0 (en la PS1 el estado seria 0xFF) */
     if (port < 0 || port > 1 || s_padBuf[port][0] != 0 || s_padBuf[port][1] == 0xff)
@@ -75,8 +84,8 @@ int Pad_GetType(int port)
 /* 8001dac0. El original anade bits sinteticos para neGcon (tipo 2) y analogico (tipo 7): pendiente. */
 uint32_t Pad_GetButtons(int port)
 {
-    if (port == 0 && s_scriptCount)
-        return ScriptButtons();
+    if (port >= 0 && port < 2 && (s_scriptPorts >> port & 1))
+        return ScriptButtons(port);
     if (port < 0 || port > 1 || s_padBuf[port][0] != 0)
         return 0;
     uint32_t word = s_padBuf[port][0] | s_padBuf[port][1] << 8 | s_padBuf[port][2] << 16 | (uint32_t)s_padBuf[port][3] << 24;
@@ -102,7 +111,7 @@ void Pad_ResetBinds(int player)
 /* 8001d448 */
 int Pad_HasVibration(int port)
 {
-    return Pad_GetType(port & 1) == 7 && !(port == 0 && s_scriptCount);
+    return Pad_GetType(port & 1) == 7 && !(s_scriptPorts >> (port & 1) & 1);
 }
 
 /* 8001d520 */
