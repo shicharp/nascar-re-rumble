@@ -43,6 +43,7 @@ static char s_text[2][14][40];     /* textos de 800aa89c (se modifican como en e
 static int  s_resSel;              /* DAT_800af73c */
 static int  s_resConfirm;          /* DAT_800af73d: 0 no, 1 NO, 2 SI */
 static int  s_resTime;             /* DAT_800af70c */
+static int  s_raceTicks;           /* DAT_800af6f8: tiempo de la carrera sin pausas (limite de 20 min) */
 static uint32_t s_prevButtons[2];
 static int  s_hold[2][16];         /* estado de cada boton para 80025a10 */
 
@@ -188,6 +189,7 @@ void Pause_Init(void)
     s_pausePlayer = -1;
     s_resume = 0;
     s_resTime = -1;
+    s_raceTicks = 0;
     memset(s_hold, 0, sizeof(s_hold));
     for (int p = 0; p < 2; p++)
         for (int b = 0; b < 16; b++)
@@ -264,9 +266,14 @@ void Race_UpdateState(int dt)
         if (g_RaceEndTimer < 1)
         {
             g_RaceEndTimer = -1;
-            Pause_ShowResults();
+            if (g_NumHumans == 0)
+                g_GameState = 0xb;   /* la demostracion acaba sin resultados */
+            else
+                Pause_ShowResults();
         }
     }
+    if (g_NumHumans < 1 && (g_PadButtons[0] || g_PadButtons[1]))
+        g_GameState = 5;             /* cualquier boton corta la demostracion */
     for (int p = 0; p < 2; p++)
     {
         if (!g_Humans[p])
@@ -280,6 +287,14 @@ void Race_UpdateState(int dt)
     }
     if (g_RacePaused && s_pausePlayer < 0 && g_GameState != GAMESTATE_RESULTS && g_ReplayEnd == 0)
         g_RacePaused = 0;
+    if (g_RacePaused)
+        return;
+    /* DAT_800af6f8: a los 0x589F8 tics (20 min) fuera de los resultados la carrera se da por acabada */
+    if (g_GameState != GAMESTATE_RESULTS && (s_raceTicks += dt) > 0x589f8)
+    {
+        Race_Finalize();
+        g_GameState = 5;
+    }
 }
 
 /* 80025ad4 */

@@ -452,18 +452,12 @@ void RaceCam_Init(void)
         s_views[v].tpos.seg = 0xff;
         s_views[v].tpos.curve = -1;
     }
-    /* 8003132c: cada vista sigue a su jugador (DAT_800b6188 + jugador * 0x40); sin humanos, el primer coche */
+    /* 8003132c: cada vista sigue a su jugador (DAT_800b6188 + jugador * 0x40); sin humanos (demostracion), la
+     * primera de la lista de la IA (DAT_800af7c4: la ultima creada, el ultimo de la parrilla) */
     for (int v = 0; v < 2; v++)
         s_views[v].target = g_Humans[v];
-    if (!s_views[0].target)
-        for (int i = 0; i < g_NumCars; i++)
-            if (g_Cars[i].type == 1)
-            {
-                s_views[0].target = &g_Cars[i];
-                break;
-            }
     if (!s_views[0].target && g_NumCars > 0)
-        s_views[0].target = &g_Cars[0];
+        s_views[0].target = &g_Cars[g_NumCars - 1];
     /* solo en el port (depuracion): NR_CAMCAR=n sigue al coche del hueco n */
     const char* cam = getenv("NR_CAMCAR");
     if (cam && atoi(cam) >= 0 && atoi(cam) < g_NumCars)

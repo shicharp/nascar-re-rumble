@@ -913,8 +913,10 @@ static int GridFindPlayer(int p)
     return 0;
 }
 
-/* 8008927c(0): completa la parrilla (rivales al azar, niveles, rival destacado, orden de salida), elige el
- * fichero de la pista y sale del front-end (estado 0xB). El modo demostracion (demo != 0) queda pendiente. */
+/* 8008927c: completa la parrilla (rivales al azar, niveles, rival destacado, orden de salida), elige el
+ * fichero de la pista y sale del front-end (estado 0xB). Con demo (Frontend_Update tras 30 s sin tocar nada): 6
+ * coches de la IA a 1 vuelta en una sede y pista al azar, sin rival destacado; la camara sigue al ultimo de la
+ * parrilla (que lleva la marca de rival). */
 void Fe_StartRace(int demo)
 {
     GameSettings* gs = &g_Settings;
@@ -922,12 +924,35 @@ void Fe_StartRace(int demo)
     unsigned seed = (unsigned)rand() & 0xffff;
     int cls = ClassIndex();
     int np = gs->numPlayers;
-    (void)demo;
 
-    if (!gs->playerNameSet[0])
-        snprintf(gs->playerName[0], sizeof(gs->playerName[0]), "%s", Fe_GetString(4000));
-    if (!gs->playerNameSet[1])
-        snprintf(gs->playerName[1], sizeof(gs->playerName[1]), "%s", Fe_GetString(0xfa1));
+    if (!demo)
+    {
+        if (!gs->playerNameSet[0])
+            snprintf(gs->playerName[0], sizeof(gs->playerName[0]), "%s", Fe_GetString(4000));
+        if (!gs->playerNameSet[1])
+            snprintf(gs->playerName[1], sizeof(gs->playerName[1]), "%s", Fe_GetString(0xfa1));
+    }
+    else
+    {
+        /* la sede y la pista elegidas se guardan (Frontend_InitScreens las devuelve al volver); sedes entre las 4
+         * primeras y las extra desbloqueadas (DAT_800b7136). Poderes "Some" salvo en la tercera seguida (ninguno).
+         * Port: el original elegia ademas las sedes de una copa si estaba elegida (raceIndex 0); aqui no hace falta,
+         * se vuelven a elegir al empezarla. */
+        gs->demo = 1;
+        gs->laps = 1;
+        grid->count = 6;
+        grid->car[0].team = 100;   /* todos los huecos libres: los 6 al azar */
+        gs->teamRace = 0;
+        gs->champType = 0;
+        gs->gameMode = 0;
+        g_SplitScreen = 0;
+        gs->curVenue = gs->venue;
+        gs->curTrack = gs->track;
+        gs->venue = (uint8_t)(rand() % (PROGRESS(0x800b7136u) + 4));
+        gs->track = (uint8_t)(rand() % 3);
+        g_GameInfo->powerUps = g_DemoCount != 3;
+        np = 0;
+    }
 
     if (gs->champType)
     {
@@ -985,19 +1010,22 @@ void Fe_StartRace(int demo)
     }
 
     /* numero de coches y vueltas segun el modo */
-    gs->laps = (uint8_t)gs->raceOpts1P[2];
-    switch (gs->gameMode)
+    if (!demo)
     {
-    case 0: grid->count = (uint8_t)gs->raceOpts1P[0]; break;
-    case 1: grid->count = (uint8_t)(gs->raceOpts1P[1] * 2); break;
-    case 5: grid->count = 1; gs->laps = 4; break;
-    case 6: grid->count = 2; gs->laps = 1; break;
-    case 7: grid->count = (uint8_t)gs->raceOpts2P[0]; gs->laps = (uint8_t)gs->raceOpts2P[3]; break;
-    case 8: gs->laps = (uint8_t)gs->raceOpts2P[3]; grid->count = (uint8_t)(gs->raceOpts2P[1] * 2); break;
-    case 9: gs->laps = (uint8_t)gs->raceOpts2P[3]; grid->count = (uint8_t)(gs->raceOpts2P[2] * 2); break;
-    case 13: grid->count = 2; gs->laps = 4; break;
-    case 14: grid->count = 1; gs->laps = 1; break;
-    default: grid->count = 6; gs->laps = 4; break;
+        gs->laps = (uint8_t)gs->raceOpts1P[2];
+        switch (gs->gameMode)
+        {
+        case 0: grid->count = (uint8_t)gs->raceOpts1P[0]; break;
+        case 1: grid->count = (uint8_t)(gs->raceOpts1P[1] * 2); break;
+        case 5: grid->count = 1; gs->laps = 4; break;
+        case 6: grid->count = 2; gs->laps = 1; break;
+        case 7: grid->count = (uint8_t)gs->raceOpts2P[0]; gs->laps = (uint8_t)gs->raceOpts2P[3]; break;
+        case 8: gs->laps = (uint8_t)gs->raceOpts2P[3]; grid->count = (uint8_t)(gs->raceOpts2P[1] * 2); break;
+        case 9: gs->laps = (uint8_t)gs->raceOpts2P[3]; grid->count = (uint8_t)(gs->raceOpts2P[2] * 2); break;
+        case 13: grid->count = 2; gs->laps = 4; break;
+        case 14: grid->count = 1; gs->laps = 1; break;
+        default: grid->count = 6; gs->laps = 4; break;
+        }
     }
     if (grid->count < np)
         grid->count = (uint8_t)np;
@@ -1138,7 +1166,7 @@ void Fe_StartRace(int demo)
         grid->car[i].flag = 0;
     if (gs->gameMode == 6)
         grid->car[1].flag = 1;
-    else if (gs->gameMode != 4)
+    else if (gs->gameMode != 4 && !demo)
     {
         /* rival destacado: el mejor de la IA de la clase que no sea del equipo de los jugadores */
         int other = np == 2 ? grid->car[1].team : -1;
@@ -1198,16 +1226,28 @@ void Fe_StartRace(int demo)
             }
         }
     }
-    g_PlayerTeam[0] = grid->car[GridFindPlayer(0)].team;
-    if (np == 2)
-        g_PlayerTeam[1] = grid->car[GridFindPlayer(1)].team;
+    if (demo)
     {
-        static const uint8_t specials[10] = { 47, 48, 49, 50, 51, 52, 53, 54, 55, 46 };   /* 800abeec */
-        uint32_t mask = 0;
-        for (int k = 0; k < 10; k++)
-            if (PROGRESS(0x800b7121u + specials[k]) == 1)
-                mask |= 1u << k;
-        g_GameInfo->unlockMask = (int)mask;
+        /* el ultimo de la parrilla: numero 0, marca de rival y la clase de la carrera */
+        GridCar* e = &grid->car[grid->count - 1];
+        e->playerNum = 0;
+        e->flag = 1;
+        e->cls = gs->racingClass;
+        g_GameInfo->unlockMask = 0;
+    }
+    else
+    {
+        g_PlayerTeam[0] = grid->car[GridFindPlayer(0)].team;
+        if (np == 2)
+            g_PlayerTeam[1] = grid->car[GridFindPlayer(1)].team;
+        {
+            static const uint8_t specials[10] = { 47, 48, 49, 50, 51, 52, 53, 54, 55, 46 };   /* 800abeec */
+            uint32_t mask = 0;
+            for (int k = 0; k < 10; k++)
+                if (PROGRESS(0x800b7121u + specials[k]) == 1)
+                    mask |= 1u << k;
+            g_GameInfo->unlockMask = (int)mask;
+        }
     }
 
 pickTrack:
@@ -1220,12 +1260,15 @@ pickTrack:
     g_GameInfo->unk5c = 0;
     g_GameInfo->numPlayers = np;
     g_GameInfo->racingClass = 1;
-    /* 8008a370: el tipo de cada mando y los botones del esquema de cada jugador (pantalla 1000) */
-    Pad_SetupControls(-1, 0, 0);
-    for (int p = 0; p < np; p++)
-        Pad_SetupControls(p, (int8_t)g_SaveExtra.padKind[p], gs->transmission[p]);
-    g_GameInfo->powerUps = (gs->gameMode == 5 || gs->gameMode == 13) ? 0 : gs->powerUps;
-    g_SplitScreen = np == 2;
+    if (!demo)
+    {
+        /* 8008a370: el tipo de cada mando y los botones del esquema de cada jugador (pantalla 1000) */
+        Pad_SetupControls(-1, 0, 0);
+        for (int p = 0; p < np; p++)
+            Pad_SetupControls(p, (int8_t)g_SaveExtra.padKind[p], gs->transmission[p]);
+        g_GameInfo->powerUps = (gs->gameMode == 5 || gs->gameMode == 13) ? 0 : gs->powerUps;
+        g_SplitScreen = np == 2;
+    }
 
     int venue, track;
     if (!gs->champType)

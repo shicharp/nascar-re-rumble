@@ -328,6 +328,7 @@ int  Fe_SavePrompt(int ask);                                              /* par
 /* Vuelta de una carrera, records y copas (fe_records.c) */
 extern short g_FeSaveReturn;          /* DAT_800b7118: 1 = preguntar si guardar al volver al menu; despues, la
                                          pantalla a la que se vuelve desde la 800 */
+extern uint8_t g_DemoCount;         /* DAT_800b711a */
 extern int8_t g_FeUnlockShow;        /* fe +0xA84: clase recien desbloqueada; -1 todo ganado en Elite (la 600 pone
                                          el final), -2 el video de la intro */
 int  Fe_AfterRace(void);                                                  /* 80090fb4: siguiente pantalla */

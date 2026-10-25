@@ -9,6 +9,7 @@
 #include "lsc.h"
 #include "globals.h"
 #include "frontend.h"
+#include "fe_internal.h"
 #include "savegame.h"
 #include "snd.h"
 #include "hud.h"
@@ -20,6 +21,7 @@ unsigned g_MenuFrame;
 GameSettings g_Settings;
 RaceGrid g_RaceGrid;
 CarRecord g_CarRecords[6];
+uint8_t g_DemoCount;            /* DAT_800b711a: demostraciones seguidas sin tocar nada (a la cuarta, la intro) */
 static const uint8_t* s_crle;   /* solo en el port: Crle 0 en RAM (el original lo relee de VRAM) */
 static int s_bmdcSize[13];   /* solo en el port: tamano de cada Bmdc para acotar la lectura del MDEC */
 static int s_gmdcSize[14];
@@ -226,6 +228,7 @@ void Frontend_InitScreens(void)
         /* LAB_80079c94: primer arranque o partida recien cargada de la tarjeta */
         g_FeSaveReturn = 0;
         g_Settings.savedTrack = 0xff;
+        g_DemoCount = 0;
         g_BootState = 1;
         fe->nextScreen = 100;
     }
@@ -290,8 +293,7 @@ static void Fe_ScreenPending(void)
     FntPrint("\n\n\n\n\n\n\n\n\n\n\n\n\n     PANTALLA %d SIN PORTAR\n", g_Frontend->screen);
 }
 
-/* 8007a994. Pendiente: Camera_ApplyProjection, avisos de mando
- * desconectado (FUN_8008ec2c) y demo por inactividad. */
+/* 8007a994. Pendiente: Camera_ApplyProjection y avisos de mando desconectado (FUN_8008ec2c). */
 void Frontend_Update(void)
 {
     FrontendState* fe = g_Frontend;
@@ -364,6 +366,24 @@ void Frontend_Update(void)
 
     if (fe->firstFrame)
         fe->firstFrame = 0;
+    /* 9000 tics (30 s) sin tocar nada en el menu principal: una demostracion (Fe_StartRace(1), que sale del
+     * front-end); a la cuarta seguida, la intro (pantalla 600 con fe +0xA84 = -2) */
+    if (fe->idleTimer > 0x2328)
+    {
+        g_DemoCount = (uint8_t)Fe_Clamp(g_DemoCount + 1, 0, 4);
+        if (g_DemoCount < 4)
+            Fe_StartRace(1);
+        else
+        {
+            fe->idleTimer = 0;
+            g_FeUnlockShow = -2;
+            fe->nextScreen = 600;
+            g_FadeDir = -1;
+            g_FadeLevel = 0;
+            fe->descAnim = (short)0xf000;
+            fe->descAnimOn = 1;
+        }
+    }
     if (fe->fadeDone)
     {
         fe->fadeDone = 0;
@@ -411,7 +431,8 @@ void Frontend_Update(void)
             fe->descAnim = 0x400;
     }
     fe->padDisabled = 0;
-    fe->idleTimer += g_FrameDelta;
+    if (fe->screen == 100)   /* el tiempo sin tocar nada solo cuenta en el menu principal */
+        fe->idleTimer += g_FrameDelta;
     g_MenuFrame++;
 }
 

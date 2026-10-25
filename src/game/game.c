@@ -310,6 +310,13 @@ int Game_Main(void)
                 break;
             Level_Run(g_SelectedTrack, 0);
             g_RaceExit = g_GameInfo->nextMode;   /* 800793d8 */
+            if (g_Settings.demo && g_RaceExit == 0)
+            {
+                /* la demostracion que acaba sola pone la pantalla legal (se puede saltar) */
+                Gfx_InitBuffers(200);
+                Legal_Show(1);
+                Gfx_FreeBuffers();
+            }
         }
     }
     Game_Shutdown();

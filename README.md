@@ -48,7 +48,8 @@ L1/L2 cambio manual, triángulo vuelve a la pista), la IA que corre por la red d
 coches, las vueltas y las posiciones, y el marcador (mapa, cuentarrevoluciones, tiempos; SELECT largo cambia de
 nivel, corto de camara), la pausa con START (camara, marcador, audio, reiniciar, salir), dos jugadores a pantalla partida y los resultados al
 terminar; "Exit Race" vuelve al front-end; "Show Replay" repite la carrera con las camaras de TV, volviendo a
-simularla con los mandos grabados). Actores de la pista: objetos (conos, vallas, carteles) que salen despedidos al golpearlos y se rompen, objetos
+simularla con los mandos grabados; tras 30 s sin tocar nada en el menu principal arranca una demostracion de 6
+coches de la IA, y cualquier boton la corta). Actores de la pista: objetos (conos, vallas, carteles) que salen despedidos al golpearlos y se rompen, objetos
 que giran y cajas de poder que reaparecen;
 los coches recogen un poder segun su puesto y lo usan (la IA sola, el jugador con R2), con sus efectos (escudo,
 turbo, ruedas grandes, embestida, onda expansiva, objetos que se sueltan en la pista, tormenta, helada y

@@ -5,7 +5,8 @@
  * (8002cd84). Graficos de la pagina de texturas 8 (Cpag): mapa en (0,0) y esfera en (0x80,0).
  * Iconos de poderes 80042544. Con dos jugadores: mapa abajo de cada mitad (0x76 / 0x69), textos arriba en 0x16 / 2,
  * poderes activos de dos en dos y el cuentarrevoluciones compacto (barra, marcha y velocidad; sin aguja, 80042330 no
- * la mueve). En la repeticion, "REPLAY" parpadeando arriba. Pendiente: el marcador sin humanos (8004304c). */
+ * la mueve). En la repeticion, "REPLAY" parpadeando arriba; sin humanos (demostracion), solo el
+ * rotulo "Rumble Demo" (8004304c). */
 #include <stdio.h>
 #include <string.h>
 #include "libgte.h"
@@ -90,10 +91,10 @@ void Hud_Update(int dt)
 /* ---------------------------------------------------------------- primitivas 2D */
 
 /* 8004242c: sprite de la pagina 8 (u, v, w, h) en (x, y) con la paleta de la region */
-static void Hud_Sprite(const uint8_t* region, int u, int v, int w, int h, int semi, int x, int y)
+static void Hud_SpriteSlot(int slot, const uint8_t* region, int u, int v, int w, int h, int semi, int x, int y)
 {
     int du = 0, dv = 0;
-    int tp = TexSlot_GetTPage(8, 0, &du, &dv);
+    int tp = TexSlot_GetTPage(slot, 0, &du, &dv);
     if (tp < 0 || !region)
         return;
     DR_TPAGE* t = (DR_TPAGE*)Gfx_AllocPrim(sizeof(DR_TPAGE));
@@ -110,6 +111,12 @@ static void Hud_Sprite(const uint8_t* region, int u, int v, int w, int h, int se
     setXY0(s, x, y);
     s->clut = NR_Read16(region + 4);
     Gfx_AddPrimDepth(0, s);
+}
+
+/* 8004242c con la pagina 8 (la del marcador) */
+static void Hud_Sprite(const uint8_t* region, int u, int v, int w, int h, int semi, int x, int y)
+{
+    Hud_SpriteSlot(8, region, u, v, w, h, semi, x, y);
 }
 
 /* 8001ab58: rectangulo de color 15 bits; coordenadas en medios pixeles */
@@ -369,8 +376,16 @@ static void Hud_Messages(int view, int y, int level)
 void Hud_Draw(int view)
 {
     RaceCar* t = RaceCam_GetTarget(view);
-    if (!t || (t->type != 1 && t->type != 0x11) || g_NumHumans == 0)
+    if (!t || (t->type != 1 && t->type != 0x11))
         return;
+    if (g_NumHumans == 0)
+    {
+        /* 8004304c: en la demostracion, solo el rotulo de la pagina 0xC (64 x 32) abajo a la derecha */
+        const uint8_t* r = Cpag_FindRegion(0xc, 0, 0);
+        if (r)
+            Hud_SpriteSlot(0xc, r, 0, 0, 0x40, 0x20, 1, HUD_R(0xee), g_SplitScreen && view == 0 ? 0x44 : 0xbc);
+        return;
+    }
     int level = g_Humans[view] ? g_Humans[view]->ctrl[0x58] : 0;
     int mapW = 0, mapH = 0, mapY = g_SplitScreen ? (view == 0 ? 0x78 : 0x6e) : 0xdc;
     if (level)
