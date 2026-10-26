@@ -16,7 +16,7 @@ void Fx_FreeAll(int bank);                       /* 80038e28 (2 = los dos bancos
 int  Fx_OnCsfx(NrAsset* a);                      /* 80035adc */
 void Fx_PostLoad(void);                          /* 8003913c + 8003bd60 (Level_Run / Level_WaitLoaded) */
 void Fx_Update(int dt);                          /* 80038b50 */
-void Fx_Draw(int view);                          /* 80038ccc */
+void Fx_Draw(int view, int mirror);                          /* 80038ccc */
 
 /* Crea el efecto 'cls' pegado a la entidad (o fijo si es NULL); sp: parametros (struct FxSpawn) o NULL */
 void* Fx_Spawn(void* ent, int cls, const void* sp, int bank, void* cb);   /* 80039a80 */

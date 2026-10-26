@@ -228,11 +228,11 @@ static void Race_DrawScene(int view, int mirror, int seg)
     Render_ClearList();
     Race_AddCarsToDrawList(view, mirror);
     Actors_AddToDrawList(view);        /* 80061a0c + Actors_DrawView 80061b28 */
-    Render_DrawList(mirror);
+    Render_DrawListView(view, mirror);
     Race_RestoreCarModels();
     if (g_Humans[view])
         Race_DrawTeamMarkers(view, g_Humans[view]);   /* 80033724 */
-    Fx_Draw(view);                     /* 80038ccc */
+    Fx_Draw(view, mirror);             /* 80038ccc */
     Sprite_DrawAll();                  /* 80045268 */
 }
 

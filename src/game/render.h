@@ -103,6 +103,7 @@ void Obj_GetLocalPoint(const GfxObj* o, int i, int* out);       /* 800367d0 */
 
 void Render_ClearList(void);
 void Render_Add(GfxObj* o);
+void Render_DrawListView(int view, int mirror);   /* 80015f4c con la vista (marca de cerca 2 / 8) */
 void Render_DrawList(int mirror);                               /* 80015f4c(0, mirror) */
 
 /* 8001931c / 8001607c: esfera (centro en el espacio de la camara, a 1/16) en la vista: 0 fuera, 1 detras, 2 dentro */

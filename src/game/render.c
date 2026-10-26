@@ -487,8 +487,7 @@ void Render_Add(GfxObj* o)
 {
     if (s_listCount < (int)(sizeof(s_list) / sizeof(s_list[0])))
     {
-        s_list[s_listCount++] = o;
-        o->flags &= ~2;   /* se vuelve a marcar en Render_DrawList si esta cerca */
+        s_list[s_listCount++] = o;   /* (Render_DrawListView le pone o quita la marca de cerca de su vista) */
     }
 }
 
@@ -1040,14 +1039,18 @@ static void Obj_DrawShadow(GfxObj* o)
     }
 }
 
-/* 80015f4c + 80015280: matrices respecto a la camara (si esta a menos de 0x70000) y dibujo */
-void Render_DrawList(int mirror)
+/* 80015f4c + 80015280: matrices respecto a la camara (si esta a menos de 0x70000) y dibujo. Cada objeto cercano
+ * queda marcado para los efectos (+0x4A del GfxObj del original): bit 2 en la vista 0, bit 8 en la vista 1 o en el
+ * retrovisor (1 << 2 en 80015280 con view || mirror) */
+void Render_DrawListView(int view, int mirror)
 {
+    unsigned nearBit = (view || mirror) ? 8 : 2;
     GfxObj* near[64];
     int numNear = 0;
     for (int k = 0; k < s_listCount; k++)
     {
         GfxObj* o = s_list[k];
+        o->flags &= ~nearBit;
         if (!o->model)
             continue;
         int d[12];
@@ -1062,8 +1065,7 @@ void Render_DrawList(int mirror)
             continue;
         Gte_LoadColumns(g_Camera.view);
         Gte_RotateVectors(d, o->viewRot, 4);
-        if (!mirror)
-            o->flags |= 2;   /* 80015280: cerca de la camara de la vista 0 (1 << 1); lo miran los efectos */
+        o->flags |= nearBit;   /* 80015280: cerca de la camara de esta vista; lo miran los efectos */
 
         Gte_LoadColumns(o->viewRot);
         Gte_SetTrans(o->viewPos[0], -o->viewPos[1], o->viewPos[2]);
@@ -1098,4 +1100,10 @@ int Render_ProjectPoint(const SVECTOR* v, int* sx, int* sy)
     *sx = (int16_t)sxy;
     *sy = (int16_t)(sxy >> 16);
     return (int)MFC2(19);
+}
+
+/* la vista 0 (front-end y garaje: mirror = el reflejo en el suelo) */
+void Render_DrawList(int mirror)
+{
+    Render_DrawListView(0, mirror);
 }

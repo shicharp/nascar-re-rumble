@@ -1726,8 +1726,8 @@ void Fx_Update(int dt)
     }
 }
 
-/* 80038ccc */
-void Fx_Draw(int view)
+/* 80038ccc. mirror: el retrovisor (las particulas pegadas a algo miran su marca de cerca, la de la vista 1) */
+void Fx_Draw(int view, int mirror)
 {
     int focus[3];
     Fx_Focus(view, focus);
@@ -1741,7 +1741,7 @@ void Fx_Draw(int view)
             Marks_Draw(g_Humans[i]->phys, view);
     Debris_DrawAll(s_lists[4], focus);
     Ring_DrawAll(s_lists[2], focus);
-    Psys_DrawAll(s_lists[3], focus, view);
+    Psys_DrawAll(s_lists[3], focus, view || mirror);
     Trail_DrawAll(s_lists[5], focus);  /* 8006e594 */
     Storm_DrawAll();                   /* 800714a0 */
 }
