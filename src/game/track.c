@@ -11,6 +11,7 @@
 #include "sprite.h"
 #include "vecmath.h"
 #include "track.h"
+#include "globals.h"
 
 Track* g_Track;
 
@@ -505,12 +506,12 @@ void Track_DrawView(int view, int curSeg, int mirrorCam)
     if (!t || t->numSegs == 0)
         return;
     Render_LoadCameraRotation();
-    /* Pendiente: con pantalla partida (DAT_800af708) el original tambien usa las distancias cortas y un segmento
-     * menos por delante y por detras (extra 0 en vez de 1) */
-    Track_SetLodDistances(mirrorCam);
+    /* el retrovisor y la pantalla partida (DAT_800af708) usan las distancias de detalle cortas; segmentos de mas
+     * por delante y por detras: -4 en el retrovisor, 0 con pantalla partida y 1 si no */
+    Track_SetLodDistances(mirrorCam || g_SplitScreen);
     memset(s_segFlags[view], 0, sizeof(s_segFlags[view]));
     const TrackSegHdr* h = t->segs[curSeg].hdr;
-    int extra = (mirrorCam ? -4 : 1) + ((Render_GetProjection()->h - 0x78) >> 9);
+    int extra = (mirrorCam ? -4 : g_SplitScreen ? 0 : 1) + ((Render_GetProjection()->h - 0x78) >> 9);
     int ahead = (h->visRange & 0xf) + extra;
     if (ahead < 4)
         ahead = 4;
