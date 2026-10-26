@@ -33,6 +33,7 @@
 #include "fx.h"
 #include "carphys_int.h"
 #include "carphys.h"
+#include "gte.h"
 #include "replay.h"
 
 uint8_t g_CarLoadOrder[8];
@@ -181,26 +182,69 @@ int Ctrk_OnLoaded(NrAsset* a)
     return 1;
 }
 
-/* Race_DrawView 8006422c + Fx_Draw + Sprite_DrawAll + el marcador (80043520) de una vista con la camara en g_Camera */
-static void Race_DrawViewAll(int view)
+/* 80033724: sobre cada companero de equipo del humano de la vista, un triangulo del color del equipo apuntando abajo
+ * (0x560 por encima del coche, de 0x12 * H / z + 2 de medio ancho) */
+static void Race_DrawTeamMarkers(int view, const RaceCar* h)
+{
+    const RenderProj* pr = Render_GetProjection();
+    Render_LoadCameraRotation();
+    for (int i = 0; i < g_NumCars; i++)
+    {
+        const RaceCar* c = &g_Cars[i];
+        if (c == h || !c->phys || c->team != h->team)
+            continue;
+        Gte_SetV0((c->obj.pos[0] - g_Camera.pos[0]) >> 4, ((c->obj.pos[1] - g_Camera.pos[1]) >> 4) + 0x56,
+                  (c->obj.pos[2] - g_Camera.pos[2]) >> 4);
+        doCOP2(GTE_OP_RTPS);
+        if (CFC2(31) & 0x1c66000)
+            continue;
+        uint32_t sxy = MFC2(14);
+        int sz = (int)MFC2(19);
+        if (sz < 0x20)
+            continue;
+        POLY_F3* p = (POLY_F3*)Gfx_AllocPrim(sizeof(POLY_F3));
+        if (!p)
+            return;
+        int x = (int16_t)sxy, y = (int16_t)(sxy >> 16), w = pr->h * 0x12 / sz + 2;
+        unsigned col = Hud_TeamColor(c->team);   /* 15 bits con el rojo arriba */
+        setPolyF3(p);
+        setRGB0(p, (col >> 7) & 0xf8, (col >> 2) & 0xf8, (col << 3) & 0xf8);
+        setXY3(p, x - w, y - w, x + w, y - w, x, y + w);
+        Gfx_AddPrimDepth(sz, p);
+    }
+    (void)view;
+}
+
+/* Race_DrawView 8006422c + Fx_Draw + Sprite_DrawAll de una vista con la camara en g_Camera; el retrovisor (mirror) es
+ * la misma escena con la camara mirando atras (sin el destello del sol y, en el port, sin el coche del jugador) */
+static void Race_DrawScene(int view, int mirror, int seg)
 {
     Sprite_Clear();
-    Render_DrawLensFlare(view);    /* 8001551c */
+    if (!mirror)
+        Render_DrawLensFlare(view);    /* 8001551c (con la marca del retrovisor no hace nada) */
+    Track_DrawView(view, seg, mirror);
+    Track_DrawHorizon(view, mirror);
+    Track_DrawSegments(view, mirror);
+    Render_ClearList();
+    Race_AddCarsToDrawList(view, mirror);
+    Actors_AddToDrawList(view);        /* 80061a0c + Actors_DrawView 80061b28 */
+    Render_DrawList(mirror);
+    Race_RestoreCarModels();
+    if (g_Humans[view])
+        Race_DrawTeamMarkers(view, g_Humans[view]);   /* 80033724 */
+    Fx_Draw(view);                     /* 80038ccc */
+    Sprite_DrawAll();                  /* 80045268 */
+}
+
+/* la vista entera con el marcador (80043520) */
+static void Race_DrawViewAll(int view)
+{
     int seg = RaceCam_GetSegment(view);
     if (seg == 0xff)
         seg = Track_FindSegment(g_Camera.pos);
-    Track_DrawView(view, seg, 0);
-    Track_DrawHorizon(view, 0);
-    Track_DrawSegments(view, 0);
-    Render_ClearList();
-    Race_AddCarsToDrawList();
-    Actors_AddToDrawList(view);    /* 80061a0c + Actors_DrawView 80061b28 */
-    Render_DrawList(0);
-    Race_RestoreCarModels();
-    Fx_Draw(view);                 /* 80038ccc */
-    Sprite_DrawAll();              /* 80045268 */
+    Race_DrawScene(view, 0, seg);
     Render_EndLensFlare(view);
-    Hud_Draw(view);                /* 80043520 */
+    Hud_Draw(view);                    /* 80043520 */
 }
 
 /* Pantalla partida (8001a6fc por vista): la vista 'view' se dibuja en su mitad (y 0 o 120) con el area de dibujo
@@ -266,15 +310,8 @@ static void Race_DrawMirror(void)
     Gfx_AddPrim(GFX_OT_LEN - 1, bg);
 
     Render_SetMirrorProjection(1);
-    int seg = h->tpos.seg != 0xff ? h->tpos.seg : Track_FindSegment(g_Camera.pos);
-    Track_DrawView(0, seg, 1);
-    Track_DrawHorizon(0, 1);
-    Track_DrawSegments(0, 1);
-    Render_ClearList();
-    Race_AddCarsToDrawList();
-    Actors_AddToDrawList(0);
-    Render_DrawList(1);
-    Race_RestoreCarModels();
+    /* 80026980 con la marca del retrovisor (camara +7): la escena entera, efectos y destellos incluidos */
+    Race_DrawScene(0, 1, h->tpos.seg != 0xff ? h->tpos.seg : Track_FindSegment(g_Camera.pos));
     Render_SetMirrorProjection(0);
 
     DR_AREA* full = (DR_AREA*)Gfx_AllocPrim(sizeof(DR_AREA));

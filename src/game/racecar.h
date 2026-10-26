@@ -73,7 +73,7 @@ void Race_CreateCars(void);               /* 8003132c */
 void Race_FreeCars(void);
 void Race_ReadPads(void);                 /* Race_UpdateTime 800269c0: mando de los humanos */
 void Race_UpdateCars(int dt);             /* parte de Race_UpdateSim 80030cac */
-void Race_AddCarsToDrawList(void);
+void Race_AddCarsToDrawList(int view, int mirror);   /* mirror: el retrovisor (sin el coche del jugador) */
 void Race_RestoreCarModels(void);         /* solo en el port: tras Render_DrawList */
 
 void RaceCam_Init(void);                  /* 8005d4c8 */

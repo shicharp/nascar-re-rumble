@@ -298,13 +298,15 @@ int RaceCam_CarVisible(int view, const RaceCar* c)
     return !RaceCam_IsInCar(view);
 }
 
-void Race_AddCarsToDrawList(void)
+/* Port: en el retrovisor (mirror) no se dibuja el coche del jugador; con la camara en su centro se veian trozos de
+ * la carroceria */
+void Race_AddCarsToDrawList(int view, int mirror)
 {
-    Physics_PlaceWheelsAll(0);
+    Physics_PlaceWheelsAll(view);
     for (int i = 0; i < g_NumCars; i++)
     {
         RaceCar* c = &g_Cars[i];
-        if (!c->obj.model || !RaceCam_CarVisible(0, c))
+        if (!c->obj.model || !RaceCam_CarVisible(view, c) || (mirror && c == g_Humans[0]))
             continue;
         GfxObj* wheels = Car_Wheels(c);
         /* 80060190 / 80030f84: modelo segun el nivel de detalle (80013db0); las ruedas solo en los niveles 0 y 1,
@@ -674,6 +676,10 @@ void RaceCam_Update(int view, int dt)
         g_Camera.pos[0] = c->obj.pos[0];
         g_Camera.pos[1] = y < floor ? floor : y;
         g_Camera.pos[2] = c->obj.pos[2];
+        /* el segmento de la camara (800299a8 lo busca cada frame con cualquier camara; sin esto la pista se dibujaba
+         * alrededor del segmento en el que se entro en la vista) */
+        memcpy(v->eye, g_Camera.pos, sizeof(v->eye));
+        v->ground = Track_FindSurface(&v->tpos, v->eye, NULL, 1);
         return;
     }
     int desired[3];
