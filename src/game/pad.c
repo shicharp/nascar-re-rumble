@@ -111,13 +111,18 @@ int Pad_GetType(int port)
 }
 
 /* 8001d10c(.., 0): el stick izquierdo (bytes 6 y 7 del buffer: 0 izquierda / arriba, 0x80 centro, 0xFF derecha /
- * abajo); 0 si el mando no es analogico */
+ * abajo). Port: tambien con el mando en digital, porque PsyCross rellena los ejes del mando SDL en los dos modos (sin
+ * mando quedan en 127, dentro de la zona muerta): asi el stick vale sin pasar el mando a analogico (SELECT + START).
+ * 0 si no hay mando o es uno simulado sin stick. */
 int Pad_GetStick(int port, int* x, int* y)
 {
-    if (Pad_Kind(port) != 7)
+    int kind = Pad_Kind(port);
+    if (kind != 7 && kind != 4)
         return 0;
     if (s_scriptPorts >> port & 1)
     {
+        if (!(s_scriptAnalog >> port & 1))
+            return 0;
         *x = ScriptStick(port, 0);
         *y = ScriptStick(port, 1);
     }
@@ -129,8 +134,8 @@ int Pad_GetStick(int port, int* x, int* y)
     return 1;
 }
 
-/* 8001dac0. Con el mando analogico (tipo 7), en el front-end, en la pausa y en los resultados el stick izquierdo hace
- * de cruceta (pasado un tercio del recorrido). El neGcon (tipo 2: I, II y L como cruz, cuadrado y L1 segun su
+/* 8001dac0. Con el mando analogico (tipo 7; en el port, cualquier mando con stick), en el front-end, en la pausa y en
+ * los resultados el stick izquierdo hace de cruceta (pasado un tercio del recorrido). El neGcon (tipo 2: I, II y L como cruz, cuadrado y L1 segun su
  * calibracion) no esta: PsyCross solo emula el DualShock. */
 uint32_t Pad_GetButtons(int port)
 {

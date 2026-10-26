@@ -291,8 +291,10 @@ void Human_UpdateButtons(RaceCar* e, int dt)
 }
 
 /* Lectura del mando (Race_UpdateTime: 8005fc54 + 8005f928 para cada humano): digital (tipo 4) o analogico (tipo 7:
- * el stick izquierdo en +0xC / +0xD, con zona muerta de 0x61 a 0x9F; Human_Control gira con +0xC). El neGcon (tipo
- * 2, giro calibrado) no esta: PsyCross no lo emula. */
+ * el stick izquierdo en +0xC / +0xD, con zona muerta de 0x61 a 0x9F; Human_Control gira con +0xC). Port: el tipo 7
+ * solo mientras el stick sale de la zona muerta, con el mando en cualquier modo; con el stick quieto, tipo 4 y se gira
+ * con la cruceta (el original, en analogico, no la usaba). El neGcon (tipo 2, giro calibrado) no esta: PsyCross no lo
+ * emula. */
 void Human_ReadPad(RaceCar* e, int port)
 {
     uint8_t* ctrl = e->ctrl;
@@ -302,7 +304,7 @@ void Human_ReadPad(RaceCar* e, int port)
             g |= s_defaultBinds[i][1];
     U32(ctrl, 8) = Pad_ActionBits(g);
     int x, y;
-    if (Pad_GetStick(port & 1, &x, &y))
+    if (Pad_GetStick(port & 1, &x, &y) && (unsigned)(x - 0x61) >= 0x3f)
     {
         U8(ctrl, 0xc) = (uint8_t)((unsigned)(x - 0x61) < 0x3f ? 0x80 : x);
         U8(ctrl, 0xd) = (uint8_t)((unsigned)(y - 0x61) < 0x3f ? 0x80 : y);
