@@ -43,8 +43,9 @@ static void Write16(uint8_t* p, int v)
     p[1] = (uint8_t)(v >> 8);
 }
 
-/* 8004c368: altura de cada nodo sobre el suelo. Pendiente: en la red principal, los bits 0-1 de las banderas del
- * nodo segun el tipo de superficie (Track_SurfaceType: 2 / 3 -> 1, 4 / 8 -> 2, 5 / 6 / 7 -> 3; si no, 0). */
+/* 8004c368: altura de cada nodo sobre el suelo y, en la red principal (la primera), los bits 0-1 de sus banderas
+ * segun la superficie bajo el nodo (Track_SurfaceType: 2 / 3 -> 1, 4 / 8 -> 2, 5 / 6 / 7 -> 3; si no, 0): la IA
+ * toma las curvas mas despacio cuanto mayor es (Ai_UpdateTarget). */
 int Cnet_OnLoaded(NrAsset* a)
 {
     Asset_Register(a);
@@ -67,6 +68,17 @@ int Cnet_OnLoaded(NrAsset* a)
         Write16(p + 4, y);
         Write16(p + 2, pos[0] >> 8);
         Write16(p + 6, pos[2] >> 8);
+        if (net == g_Nets[0])
+        {
+            int f = NR_Read16(p) & 0xfffc;
+            switch (Track_SurfaceType(&tp2, NULL))
+            {
+            case 2: case 3: f |= 1; break;
+            case 4: case 8: f |= 2; break;
+            case 5: case 6: case 7: f |= 3; break;
+            }
+            Write16(p, f);
+        }
     }
     return 1;
 }
