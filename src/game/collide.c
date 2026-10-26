@@ -235,11 +235,25 @@ static void Hit_Flags(uint8_t* v)
     IA(v, 0xfe) = (IA(v, 0xfe) & 0xffffffcf) | 0x40;
 }
 
+static uint8_t* s_flipped;   /* DAT_800af890: el humano volcado en este choque (Hit_Flip / Hit_Roll) */
+
+/* 8005b408 / 8005b660 / 8005b848: si el que golpea lleva la embestida (+0x33A & 0x200), su sonido (0x1D) en la
+ * victima */
+static void Hit_RamSound(uint8_t* att, uint8_t* vic)
+{
+    if (U16(att, 0x33a) & 0x200)
+    {
+        const RaceCar* e = (const RaceCar*)ENT(vic);
+        Snd_Queue(0x1d, e->obj.pos[0], e->obj.pos[2]);
+    }
+}
+
 /* 8005b408: trompo (giro alrededor de Y) */
 static void Hit_Spin(uint8_t* att, uint8_t* vic, const int* pt, int* torque, int soft)
 {
     if ((U16(vic, 0x33a) & 0x200) || Team(vic) == Team(att))
         return;
+    Hit_RamSound(att, vic);
     int k = soft ? 0x2000 : 0x10000;
     torque[1] += torque[1] < 1 ? -k : k;
     I32(vic, 0x148) += torque[0];
@@ -256,6 +270,9 @@ static void Hit_Flip(uint8_t* att, uint8_t* vic, int flags)
 {
     if ((U16(vic, 0x33a) & 0x200) || Team(vic) == Team(att))
         return;
+    if (((RaceCar*)ENT(vic))->type == 1)
+        s_flipped = vic;
+    Hit_RamSound(att, vic);
     Hit_Lift(vic, 1);
     if (!(flags & 1))
     {
@@ -275,6 +292,9 @@ static void Hit_Roll(uint8_t* att, uint8_t* vic, int flags)
 {
     if ((U16(vic, 0x33a) & 0x200) || Team(vic) == Team(att))
         return;
+    if (((RaceCar*)ENT(vic))->type == 1)
+        s_flipped = vic;
+    Hit_RamSound(att, vic);
     Hit_Lift(vic, 1);
     if (!(flags & 4))
     {
@@ -432,6 +452,7 @@ int Body_CollidePair(uint8_t* c1, int car1, uint8_t* c2, int car2)
     RaceCar* e2 = (RaceCar*)ENT(c2);
     if (I16(c1, 0x186) != 0 || I16(c2, 0x186) != 0)
         return 0;
+    s_flipped = NULL;
     if ((U8(c1, 0x180) & 4) && (U8(c2, 0x180) & 4))
         return 0;
     int d[3] = { I32(c1, 0x18c) - I32(c2, 0x18c), I32(c1, 0x190) - I32(c2, 0x190), I32(c1, 0x194) - I32(c2, 0x194) };
@@ -533,8 +554,14 @@ int Body_CollidePair(uint8_t* c1, int car1, uint8_t* c2, int car2)
         if (human)
             sec = Speech_Pick(4, 10);
     }
-    /* comentario del choque al humano (o a los dos) */
-    if (sec >= 0)
+    /* comentario: con un humano volcado, la frase 0x2A para el; si no, la del choque al humano (o a los dos) */
+    if (s_flipped)
+    {
+        int f = Speech_Pick(0x2a, 0xc);
+        if (f >= 0)
+            Speech_Queue(f, (RaceCar*)ENT(s_flipped), 1);
+    }
+    else if (sec >= 0)
     {
         if (e1->type == 1)
             Speech_Queue(sec, e1, 1);
