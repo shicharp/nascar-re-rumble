@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "libgte.h"
@@ -13,6 +14,7 @@
 #include "savegame.h"
 #include "snd.h"
 #include "hud.h"
+#include "pad.h"
 
 FrontendState* g_Frontend;
 short g_FadeDir;
@@ -295,8 +297,7 @@ static void Fe_ScreenPending(void)
     FntPrint("\n\n\n\n\n\n\n\n\n\n\n\n\n     PANTALLA %d SIN PORTAR\n", g_Frontend->screen);
 }
 
-/* 8007a994. Pendiente: los avisos de mando desconectado en todas las pantallas (Fe_DrawTextBox 8008ec2c con las
- * cadenas 0xFA2 / 0xFA3; ahora solo en la 1000) y Camera_ApplyProjection(fe +0xC0) (el port deja el preset 1). */
+/* 8007a994. Port: sin Camera_ApplyProjection(fe +0xC0) al empezar (el front-end usa el preset 1). */
 void Frontend_Update(void)
 {
     FrontendState* fe = g_Frontend;
@@ -433,7 +434,31 @@ void Frontend_Update(void)
         if (fe->descAnim > 0x400)
             fe->descAnim = 0x400;
     }
+    /* mando desconectado o no admitido (0xFA2 / 0xFA3 + numero): el del 1 en todas las pantallas menos la 1000 (que
+     * tiene los suyos) y la 2000; el del 2, con dos jugadores, fuera de las pantallas de menus y records, y mientras
+     * falte no se leen los mandos (fe +0xDD). En el podio (1700) los jugadores son los de la copa (fe +0xB6). */
     fe->padDisabled = 0;
+    if (fe->screen != 1000)
+    {
+        int players = fe->screen == 1700 ? fe->popup : g_Settings.numPlayers;
+        char msg[64];
+        if (players > 0 && Pad_Kind(0) < 1 && fe->screen != 2000)
+        {
+            snprintf(msg, sizeof(msg), "%s1", Fe_GetString(Pad_Kind(0) == -1 ? 0xfa3 : 0xfa2));
+            Fe_DrawTextBox(1, msg, 0xa0, 0x51);
+        }
+        static const short s_noPad2Warn[] = { 100, 400, 500, 600, 700, 800, 900, 1600, 1900, 2000 };
+        int warn2 = players == 2 && Pad_Kind(1) < 1;
+        for (size_t i = 0; warn2 && i < sizeof(s_noPad2Warn) / sizeof(s_noPad2Warn[0]); i++)
+            if (fe->screen == s_noPad2Warn[i])
+                warn2 = 0;
+        if (warn2)
+        {
+            snprintf(msg, sizeof(msg), "%s2", Fe_GetString(Pad_Kind(1) == -1 ? 0xfa3 : 0xfa2));
+            Fe_DrawTextBox(1, msg, 0xa0, 0x9a);
+            fe->padDisabled = 1;
+        }
+    }
     if (fe->screen == 100)   /* el tiempo sin tocar nada solo cuenta en el menu principal */
         fe->idleTimer += g_FrameDelta;
     g_MenuFrame++;
