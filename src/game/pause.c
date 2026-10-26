@@ -6,8 +6,8 @@
  * posiciones finales en los registros DAT_800b12ac + id * 0x18).
  * En la repeticion (GameInfo +0x60, replay.c) el menu es "Replay Paused" con Restart Replay y Quit Replay, y al
  * acabarse la grabacion la carrera se para hasta que se pulsa un boton (DAT_800af688).
- * Pendiente en los resultados: en campeonato, "Continue" en vez de "Restart Race" (8002896c, DAT_800b7168) y, con
- * equipos (DAT_800b7167), la tabla de tiempos por equipo. */
+ * Resultados: en campeonato (DAT_800b7168) sin "Restart Race" y con "Continue" en vez de "Exit Race"; en carrera
+ * por equipos (DAT_800b7167, fuera de campeonato) la tabla de tiempos de cada equipo. */
 #include <stdio.h>
 #include <string.h>
 #include "libgte.h"
@@ -517,11 +517,17 @@ int Pause_ResultsTime(void)
     return s_resTime;
 }
 
-/* 8002896c: resultados (estado 0xD) con Restart Race / Show Replay / Exit Race */
+/* 8002896c: resultados (estado 0xD) con Restart Race / Show Replay / Exit Race (en campeonato, Show Replay /
+ * Continue). En carrera por equipos, debajo, los equipos por la suma de los tiempos de sus dos coches ("Racing..."
+ * mientras falte alguno) */
 void Race_Results(int dt)
 {
     int n = g_NumCars;
-    int h = n * 10 + 0x40;
+    int champ = g_Settings.champType != 0;
+    int teams = g_Settings.teamRace && !champ ? n >> 1 : 0;
+    int teamTime[4][2];
+    memset(teamTime, 0, sizeof(teamTime));
+    int h = n * 10 + 0x40 + (teams ? (teams + 1) * 10 : 0);
     int top = -((h + 0x18) >> 1);
     int y0 = top + 0x90;
     Hud_Rect15(2, 0x38, (top + 0x76) * 2, 0x210, (h + 0x1c) * 2, 1);
@@ -544,13 +550,18 @@ void Race_Results(int dt)
         uint8_t* c = g_CarPhys[i];
         RaceCar* e = (RaceCar*)ENT(c);
         int yy = y0 + 0xe + i * 10;
-        Hud_Rect15(Hud_TeamColor(e->team), 0x42, (yy + 4) * 2, 4, 4, 0);
+        if (g_Settings.teamRace)   /* con equipos la marca de color es mas grande */
+            Hud_Rect15(Hud_TeamColor(e->team), 0x40, (yy + 4) * 2, 8, 8, 0);
+        else
+            Hud_Rect15(Hud_TeamColor(e->team), 0x42, (yy + 4) * 2, 4, 4, 0);
         snprintf(s, sizeof(s), "%d. %s (%d)", i + 1, Car_Name(e), e->id - 999);
-        int col = e->type == 1 ? 6 : 8;
+        int col = e->type == 1 && !g_Settings.teamRace ? 6 : 8;
         Font_DrawString(s, 0x26, yy, col);
         int slot = e->id - 1000;
         CarRecord* r = slot >= 0 && slot < 6 ? &g_CarRecords[slot] : NULL;
         int t = I32(c, 0x330);
+        if (teams && t != 0 && e->team < 4)
+            teamTime[e->team][teamTime[e->team][0] < 1 ? 0 : 1] = t;
         if (t == 0)
         {
             snprintf(s, sizeof(s), "Racing...");
@@ -582,17 +593,50 @@ void Race_Results(int dt)
         if (s_resTime > 17999)
             g_RacePaused = 1;
     }
+    if (teams)
+    {
+        /* tiempo de cada equipo (en tics) y orden de menor a mayor (los que no han terminado, al final) */
+        int order[4], total[4];
+        for (int k = 0; k < teams; k++)
+        {
+            order[k] = k;
+            total[k] = teamTime[k][0] > 0 && teamTime[k][1] > 0 ? teamTime[k][0] + teamTime[k][1] : k + 0x7fff0000;
+        }
+        for (int a = 1; a < teams; a++)
+            for (int b = a; b > 0 && total[order[b]] < total[order[b - 1]]; b--)
+            {
+                int tmp = order[b];
+                order[b] = order[b - 1];
+                order[b - 1] = tmp;
+            }
+        for (int k = 0; k < teams; k++)
+        {
+            int yy = y0 + (n + 1) * 10 + 0xe + k * 10, tm = order[k];
+            snprintf(s, sizeof(s), "%d.", k + 1);
+            Font_DrawString(s, 0x26, yy, 8);
+            snprintf(s, sizeof(s), "Team %d", tm + 1);
+            Font_DrawString(s, 0x33, yy, Hud_TeamColor(tm) | 0x8000);
+            int v = total[tm];
+            if (v < 0x7fff0000)
+                snprintf(s, sizeof(s), "%02d:%02d.%02d", v / 18000, v / 300 - (v / 18000) * 60, (v % 300) / 3);
+            else
+                snprintf(s, sizeof(s), "Racing...");
+            Font_DrawString(s, 0xae, yy, 8);
+        }
+    }
+    if (champ && s_resSel == 0)
+        s_resSel = 1;
     int yb = y0 + h;
     Hud_Rect15(1, 0x3c, (yb - 0x2a) * 2, 0x208, 4, 1);
     Hud_Rect15(0x1084, 0x158, (yb - 0x28) * 2, 2, 0x50, 1);
     Font_DrawString(ExeStr(0x80010ad4), 0xc0, yb - 0x20, 0xe);
     Font_DrawString(ExeStr(Pad_GetType(0) == 2 ? 0x80010d00 : 0x80010d0c), 0xcb, yb - 0x15, 0xe);
-    static const char* const opts[3] = { "Restart Race", "Show Replay", "Exit Race" };
-    for (int i = 0; i < 3; i++)
+    const char* const opts[3] = { "Restart Race", "Show Replay", champ ? "Continue" : "Exit Race" };
+    for (int i = champ; i < 3; i++)
     {
         char o[48];
         snprintf(o, sizeof(o), "%s", opts[i]);
-        int yy = yb - 0x25 + i * 0xb;
+        int yy = yb - 0x25 - (champ ? 6 : 0) + i * 0xb;
         if (i == s_resSel)
         {
             if (s_resConfirm == 1)
@@ -638,10 +682,11 @@ void Race_Results(int dt)
         else if (up == 0 || dn == 0)
         {
             s_resConfirm = 0;
+            /* en campeonato solo las dos ultimas */
             if (up == 0)
-                s_resSel = s_resSel == 0 ? 2 : s_resSel - 1;
+                s_resSel = s_resSel == champ ? 2 : s_resSel - 1;
             else
-                s_resSel = s_resSel == 2 ? 0 : s_resSel + 1;
+                s_resSel = s_resSel == 2 ? champ : s_resSel + 1;
         }
     }
 }
