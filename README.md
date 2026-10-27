@@ -86,6 +86,11 @@ Mando compatible con SDL (Xbox, DualShock, etc.) o teclado (configuracion por de
 | START | Intro | Pausa |
 | SELECT | Espacio | Corto: camara; largo: nivel del marcador |
 
+Las teclas y los botones del mando se cambian en **Game Options > Controller Config**, con SELECT en el panel de
+cada jugador: X espera la tecla o el boton nuevo (Esc cancela; si ya lo tenia otro boton, se intercambian), cuadrado
+vuelve a los de por defecto y triangulo sale y los guarda en `controls.cfg` (junto al `.log`). El teclado da el mando
+1 (F4 de PsyCross lo cambia); cada mando tiene los suyos. Esc, F1-F12 y Alt derecho no se pueden asignar.
+
 Pantalla completa con **Alt derecho + Intro**. La imagen se ensancha al aspecto de la ventana (16:9, etc.)
 mostrando mas escenario a los lados; el marcador se ancla a los bordes.
 
@@ -100,7 +105,8 @@ mostrando mas escenario a los lados; el marcador se ancla a los bordes.
 | `src/game/savegame.c` | partida guardada: 8009358c, 80093938, 800937f8, 800939fc, 80093f6c, Clear Records 800931d8 |
 | `src/game/password.c` | contraseña del progreso: 8008f344, 8008fb60, 80090008 |
 | `src/game/movie.c` | vídeos WVE: Movie_Play 800991e4 (bucle 8009743c, audio 80096e90 / 80096d7c); `mdec.c` hace la tabla VLC como 80098ee0 / 80098f28 / 8009905c |
-| `src/game/fe_pads.c` | configuración de mandos 1000 (8007f810), esquema de botones de cada jugador 8008b160 y Hints and Tips 1900 (8008a52c) |
+| `src/game/fe_pads.c` | configuración de mandos 1000 (8007f810; en el port, también las teclas y botones del PC), esquema de botones de cada jugador 8008b160 y Hints and Tips 1900 (8008a52c) |
+| `src/game/padmap.c` | solo en el port: teclas y botones del PC de cada botón de la PS1 (mapeos de PsyCross), captura y `controls.cfg` |
 | `src/game/fe_records.c` | vuelta de la carrera 80090fb4, desbloqueos 80091ae0, tiempos 8008ee98 y pantallas 900 (8007ddb4), 1400 (800855a0), 1500 (80085d90), 1600 (8007ea64), 1700 (80087130), 1800 (80087fa8) |
 | `src/game/fe_select.c` | pantalla 1200 (80081a9c): tabla de pilotos 800aa5ec, atlas de miniaturas (80092f5c, 8008e2ec, RLE 8009307c), carrusel (8008b9d4, 8008bc34), coches del garaje (800923cc, 80090a88, 80090674), 8008aee4, 8008dc1c, 8008efec |
 | `src/game/fe_track.c` | pantalla 1300 (800838f8), trazado TkFE (8001893c, 80018ef0), 80090718, 80090860, 8008e13c, 8008c308, 8008b80c, montaje de la carrera Fe_StartRace 8008927c |
@@ -156,5 +162,7 @@ mostrando mas escenario a los lados; el marcador se ancla a los bordes.
 `third_party/PsyCross` es un submódulo; los arreglos propios van en su rama local `nascar` y, por si se vuelve a
 clonar limpio, también en `patches/` (aplicar con `git -C third_party/PsyCross apply ../../patches/<parche>`):
 
+- `psycross-pad-mapping.patch`: un mapeo por mando (`g_cfg_controllerMapping2` para el puerto 2; antes los dos
+  usaban el del 1), `PsyX_Pad_GetGameController` y `PsyX_Pad_GetKeyboardPorts` (para cambiar los botones en el juego).
 - `psycross-samplers-8bit.patch`: `GR_SetTexture` no volvía a poner los samplers al cambiar de shader con la misma
   textura, y el primer sprite de 8 bits detrás de un texto (4 bits) salía con los colores de otra parte de la VRAM.

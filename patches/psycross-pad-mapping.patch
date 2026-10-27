@@ -1,0 +1,108 @@
+diff --git a/include/PsyX/PsyX_public.h b/include/PsyX/PsyX_public.h
+index 91b0297..dabcdeb 100644
+--- a/include/PsyX/PsyX_public.h
++++ b/include/PsyX/PsyX_public.h
+@@ -48,6 +48,7 @@ extern "C" {
+ 
+ /* Mapped inputs */
+ extern PsyXControllerMapping		g_cfg_controllerMapping;
++extern PsyXControllerMapping		g_cfg_controllerMapping2;	// NASCAR Rumble: el del mando 2 (el de arriba, el del 1)
+ extern PsyXKeyboardMapping			g_cfg_keyboardMapping;
+ extern int							g_cfg_controllerToSlotMapping[2];
+ 
+@@ -88,6 +89,12 @@ extern void PsyX_EndScene(void);
+ /* Explicitly updates emulator input loop */
+ extern void PsyX_UpdateInput(void);
+ 
++/* NASCAR Rumble: el SDL_GameController del mando de ese puerto (NULL si no hay) */
++extern void* PsyX_Pad_GetGameController(int slot);
++
++/* NASCAR Rumble: puertos que lee el teclado (bit 0 = mando 1; F4 los cambia) */
++extern int PsyX_Pad_GetKeyboardPorts(void);
++
+ /* Returns keyboard mapping index */
+ extern int PsyX_LookupKeyboardMapping(const char* str, int default_value);
+ 
+diff --git a/src/PsyX_main.cpp b/src/PsyX_main.cpp
+index f558b40..a996636 100644
+--- a/src/PsyX_main.cpp
++++ b/src/PsyX_main.cpp
+@@ -48,6 +48,7 @@ timerCtx_t g_vblTimer;
+ int							g_cfg_swapInterval = 0;
+ PsyXKeyboardMapping			g_cfg_keyboardMapping;
+ PsyXControllerMapping		g_cfg_controllerMapping;
++PsyXControllerMapping		g_cfg_controllerMapping2;
+ GameOnTextInputHandler		g_cfg_gameOnTextInput = NULL;
+ 
+ GameDebugKeysHandlerFunc	g_dbg_gameDebugKeys = NULL;
+@@ -265,6 +266,8 @@ static void PsyX_Sys_InitialiseInput()
+ 	g_cfg_controllerMapping.gc_axis_right_x = SDL_CONTROLLER_AXIS_RIGHTX | CONTROLLER_MAP_FLAG_AXIS;
+ 	g_cfg_controllerMapping.gc_axis_right_y = SDL_CONTROLLER_AXIS_RIGHTY | CONTROLLER_MAP_FLAG_AXIS;
+ 
++	g_cfg_controllerMapping2 = g_cfg_controllerMapping;
++
+ 	PsyX_Pad_InitSystem();
+ }
+ 
+diff --git a/src/pad/PsyX_pad.cpp b/src/pad/PsyX_pad.cpp
+index d073549..ec3dce3 100644
+--- a/src/pad/PsyX_pad.cpp
++++ b/src/pad/PsyX_pad.cpp
+@@ -27,7 +27,7 @@ PsyXController			g_controllers[MAX_CONTROLLERS];
+ const u_char*			g_sdlKeyboardState = NULL;
+ 
+ u_short PsyX_Pad_UpdateKeyboardInput();
+-void	PsyX_Pad_UpdateGameControllerInput(SDL_GameController* cont, LPPADRAW pad);
++void	PsyX_Pad_UpdateGameControllerInput(SDL_GameController* cont, LPPADRAW pad, const PsyXControllerMapping& mapping);
+ 
+ // Initializes SDL controllers
+ int PsyX_Pad_InitSystem()
+@@ -208,7 +208,7 @@ void PsyX_Pad_InternalPadUpdates()
+ 		{
+ 			pad = (LPPADRAW)controller->padData;
+ 
+-			PsyX_Pad_UpdateGameControllerInput(controller->gc, pad);
++			PsyX_Pad_UpdateGameControllerInput(controller->gc, pad, i == 1 ? g_cfg_controllerMapping2 : g_cfg_controllerMapping);
+ 
+ 			ushort test = *(u_short*)pad->buttons;
+ 
+@@ -279,7 +279,7 @@ int GetControllerButtonState(SDL_GameController* cont, int buttonOrAxis)
+ 	return SDL_GameControllerGetButton(cont, (SDL_GameControllerButton)buttonOrAxis) * 32767;
+ }
+ 
+-void PsyX_Pad_UpdateGameControllerInput(SDL_GameController* cont, LPPADRAW pad)
++void PsyX_Pad_UpdateGameControllerInput(SDL_GameController* cont, LPPADRAW pad, const PsyXControllerMapping& mapping)
+ {
+ 	short leftX, leftY, rightX, rightY;
+ 	u_short ret = 0xFFFF;
+@@ -295,9 +295,6 @@ void PsyX_Pad_UpdateGameControllerInput(SDL_GameController* cont, LPPADRAW pad)
+ 		return;
+ 	}
+ 
+-	// TODOL separate mapping for Pad 2
+-	const PsyXControllerMapping& mapping = g_cfg_controllerMapping;
+-
+ 	if (GetControllerButtonState(cont, mapping.gc_square) > 16384)//Square
+ 		ret &= ~0x8000;
+ 
+@@ -424,6 +421,20 @@ u_short PsyX_Pad_UpdateKeyboardInput()
+ 	return ret;
+ }
+ 
++void* PsyX_Pad_GetGameController(int slot)
++{
++	if (slot < 0 || slot >= MAX_CONTROLLERS)
++		return NULL;
++
++	SDL_GameController* gc = g_controllers[slot].gc;
++	return gc && SDL_GameControllerGetAttached(gc) ? gc : NULL;
++}
++
++int PsyX_Pad_GetKeyboardPorts(void)
++{
++	return g_activeKeyboardControllers;
++}
++
+ int PsyX_Pad_GetStatus(int mtap, int slot)
+ {
+ 	PsyXController* controller;

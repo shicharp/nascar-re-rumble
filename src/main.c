@@ -20,6 +20,7 @@
 #include "game/file.h"
 #include "game/gfx.h"
 #include "game/pad.h"
+#include "game/padmap.h"
 #include "game/game.h"
 #include "debug_viewer.h"
 #include "crash_log.h"
@@ -86,6 +87,7 @@ int main(int argc, char** argv)
 
     PsyX_Initialise((char*)"NASCAR Rumble", 960, 720, 0);
     CrashLog_Install();   /* solo en el port: la pila del fallo en la salida */
+    PadMap_Init();        /* solo en el port: las teclas y botones de controls.cfg */
     if (display >= 0)
         MoveToDisplay(display);
 

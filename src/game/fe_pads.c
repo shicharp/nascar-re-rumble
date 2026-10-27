@@ -21,6 +21,7 @@
 #include "savegame.h"
 #include "globals.h"
 #include "lsc.h"
+#include "padmap.h"
 
 /* 8008b160. player -1: el tipo de cada mando conectado (y el esquema a 0 si no vale); si no, copia a g_PadBinds el
  * esquema 'preset' (-1 = el suyo) para el tipo 'kind' y aplica la vibracion. */
@@ -86,6 +87,131 @@ static void DrawPadImage(int vx, int vy, int u, int v, int w, int h, int slot, i
     Gfx_AddPrimDepth(0, s);
 }
 
+/* ---------------------------------------------------------------- solo en el port: teclas y botones del PC */
+
+static int8_t s_remap = -1;   /* jugador que cambia sus botones (SELECT en su panel); -1 ninguno */
+static int8_t s_remapRow;     /* boton de la PS1, en el orden de padmap.h */
+static int8_t s_remapCol;     /* PADMAP_KEYBOARD / PADMAP_CONTROLLER */
+static int8_t s_remapWait;    /* 1 esperando la tecla o el boton nuevo; 2 esperando a que se suelte todo */
+static int8_t s_remapDirty;
+static int    s_remapTime;    /* g_FrameTime al empezar a esperar */
+
+static const struct { const char* icon; const char* name; } s_remapRows[PADMAP_BUTTONS] = {
+    { NULL, "Up" }, { NULL, "Down" }, { NULL, "Left" }, { NULL, "Right" }, { "*", "Cross" }, { "@", "Circle" },
+    { "#", "Square" }, { "~", "Triangle" }, { NULL, "L1" }, { NULL, "R1" }, { NULL, "L2" }, { NULL, "R2" },
+    { NULL, "Start" }, { NULL, "Select" } };
+
+/* Pantalla completa sobre los dos paneles: por cada boton de la PS1, la tecla y el boton del mando que lo dan.
+ * X espera la tecla o el boton nuevo (Esc o 5 s sin nada cancelan; si ya lo tenia otro boton, se intercambian),
+ * cuadrado vuelve a los de por defecto y triangulo sale (y guarda controls.cfg). */
+static void Fe_RemapScreen(void)
+{
+    FrontendState* fe = g_Frontend;
+    int p = s_remap;
+    int has[2] = { PadMap_HasKeyboard(p), PadMap_HasController(p) };
+    Fe_ReadPads();   /* (tambien esperando: asi la tecla que se asigne no cuenta luego como pulsacion nueva) */
+    if (s_remapWait == 1)
+    {
+        int code = PadMap_CapturePoll();
+        if (code >= 0)
+        {
+            PadMap_Set(p, s_remapCol, s_remapRow, code);
+            s_remapDirty = 1;
+            Snd_PlayUi(0x48, NULL);
+            s_remapWait = 2;
+        }
+        else if (code == -2 || g_FrameTime - s_remapTime > 1500 || !has[(int)s_remapCol])
+            s_remapWait = 2;
+    }
+    else if (s_remapWait == 2)
+    {
+        if (!Pad_GetButtons(0) && !Pad_GetButtons(1))
+            s_remapWait = 0;
+    }
+    else if (Fe_PadPressed(PADB_UP, -1, 1) || Fe_PadPressed(PADB_DOWN, -1, 1))
+    {
+        s_remapRow = (int8_t)((s_remapRow + ((fe->pad[0] | fe->pad[1]) & PADB_UP ? PADMAP_BUTTONS - 1 : 1)) %
+                              PADMAP_BUTTONS);
+        Snd_PlayUi(0x46, NULL);
+    }
+    else if (Fe_PadPressed(PADB_LEFT | PADB_RIGHT, -1, 1))
+    {
+        s_remapCol ^= 1;
+        Snd_PlayUi(0x47, NULL);
+    }
+    else if (Fe_PadPressed(PADB_CROSS, -1, 1))
+    {
+        if (has[(int)s_remapCol])
+        {
+            PadMap_CaptureBegin(p, s_remapCol);
+            s_remapWait = 1;
+            s_remapTime = g_FrameTime;
+            Snd_PlayUi(0x48, NULL);
+        }
+        else
+            Snd_PlayUi(0x4c, NULL);
+    }
+    else if (Fe_PadPressed(PADB_SQUARE, -1, 1))
+    {
+        PadMap_Reset(p);
+        s_remapDirty = 1;
+        Snd_PlayUi(0x48, NULL);
+    }
+    else if (Fe_PadPressed(PADB_TRIANGLE, -1, 1))
+    {
+        if (s_remapDirty)
+            PadMap_Save();
+        s_remapDirty = 0;
+        s_remap = -1;
+    }
+
+    Fe_DrawBox(0x14, 0x14, 0x14, 0x16, 0x14, 0x127, 0xcf, 0);
+    Fe_DrawFrame(0x3c, 0x3c, 0x14, 0x16, 0x13, 0x127, 0xcf);
+    Font_Select(0);
+    char text[96];
+    snprintf(text, sizeof(text), "Player %d Buttons", p + 1);
+    Fe_DrawTextRgb(0x1c, 0x1c, 0, text, 0x1c, 0x18, 0);
+    static const char* const heads[2] = { "Keyboard", "Controller" };
+    static const int colX[2] = { 0x9a, 0xf6 };   /* centro de cada columna (0x6a..0xca y 0xcc..0x122) */
+    for (int c = 0; c < 2; c++)
+    {
+        int v = has[c] ? 0x1c : 0xc;
+        Fe_DrawTextRgb(v, v, v, heads[c], colX[c], 0x26, 1);
+    }
+    Fe_DrawLine(0x28143c3c, 0x1a, 0x31, 0x123, 0x31, 1);
+    for (int row = 0; row < PADMAP_BUTTONS; row++)
+    {
+        int y = 0x34 + row * 0xb;
+        int sel = row == s_remapRow;
+        int v = sel ? 0x1f : 0x17;
+        if (s_remapRows[row].icon)
+            Fe_DrawTextRgb(0x1f, 0x1f, 0x1f, s_remapRows[row].icon, 0x20, y, 0);
+        Fe_DrawTextRgb(v, v, v, s_remapRows[row].name, 0x2c, y, 0);
+        for (int c = 0; c < 2; c++)
+        {
+            const char* name = PadMap_CodeName(c, PadMap_Get(p, c, row));
+            if (sel && c == s_remapCol)
+            {
+                Fe_DrawBox(0x50, 0x0a, 0x0a, colX[c] - 0x2f, y - 1, colX[c] + 0x2d, y + 9, 0);
+                if (s_remapWait == 1)
+                    name = (g_FrameTime / 150) & 1 ? "" : c ? "Press a button" : "Press a key";
+                Fe_DrawTextRgb(0x1f, 0x1c, 0, name, colX[c], y, 1);
+            }
+            else
+            {
+                int w = has[c] ? v : 0xc;
+                Fe_DrawTextRgb(w, w, w, name, colX[c], y, 1);
+            }
+        }
+    }
+    if (s_remapWait == 1)
+        snprintf(text, sizeof(text), "\x1b" "Esc\x13 Cancel");
+    else
+        snprintf(text, sizeof(text), "\x1b*\x13 Change   \x1b$\x13 Column   \x1b#\x13 Defaults   \x1b~\x13 Done");
+    Fe_DrawHelp(0, text, 0x1c, 0xd5, 0x1c, 0x127, 0);
+    Fe_PadRepeatReset();
+}
+
 /* 8007f810 */
 void Fe_Screen1000(void)
 {
@@ -97,6 +223,8 @@ void Fe_Screen1000(void)
     if (fe->firstFrame)
     {
         Fe_SetBackground(6);
+        s_remap = -1;
+        s_remapWait = 0;
         if (atlas)
             Fe_DecodeThumb(2, 2, 2, atlas, 4, 2, 0x380, 0);   /* (el stick del neGcon, para calibrar) */
         Pad_SetupControls(-1, 0, 0);
@@ -116,6 +244,11 @@ void Fe_Screen1000(void)
     }
     Fe_DrawBackground(0x800);
     fe->marquee = 0;
+    if (s_remap >= 0)
+    {
+        Fe_RemapScreen();
+        return;
+    }
     char help[2][128];
     int r, g, b;
     Fe_ItemColor(&r, &g, &b, 1);
@@ -209,6 +342,7 @@ void Fe_Screen1000(void)
                 snprintf(help[i] + strlen(help[i]), sizeof(help[i]) - strlen(help[i]), "    %s", HelpText(vib ? 15 : 14));
             else if (vib)
                 snprintf(help[i] + strlen(help[i]), sizeof(help[i]) - strlen(help[i]), "    %s", HelpText(13));
+            snprintf(help[i] + strlen(help[i]), sizeof(help[i]) - strlen(help[i]), "    \x1bSELECT\x13 Remap Buttons");
             DrawPadImage(0x300, 0x100, 0, i * 0x50, 0x74, 0x50, i, 0x65, 0x24 + oy);
             const uint8_t* tab = Exe_Ptr(labels[*kind] + preset * 0xf);
             if (tab)
@@ -299,6 +433,13 @@ void Fe_Screen1000(void)
             else if (Fe_PadPressed(PADB_R1, i, 1) && s_padType[i] == 2)
             {
                 fe->namePlayer[i] = 2;
+                Snd_PlayUi(0x48, NULL);
+            }
+            else if (Fe_PadPressed(PADB_SELECT, i, 1))
+            {
+                s_remap = (int8_t)i;   /* solo en el port: sus teclas y botones */
+                s_remapRow = 0;
+                s_remapCol = PadMap_HasController(i) ? PADMAP_CONTROLLER : PADMAP_KEYBOARD;
                 Snd_PlayUi(0x48, NULL);
             }
         }
