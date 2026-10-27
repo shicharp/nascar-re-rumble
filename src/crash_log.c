@@ -1,9 +1,11 @@
 /* Solo en el port (depuracion, Windows): al fallar escribe la excepcion y la pila (funcion, fichero y linea, con
- * el .pdb) en la salida, antes del manejador de PsyCross, que guarda el .dmp. */
+ * el .pdb) en la salida y en crash.txt (la salida se pierde si el juego se abre sin consola), antes del manejador
+ * de PsyCross, que guarda el .dmp. */
 #ifdef _WIN32
 #include <windows.h>
 #include <dbghelp.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdint.h>
 #include <string.h>
 #include "crash_log.h"
@@ -11,11 +13,27 @@
 #pragma comment(lib, "dbghelp.lib")
 
 static LPTOP_LEVEL_EXCEPTION_FILTER s_prev;
+static FILE* s_file;
+
+static void CrashLog_Printf(const char* fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    vprintf(fmt, ap);
+    va_end(ap);
+    if (s_file)
+    {
+        va_start(ap, fmt);
+        vfprintf(s_file, fmt, ap);
+        va_end(ap);
+    }
+}
 
 static LONG WINAPI CrashLog_Filter(EXCEPTION_POINTERS* ep)
 {
     HANDLE proc = GetCurrentProcess(), thread = GetCurrentThread();
-    printf("\n*** Excepcion 0x%08lx en %p\n", ep->ExceptionRecord->ExceptionCode, ep->ExceptionRecord->ExceptionAddress);
+    s_file = fopen("crash.txt", "w");
+    CrashLog_Printf("\n*** Excepcion 0x%08lx en %p\n", ep->ExceptionRecord->ExceptionCode, ep->ExceptionRecord->ExceptionAddress);
     SymSetOptions(SYMOPT_LOAD_LINES | SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS);
     SymInitialize(proc, NULL, TRUE);
     CONTEXT ctx = *ep->ContextRecord;
@@ -47,11 +65,13 @@ static LONG WINAPI CrashLog_Filter(EXCEPTION_POINTERS* ep)
         DWORD ldisp = 0;
         const char* name = SymFromAddr(proc, sf.AddrPC.Offset, &disp, sym) ? sym->Name : "?";
         if (SymGetLineFromAddr64(proc, sf.AddrPC.Offset, &ldisp, &line))
-            printf("  %2d %s  %s:%lu\n", i, name, line.FileName, line.LineNumber);
+            CrashLog_Printf("  %2d %s  %s:%lu\n", i, name, line.FileName, line.LineNumber);
         else
-            printf("  %2d %s  (%p)\n", i, name, (void*)(uintptr_t)sf.AddrPC.Offset);
+            CrashLog_Printf("  %2d %s  (%p)\n", i, name, (void*)(uintptr_t)sf.AddrPC.Offset);
     }
     fflush(stdout);
+    if (s_file)
+        fclose(s_file);
     return s_prev ? s_prev(ep) : EXCEPTION_CONTINUE_SEARCH;
 }
 

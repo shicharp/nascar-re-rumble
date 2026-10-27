@@ -586,6 +586,27 @@ int Fe_DecodeLmdc(int index, int x, int y)
  * otros ids = tabla que se queda en memoria */
 static const uint8_t* s_padAtlas;   /* fe +0x9D8 */
 
+/* Sube a VRAM w x h pixeles leyendo como mucho avail bytes de src (el resto, a cero). Las filas que calcula el
+ * original redondean hacia arriba y la parte de (0x2C0,0) pide el doble de lo que queda del asset: en la PS1 se lee
+ * basura de la RAM contigua sin mas, pero aqui pasarse del bloque puede caer en una pagina sin mapear */
+static void Fe_LoadImageClamped(int x, int y, int w, int h, const uint8_t* src, int avail)
+{
+    int need = w * h * 2;
+    if (avail < 0)
+        avail = 0;
+    uint8_t* buf = (uint8_t*)malloc(need);
+    if (!buf)
+        return;
+    int n = avail < need ? avail : need;
+    memcpy(buf, src, n);
+    memset(buf + n, 0, need - n);
+    RECT16 r;
+    setRECT(&r, x, y, w, h);
+    LoadImage(&r, (u_long*)buf);
+    DrawSync(0);
+    free(buf);
+}
+
 int Fe_OnCrle(NrAsset* a)
 {
     if (a->id == 0)
@@ -597,16 +618,9 @@ int Fe_OnCrle(NrAsset* a)
             rows2 = (a->size - 0x1ffc1) >> 6;
             rows = 0x200;
         }
-        RECT16 r;
-        setRECT(&r, 0x240, 0, 0x80, rows);
-        LoadImage(&r, (u_long*)a->data);
-        DrawSync(0);
+        Fe_LoadImageClamped(0x240, 0, 0x80, rows, a->data, (int)a->size);
         if (rows2 > 0)
-        {
-            setRECT(&r, 0x2c0, 0, 0x40, rows2);
-            LoadImage(&r, (u_long*)(a->data + 0x20000));
-            DrawSync(0);
-        }
+            Fe_LoadImageClamped(0x2c0, 0, 0x40, rows2, a->data + 0x20000, (int)a->size - 0x20000);
         s_crle = a->data;
         if (g_Frontend)
         {
