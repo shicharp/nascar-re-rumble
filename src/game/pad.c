@@ -7,6 +7,7 @@
 #include "globals.h"
 #include "pause.h"
 #include "pad.h"
+#include "padmap.h"
 
 uint32_t g_PadButtons[2];
 uint32_t g_PadBinds[2][14];                 /* DAT_800b0570 */
@@ -214,7 +215,10 @@ void Pad_ReadAll(void)
 {
     /* PsyCross solo copia el teclado y los mandos SDL al buffer del mando en PsyX_UpdateInput, que no se
      * llama por si solo fuera de su modo de depuracion. Teclado por defecto: flechas, C = cruz, X = cuadrado,
-     * V = circulo, Z = triangulo, Intro = START, espacio = SELECT, Mayus / Ctrl izq. = L1 / L2, der. = R1 / R2. */
+     * V = circulo, Z = triangulo, Intro = START, espacio = SELECT, Mayus / Ctrl izq. = L1 / L2, der. = R1 / R2.
+     * Las teclas y botones cambiados en la pantalla de mandos solo valen conduciendo (padmap.h). */
+    PadMap_Apply(!g_IsFrontend && !g_RacePaused && g_GameState == GAMESTATE_RUNNING && g_GameInfo &&
+                 !g_GameInfo->isReplay);
     PsyX_UpdateInput();
     for (int i = 0; i < 2; i++)
         g_PadButtons[i] = Pad_GetButtons(i);

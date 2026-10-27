@@ -1,7 +1,8 @@
 /* Solo en el port: que tecla o boton del PC da cada boton del mando de la PS1. El teclado (un mapeo para los
  * puertos que lee, el 1 salvo que se cambie con F4) y el mando SDL de cada puerto, en PsyCross
  * (g_cfg_keyboardMapping, g_cfg_controllerMapping / 2); se cambian en la pantalla de mandos (1000) y se guardan en
- * controls.cfg, junto al .log. */
+ * controls.cfg, junto al .log. Solo valen conduciendo: en los menus (front-end, pausa, resultados, carga y
+ * repeticion) siguen los de por defecto, para que X acepte y triangulo vuelva aunque se cambien. */
 #ifndef NR_PADMAP_H
 #define NR_PADMAP_H
 
@@ -12,6 +13,7 @@ enum { PADMAP_KEYBOARD, PADMAP_CONTROLLER };
 
 void        PadMap_Init(void);   /* despues de PsyX_Initialise: guarda los de por defecto y lee controls.cfg */
 void        PadMap_Save(void);
+void        PadMap_Apply(int driving);        /* pasa a PsyCross los del jugador (1) o los de por defecto (0) */
 int         PadMap_HasKeyboard(int port);     /* el teclado da los botones de ese puerto */
 int         PadMap_HasController(int port);   /* hay un mando SDL en ese puerto */
 int         PadMap_Get(int port, int device, int button);

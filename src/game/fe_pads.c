@@ -171,6 +171,7 @@ static void Fe_RemapScreen(void)
     char text[96];
     snprintf(text, sizeof(text), "Player %d Buttons", p + 1);
     Fe_DrawTextRgb(0x1c, 0x1c, 0, text, 0x1c, 0x18, 0);
+    Fe_DrawTextRgb(0x12, 0x12, 0x12, "Used while racing", 0x122, 0x18, 2);
     static const char* const heads[2] = { "Keyboard", "Controller" };
     static const int colX[2] = { 0x9a, 0xf6 };   /* centro de cada columna (0x6a..0xca y 0xcc..0x122) */
     for (int c = 0; c < 2; c++)

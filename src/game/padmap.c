@@ -29,17 +29,18 @@ static const size_t s_gcField[PADMAP_BUTTONS] = {
     offsetof(PsyXControllerMapping, gc_l2), offsetof(PsyXControllerMapping, gc_r2),
     offsetof(PsyXControllerMapping, gc_start), offsetof(PsyXControllerMapping, gc_select) };
 
-static PsyXKeyboardMapping   s_defKb;
+static PsyXKeyboardMapping   s_defKb;   /* los de PsyCross: valen en los menus */
 static PsyXControllerMapping s_defGc;
+static PsyXKeyboardMapping   s_kb;      /* los del jugador: solo conduciendo (PadMap_Apply) */
+static PsyXControllerMapping s_gc[2];
 
 static int* Field(int port, int device, int button)
 {
     if (button < 0 || button >= PADMAP_BUTTONS)
         return NULL;
     if (device == PADMAP_KEYBOARD)
-        return (int*)((char*)&g_cfg_keyboardMapping + s_kbField[button]);
-    PsyXControllerMapping* m = port == 1 ? &g_cfg_controllerMapping2 : &g_cfg_controllerMapping;
-    return (int*)((char*)m + s_gcField[button]);
+        return (int*)((char*)&s_kb + s_kbField[button]);
+    return (int*)((char*)&s_gc[port == 1] + s_gcField[button]);
 }
 
 static int ValidCode(int device, int code)
@@ -101,9 +102,16 @@ void PadMap_Save(void)
 
 void PadMap_Init(void)
 {
-    s_defKb = g_cfg_keyboardMapping;
-    s_defGc = g_cfg_controllerMapping;
+    s_defKb = s_kb = g_cfg_keyboardMapping;
+    s_defGc = s_gc[0] = s_gc[1] = g_cfg_controllerMapping;
     Load();
+}
+
+void PadMap_Apply(int driving)
+{
+    g_cfg_keyboardMapping = driving ? s_kb : s_defKb;
+    g_cfg_controllerMapping = driving ? s_gc[0] : s_defGc;
+    g_cfg_controllerMapping2 = driving ? s_gc[1] : s_defGc;
 }
 
 int PadMap_HasKeyboard(int port)
@@ -139,11 +147,8 @@ void PadMap_Set(int port, int device, int button, int code)
 void PadMap_Reset(int port)
 {
     if (PadMap_HasKeyboard(port))
-        g_cfg_keyboardMapping = s_defKb;
-    if (port == 1)
-        g_cfg_controllerMapping2 = s_defGc;
-    else
-        g_cfg_controllerMapping = s_defGc;
+        s_kb = s_defKb;
+    s_gc[port == 1] = s_defGc;
 }
 
 const char* PadMap_ButtonName(int button)

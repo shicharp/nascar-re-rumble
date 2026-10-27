@@ -89,7 +89,8 @@ Mando compatible con SDL (Xbox, DualShock, etc.) o teclado (configuracion por de
 Las teclas y los botones del mando se cambian en **Game Options > Controller Config**, con SELECT en el panel de
 cada jugador: X espera la tecla o el boton nuevo (Esc cancela; si ya lo tenia otro boton, se intercambian), cuadrado
 vuelve a los de por defecto y triangulo sale y los guarda en `controls.cfg` (junto al `.log`). El teclado da el mando
-1 (F4 de PsyCross lo cambia); cada mando tiene los suyos. Esc, F1-F12 y Alt derecho no se pueden asignar.
+1 (F4 de PsyCross lo cambia); cada mando tiene los suyos. Esc, F1-F12 y Alt derecho no se pueden asignar. Solo
+valen conduciendo: en los menus, la pausa, los resultados, la carga y la repeticion siguen los de la tabla de arriba.
 
 Pantalla completa con **Alt derecho + Intro**. La imagen se ensancha al aspecto de la ventana (16:9, etc.)
 mostrando mas escenario a los lados; el marcador se ancla a los bordes.
