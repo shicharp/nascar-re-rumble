@@ -593,15 +593,25 @@ static void Actors_TriggerTest(void)
         }
 }
 
+/* distancia en el plano (aproximada) de 80049b74 */
+static int Actor_FlatDist(const Actor* a, const RaceCar* t)
+{
+    int dx = Abs_(a->obj.pos[0] - t->obj.pos[0]), dz = Abs_(a->obj.pos[2] - t->obj.pos[2]);
+    return dx + dz - (dz < dx ? dz : dx) / 2;
+}
+
 /* 80049b74: las entidades a menos de 0x22000 del coche de la vista suenan (sonido de ambiente +0x26 en la
  * fuente +0x27); cada 300 tics la mas cercana con 0x100000 (y tipo distinto de 0x24) ejecuta su guion +0xD8
- * (80049b2c). Se borra la marca de golpe 0x2000000 */
+ * (80049b2c). Se borra la marca de golpe 0x2000000.
+ * Port: el guion se elige con la distancia al jugador 1 (g_Humans[0]; sin humanos, al coche de la vista), no a la
+ * camara: es logica de la carrera y en red cada maquina tiene su vista. Con un jugador es el mismo coche. */
 void Actors_Activate(void)
 {
     Actors_TriggerTest();
     Actors_KillTest();
     RaceCar* t = RaceCam_GetTarget(0);
-    if (!t)
+    RaceCar* logicCar = g_NumHumans > 0 && g_Humans[0] ? g_Humans[0] : t;
+    if (!t || !logicCar)
         return;
     int tick = 0;
     if (s_nextNear <= g_RaceTime)
@@ -615,17 +625,16 @@ void Actors_Activate(void)
     {
         if (a->handle <= 0)
             continue;
-        int dx = Abs_(a->obj.pos[0] - t->obj.pos[0]), dz = Abs_(a->obj.pos[2] - t->obj.pos[2]);
-        int d = dx + dz - (dz < dx ? dz : dx) / 2;
+        int d = Actor_FlatDist(a, t), dl = logicCar == t ? d : Actor_FlatDist(a, logicCar);
         uint32_t f = a->flags2c;
         a->flags2c = (f & 0xfdffffff) | 0x20000000;
+        if (tick && dl < 0x22000 && (f & 0x100000) && a->type != 0x24 && dl < bestD)
+        {
+            bestD = dl;
+            best = a;
+        }
         if (d < 0x22000)
         {
-            if (tick && (f & 0x100000) && a->type != 0x24 && d < bestD)
-            {
-                bestD = d;
-                best = a;
-            }
             if (a->unk26)
             {
                 if (!(a->flags2c & 0x400000))

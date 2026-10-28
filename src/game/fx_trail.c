@@ -83,7 +83,7 @@ static void Trail_AddNode(Trail* t, const int* pos, const int* frame)
         RotShort((t->h.tflags & 0x100) ? t->h.frame : frame, t->vel0, n->vel);
         if (t->noise)
             for (int a = 0; a < 3; a++)
-                n->vel[a] = (int16_t)(n->vel[a] + ((Rand_B() >> 20) * t->noise >> 12));
+                n->vel[a] = (int16_t)(n->vel[a] + ((Rand_Fx() >> 20) * t->noise >> 12));
     }
     n->next = t->nodes;
     t->nodes = n;
@@ -205,9 +205,9 @@ FxInst* Trail_Create(uint8_t* tp)
     t->drag = T16(tp, 0x54);
     int yaw = T16(tp, 0x4a), pit = T16(tp, 0x4c);
     if (yaw < 0)
-        yaw = (int)((unsigned)Rand_B() % (unsigned)-yaw);
+        yaw = (int)((unsigned)Rand_Fx() % (unsigned)-yaw);
     if (pit < 0)
-        pit = (int)((unsigned)Rand_B() % (unsigned)-pit);
+        pit = (int)((unsigned)Rand_Fx() % (unsigned)-pit);
     int m[9];
     Math_RotMatrix(yaw, -pit, 0, m);
     for (int a = 0; a < 3; a++)

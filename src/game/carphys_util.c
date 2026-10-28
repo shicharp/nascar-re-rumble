@@ -8,8 +8,8 @@
 /* ---------------------------------------------------------------- aleatorios (800182ec) */
 
 static uint32_t s_seed;             /* DAT_800af0e4 */
-static int      s_randTab[2][20];   /* DAT_800afa40 / DAT_800afa90 */
-static int      s_randIdx[2];       /* DAT_800af5a0 / DAT_800af5a4 */
+static int      s_randTab[3][20];   /* DAT_800afa40 / DAT_800afa90 (y el de la presentacion, solo en el port) */
+static int      s_randIdx[3];       /* DAT_800af5a0 / DAT_800af5a4 */
 
 /* 80018264: Park-Miller (16807) */
 static int Rand_Seed(void)
@@ -93,9 +93,9 @@ void Rand_Init(void)
  * front-end, o con la de la repeticion) */
 void Rand_SetSeed(int seed)
 {
-    s_randIdx[0] = s_randIdx[1] = 0x14;
+    s_randIdx[0] = s_randIdx[1] = s_randIdx[2] = 0x14;
     s_seed = (uint32_t)seed;
-    for (int t = 0; t < 2; t++)
+    for (int t = 0; t < 3; t++)
         for (int i = 0; i < 0x14; i++)
             s_randTab[t][i] = Rand_Seed();
 }
@@ -120,6 +120,24 @@ int Rand_A(void)
 int Rand_B(void)
 {
     return Rand_Next(1);
+}
+
+/* Solo en el port: aleatorios de la presentacion (efectos, camaras de TV, voces). En el original salen de Rand_B,
+ * pero dependen de lo que ve cada vista (Fx_Focus, la camara elegida): con un generador propio, los de la carrera
+ * (A y B) gastan lo mismo en todas las maquinas y con cualquier camara, como necesita la red por entradas */
+int Rand_Fx(void)
+{
+    return Rand_Next(2);
+}
+
+/* Solo en el port: suma del estado de los dos generadores de la carrera (deteccion de desincronizaciones) */
+uint32_t Rand_StateSum(void)
+{
+    uint32_t s = (uint32_t)s_randIdx[0] * 31 + (uint32_t)s_randIdx[1];
+    for (int t = 0; t < 2; t++)
+        for (int i = 0; i < 0x14; i++)
+            s = s * 31 + (uint32_t)s_randTab[t][i];
+    return s;
 }
 
 /* 80018448 */

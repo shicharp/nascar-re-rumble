@@ -105,7 +105,7 @@ int Speech_Pick(int cat, int wait)
     int k = 0;
     if (c->count != 1)
     {
-        k = (int)((unsigned)Rand_B() % (unsigned)c->count);
+        k = (int)((unsigned)Rand_Fx() % (unsigned)c->count);
         if (k == c->last && ++k == c->count)
             k = 0;
     }

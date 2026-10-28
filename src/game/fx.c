@@ -478,7 +478,7 @@ static void Fx_LocalPoint(GfxObj* o, int lp, int random, const FxSpawn* sp, unsi
     {
         int n;
         const uint8_t* v = Model_FrameVerts(o->model, o->frame, &n);
-        const int16_t* p = (const int16_t*)(v + ((Rand_B() & 0xfff) * n >> 12) * 8);
+        const int16_t* p = (const int16_t*)(v + ((Rand_Fx() & 0xfff) * n >> 12) * 8);
         out[0] = p[0];
         out[1] = p[1];
         out[2] = p[2];
@@ -608,9 +608,9 @@ const int* Fx_WorldFrame(GfxObj* obj, unsigned tflags, int lp, int doRot, FxAnch
 static void Fx_RandAngles(int yaw, int pitch, int* outYaw, int* outPitch)
 {
     if ((int16_t)yaw < 0)
-        yaw = (int)((unsigned)Rand_B() % (unsigned)-(int16_t)yaw);
+        yaw = (int)((unsigned)Rand_Fx() % (unsigned)-(int16_t)yaw);
     if ((int16_t)pitch < 0)
-        pitch = (int16_t)((unsigned)Rand_B() % (unsigned)-(int16_t)pitch);
+        pitch = (int16_t)((unsigned)Rand_Fx() % (unsigned)-(int16_t)pitch);
     *outYaw = yaw;
     *outPitch = pitch;
 }
@@ -622,9 +622,9 @@ static int Fx_TemplateOffset(const uint8_t* t, int* out)
         return 0;
     int yaw = T16(t, TP_OFSYAW), pit = T16(t, TP_OFSPIT);
     if (yaw < 0)
-        yaw = (int16_t)((unsigned)Rand_B() % (unsigned)-yaw);
+        yaw = (int16_t)((unsigned)Rand_Fx() % (unsigned)-yaw);
     if (pit < 0)
-        pit = (int16_t)((unsigned)Rand_B() % (unsigned)-pit);
+        pit = (int16_t)((unsigned)Rand_Fx() % (unsigned)-pit);
     int m[9];
     Math_RotMatrix(yaw, -pit, 0, m);
     int d = T16(t, TP_OFSDIST);
@@ -2027,7 +2027,7 @@ void Car_ExhaustFx(uint8_t* c, int dt)
     {
         if ((int)U16(c, 0x448) < dt)
         {
-            unsigned r = (unsigned)Rand_B();
+            unsigned r = (unsigned)Rand_Fx();
             U8(c, 0x445) |= 0xc;
             U16(c, 0x448) = (uint16_t)(r % 0x1c2);
             Fx_Push(9, e->obj.pos, -1);   /* petardeo (cola de sonidos DAT_800b52f0) */

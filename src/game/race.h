@@ -15,5 +15,6 @@ int  Race_NextCar(void);            /* 80023ef4: pide la seccion del siguiente c
 void Race_DrawProgress(void);       /* 80024f08 (solo la barra) */
 int  Ctrk_OnLoaded(NrAsset* a);     /* 80062680 + Cars_RegisterModels 800134f0 */
 void Race_MainLoop(void);           /* 800299a8: de momento, visor de los coches cargados */
+void Race_StateChecksum(uint32_t out[3]);   /* solo en el port: coches, actores y aleatorios (desincronizaciones) */
 
 #endif

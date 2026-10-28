@@ -1,5 +1,6 @@
 #include <math.h>
 #include <stdlib.h>
+#include "libgte.h"
 #include "vecmath.h"
 
 int Math_SquareRoot12(int x)
@@ -125,9 +126,9 @@ int Vec_Dot16(const int* a, const int* b)
     return Fix_Mul16(a[0], b[0]) + Fix_Mul16(a[1], b[1]) + Fix_Mul16(a[2], b[2]);
 }
 
+/* ratan2 de libgte (la de PsyCross es la de Psy-Q, con su tabla): entera, asi da lo mismo en todas las maquinas
+ * (el atan2 de la biblioteca de C puede cambiar el ultimo bit segun la CPU, y la red por entradas no lo admite) */
 int Math_Atan2(int y, int x)
 {
-    if (x == 0 && y == 0)
-        return 0;
-    return (int)lround(atan2((double)y, (double)x) * 2048.0 / 3.14159265358979323846);
+    return ratan2(y, x);
 }

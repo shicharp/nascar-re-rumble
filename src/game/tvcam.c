@@ -304,7 +304,7 @@ static int TvCam_PickVirtual(int view, const TvCam* tc, unsigned r)
 /* 80073bf8 */
 static TvCam* TvCam_RandomVirtual(const TvCam* tc, int view)
 {
-    unsigned r = (unsigned)Rand_B();
+    unsigned r = (unsigned)Rand_Fx();
     if (s_numVirtual < TV_NUM_VIRTUAL)
         return NULL;
     return s_virtual[TvCam_PickVirtual(view, tc, r & 0x7fff)];
@@ -315,7 +315,7 @@ static TvCam* TvCam_RandomVirtual(const TvCam* tc, int view)
 static void TvCam_Shake(uint8_t* phys, int amp, int view, int* pos, int dt)
 {
     TvView* v = &s_tv[view];
-    unsigned r = (unsigned)Rand_B();
+    unsigned r = (unsigned)Rand_Fx();
     if (!phys || U8(phys, 0x638) != 0xf || ((RaceCar*)ENT(phys))->speed < 0x33)
     {
         v->shake = v->shakeVel = 0;
@@ -785,8 +785,8 @@ static void TvCam_Activate(int view, TvCam* c)
         break;
     case 11:  /* 80072d54 */
         c->preset = 1;
-        c->u.i[0] = (Rand_B() & 1) ? 0x600 : -0x600;
-        c->u.i[1] = (Rand_B() & 1) ? 0xe00 : -0xe00;
+        c->u.i[0] = (Rand_Fx() & 1) ? 0x600 : -0x600;
+        c->u.i[1] = (Rand_Fx() & 1) ? 0xe00 : -0xe00;
         c->u.i[2] = 0;
         break;
     }
@@ -822,8 +822,8 @@ static void TvCam_Choose(int view)
         unsigned r = 0;
         int virt = 1;
         if (tc->type == 2)
-            r = (unsigned)Rand_B();
-        else if (!(tc->flags & 1) || !((r = (unsigned)Rand_B()) & 1))
+            r = (unsigned)Rand_Fx();
+        else if (!(tc->flags & 1) || !((r = (unsigned)Rand_Fx()) & 1))
         {
             v->cur = tc;
             virt = 0;
@@ -920,7 +920,7 @@ static void TvCam_Step(int view, int dt)
             return;
         if (tc->type == 2)
         {
-            unsigned r = (unsigned)Rand_B();
+            unsigned r = (unsigned)Rand_Fx();
             TvCam_SelectIndex(view, TvCam_PickVirtual(view, tc, r));
             return;
         }

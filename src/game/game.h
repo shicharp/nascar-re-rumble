@@ -6,7 +6,10 @@ typedef struct
 {
     int skipLegal;      /* no esperar los 1500 vblanks de la pantalla legal (ni poner los videos de arranque) */
     const char* movie;  /* --movie: poner ese video y salir */
+    int fixedStep;      /* --fixed-step: cada frame de carrera simula FIXED_STEP tics (para la red por entradas) */
 } GameOptions;
+
+#define FIXED_STEP 5    /* tics de 1/300 s: 60 Hz, un vblank */
 
 extern GameOptions g_Options;
 

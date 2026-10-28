@@ -63,7 +63,8 @@ void Race_Load(const char* path)
     }
     /* 80074d90 + 8001836c + 800182ec: aleatorios con los frames del front-end como semilla (en la repeticion, la
      * grabada; tambien vuelve a poner la clase de la carrera grabada) */
-    int seed = Replay_Begin(g_FrontendFrames);
+    const char* fseed = getenv("NR_SEED");   /* solo en el port (pruebas): la semilla de la carrera */
+    int seed = Replay_Begin(fseed ? atoi(fseed) : g_FrontendFrames);
     Physics_Init();
     Rand_SetSeed(seed);
     g_HaveStart = 0;
@@ -382,8 +383,47 @@ static void Race_DebugEnd(void)
         g_RaceEndTimer = 5;
 }
 
-/* Solo en el port (depuracion): NR_REPLAYLOG=1 apunta cada 150 tics de carrera una suma de la posicion y la
- * velocidad de todos los coches; la de la carrera y la de su repeticion deben coincidir en cada tiempo */
+/* Solo en el port: sumas del estado de la carrera, para comparar dos simulaciones (la carrera y su repeticion, o
+ * dos maquinas en red): coches (posicion, orientacion, velocidad, poder, efectos, vuelta, puesto, llegada),
+ * actores vivos (tipo, posicion, velocidad, vida) y los dos generadores de la carrera. No entra lo que depende de
+ * la vista (efectos, camaras, sonido, marcas de visible o cerca). */
+void Race_StateChecksum(uint32_t out[3])
+{
+    uint32_t cars = 0, acts = 0;
+    for (int i = 0; i < g_NumCars; i++)
+    {
+        const RaceCar* e = &g_Cars[i];
+        for (int k = 0; k < 3; k++)
+            cars = cars * 31 + (uint32_t)e->obj.pos[k];
+        for (int k = 0; k < 9; k++)
+            cars = cars * 31 + (uint32_t)e->obj.rot[k];
+        if (e->phys)
+        {
+            for (int k = 0; k < 3; k++)
+                cars = cars * 31 + (uint32_t)I32(e->phys, 0x154 + k * 4);
+            cars = cars * 31 + U8(e->phys, 0x338);
+            cars = cars * 31 + U16(e->phys, 0x33a);
+            cars = cars * 31 + (uint32_t)I32(e->phys, 0x328);
+            cars = cars * 31 + U8(e->phys, 0x31a);
+            cars = cars * 31 + (uint32_t)I32(e->phys, 0x330);
+        }
+    }
+    for (Actor* a = g_Actors; a; a = a->next)
+    {
+        if (a->handle <= 0)
+            continue;
+        acts = acts * 31 + a->type;
+        for (int k = 0; k < 3; k++)
+            acts = acts * 31 + (uint32_t)a->obj.pos[k] + (uint32_t)a->vel[k] * 7;
+        acts = acts * 31 + (uint32_t)a->hp;
+    }
+    out[0] = cars;
+    out[1] = acts;
+    out[2] = Rand_StateSum();
+}
+
+/* Solo en el port (depuracion): NR_REPLAYLOG=1 apunta cada 150 tics de carrera las sumas de Race_StateChecksum; las
+ * de la carrera y las de su repeticion (o las de dos instancias con las mismas entradas) deben coincidir */
 static void Race_DebugReplay(void)
 {
     static int s_on = -1;
@@ -391,17 +431,10 @@ static void Race_DebugReplay(void)
         s_on = getenv("NR_REPLAYLOG") != NULL;
     if (!s_on || g_RaceTime / 150 == g_PrevRaceTime / 150)
         return;
-    uint32_t sum = 0;
-    for (int i = 0; i < g_NumCars; i++)
-    {
-        const RaceCar* e = &g_Cars[i];
-        for (int k = 0; k < 3; k++)
-            sum = sum * 31 + (uint32_t)e->obj.pos[k];
-        if (e->phys)
-            for (int k = 0; k < 3; k++)
-                sum = sum * 31 + (uint32_t)I32(e->phys, 0x154 + k * 4);
-    }
-    NR_Log("[repeticion] %s t %d suma %08x\n", g_GameInfo->isReplay ? "rep" : "car", g_RaceTime, sum);
+    uint32_t s[3];
+    Race_StateChecksum(s);
+    NR_Log("[repeticion] %s t %d suma %08x actores %08x aleatorios %08x\n", g_GameInfo->isReplay ? "rep" : "car",
+           g_RaceTime, s[0], s[1], s[2]);
 }
 
 /* 800269c0: espera el frame y lee el mando de los humanos. Fuera de la repeticion graba el frame (80074ac8) si hay
@@ -467,6 +500,7 @@ void Race_MainLoop(void)
     while (g_GameState == GAMESTATE_RUNNING || g_GameState == GAMESTATE_RESULTS)
     {
         g_FrameCount++;
+        Pad_SetRaceFrame(g_FrameCount);   /* solo en el port: pulsaciones simuladas "rN" */
         int dt = Race_UpdateTime();    /* 800269c0 */
         Gfx_BeginFrame(0, 0, 0);       /* el original no borra: el horizonte cubre el fondo */
         if (!g_RacePaused)
@@ -537,6 +571,7 @@ void Race_MainLoop(void)
         Gfx_Flip(GFX_FLIP_FULL);
         Race_UpdateState(dt);          /* 80027e90 */
     }
+    Pad_SetRaceFrame(-1);
     Snd_StopRace();                    /* 8003d04c */
     Replay_End();                      /* 800747a4 (8002456c, fuera de la repeticion) */
     Script_Disable();                  /* 80067880 (8002456c) */

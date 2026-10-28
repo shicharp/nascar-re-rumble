@@ -41,6 +41,7 @@ void     Pad_TestVibration(int port);           /* 8001d2c8: el motor pequeño u
  * Cada pulsacion simulada dura 3 frames en el mando 1 ("boton*n": n frames; "2boton": el mando 2). "lx=v" / "ly=v"
  * mueven el stick izquierdo (0..255) y hacen el mando simulado analogico. */
 void     Pad_SetScript(const char* script);
+void     Pad_SetRaceFrame(int frame);   /* frame de la carrera para las entradas "rN" (-1 fuera de ella) */
 
 extern uint32_t g_PadButtons[2];   /* DAT_800af700 */
 

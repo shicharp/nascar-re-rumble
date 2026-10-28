@@ -73,17 +73,27 @@ void Legal_Show(int skippable)
         Save_BootEnd();
 }
 
-/* 800285e4: espera a que avance el tiempo de juego y calcula el delta del frame (maximo 30 ticks) */
+/* 800285e4: espera a que avance el tiempo de juego y calcula el delta del frame (maximo 30 ticks).
+ * Port: con --fixed-step, en la carrera cada frame dura y simula FIXED_STEP tics, para que todas las maquinas den
+ * los mismos pasos (el dt variable cambia el resultado de la fisica). Si la maquina no llega, la carrera va mas
+ * lenta en vez de dar pasos mas largos; si se queda muy atras (mas de 30 tics), deja de recuperar. */
 void Frame_Wait(void)
 {
     int delta;
+    int step = g_Options.fixedStep && !g_IsFrontend ? FIXED_STEP : 1;
     do
     {
         Pad_ReadAll();
         Timer_Update();
         g_FrameTime = g_GameTime;
         delta = g_GameTime - s_lastFrameTime;
-    } while (delta < 1);
+    } while (delta < step);
+    if (step > 1)
+    {
+        g_FrameDelta = step;
+        s_lastFrameTime = delta > 30 ? g_GameTime : s_lastFrameTime + step;
+        return;
+    }
     if (delta > 30)
         delta = 30;
     g_FrameDelta = delta;

@@ -189,13 +189,13 @@ void Storm_UpdateAll(int dt)
             while (s->numDrops < n)
             {
                 int* d = s->drops[s->numDrops];
-                int x = Rand_B() & 0x3ff;
-                if (!(Rand_B() & 1))
+                int x = Rand_Fx() & 0x3ff;
+                if (!(Rand_Fx() & 1))
                     x = -x;
                 d[0] = x;
                 d[1] = 0;
-                int z = Rand_B() & 0x3ff;
-                if (!(Rand_B() & 1))
+                int z = Rand_Fx() & 0x3ff;
+                if (!(Rand_Fx() & 1))
                     z = -z;
                 d[2] = z;
                 s->numDrops++;

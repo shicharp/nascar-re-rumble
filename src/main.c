@@ -6,6 +6,7 @@
  *                 [--movie fichero.wve]                    pone ese video y sale
  *                 [--viewer [fichero] [--page N]]          visor de paginas Cpag
  *                 [--display N]                            abre la ventana en el monitor N de SDL
+ *                 [--fixed-step]                           carrera a paso fijo de 5 tics (red por entradas)
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -83,6 +84,7 @@ int main(int argc, char** argv)
         else if (!strcmp(argv[i], "--movie") && i + 1 < argc) g_Options.movie = argv[++i];
         else if (!strcmp(argv[i], "--press") && i + 1 < argc) Pad_SetScript(argv[++i]);
         else if (!strcmp(argv[i], "--display") && i + 1 < argc) display = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--fixed-step")) g_Options.fixedStep = 1;
     }
 
     PsyX_Initialise((char*)"NASCAR Rumble", 960, 720, 0);

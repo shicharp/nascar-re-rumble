@@ -103,22 +103,22 @@ static void Piece_Launch(Debris* d, int* dir, int* push, int hasPush, Piece* p)
         p->spinA = p->spinB = d->spinMax;
     else
     {
-        p->spinA = (int16_t)(d->spinMin + (r * (Rand_B() & 0xfff) >> 12));
-        p->spinB = (int16_t)(d->spinMin + (r * (Rand_B() & 0xfff) >> 12));
+        p->spinA = (int16_t)(d->spinMin + (r * (Rand_Fx() & 0xfff) >> 12));
+        p->spinB = (int16_t)(d->spinMin + (r * (Rand_Fx() & 0xfff) >> 12));
     }
-    int g = ((Rand_B() & 0x1f) + 0xa0) * 8;
+    int g = ((Rand_Fx() & 0x1f) + 0xa0) * 8;
     p->grav = g * d->grav / 100 * -0x10;
     Vec_Normalize(dir);
     int sp = d->speedMax, sr = d->speedMax - d->speedMin;
     if (sr > 0)
-        sp = sr + d->speedMin + (sr * (Rand_B() & 0xfff) >> 12);
+        sp = sr + d->speedMin + (sr * (Rand_Fx() & 0xfff) >> 12);
     for (int a = 0; a < 3; a++)
         p->vel[a] = (dir[a] >> 4) * sp >> 8;
     if (p->vel[1] < 0)
         p->vel[1] = -p->vel[1];
     int pu = d->pushMax, pr = d->pushMax - d->pushMin;
     if (pr > 0)
-        pu = d->pushMin + (pr * (Rand_B() & 0xfff) >> 12);
+        pu = d->pushMin + (pr * (Rand_Fx() & 0xfff) >> 12);
     if (pu)
         for (int a = 0; a < 3; a++)
             p->vel[a] += d->pushDir[a] * pu >> 8;
@@ -198,7 +198,7 @@ static int Debris_Break(Debris* d, const FxSpawn* sp)
     int left = want;
     for (int k = nfaces; k > 0 && left > 0; k--)
     {
-        unsigned r = (unsigned)Rand_B() & 0xffff;
+        unsigned r = (unsigned)Rand_Fx() & 0xffff;
         if ((int)(r * (unsigned)k) >> 16 >= left)
             continue;
         int fi = nfaces - k;

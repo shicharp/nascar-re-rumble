@@ -14,8 +14,10 @@ uint32_t g_PadBinds[2][14];                 /* DAT_800b0570 */
 static uint8_t s_vibration[2] = { 1, 1 };   /* DAT_800b04ef + puerto * 0x28 */
 
 #define MAX_SCRIPT 256
-/* --press "N:[2]boton[*frames]"; el stick izquierdo con "N:[2]lx=valor[*frames]" / "ly=valor" (axis 0 / 1) */
-static struct { int frame, len, port, axis, value; uint32_t mask; } s_script[MAX_SCRIPT];
+/* --press "N:[2]boton[*frames]"; el stick izquierdo con "N:[2]lx=valor[*frames]" / "ly=valor" (axis 0 / 1); con
+ * "rN" el frame cuenta desde el principio de la carrera (Pad_SetRaceFrame) */
+static struct { int frame, len, port, axis, value, race; uint32_t mask; } s_script[MAX_SCRIPT];
+static int s_raceFrame = -1;
 static int s_scriptCount;
 static int s_scriptPorts;    /* mandos con pulsaciones simuladas (bit 0 siempre; bit 1 si hay alguna "2boton") */
 static int s_scriptAnalog;   /* mandos simulados con stick: son analogicos (tipo 7) */
@@ -30,7 +32,8 @@ void Pad_SetScript(const char* script)
     const char* p = script;
     while (p && *p && s_scriptCount < MAX_SCRIPT)
     {
-        int frame = atoi(p);
+        int race = *p == 'r';
+        int frame = atoi(p + race);
         const char* c = strchr(p, ':');
         if (!c)
             break;
@@ -47,6 +50,7 @@ void Pad_SetScript(const char* script)
             const char* star = strchr(c, '*');
             const char* comma = strchr(c, ',');
             s_script[s_scriptCount].frame = frame;
+            s_script[s_scriptCount].race = race;
             s_script[s_scriptCount].port = port;
             s_script[s_scriptCount].axis = c[1] == 'y';
             s_script[s_scriptCount].value = atoi(c + 3);
@@ -59,6 +63,7 @@ void Pad_SetScript(const char* script)
             if (!strncmp(c, names[i].name, strlen(names[i].name)))
             {
                 s_script[s_scriptCount].frame = frame;
+                s_script[s_scriptCount].race = race;
                 s_script[s_scriptCount].port = port;
                 s_script[s_scriptCount].axis = -1;
                 s_script[s_scriptCount].mask = names[i].mask;
@@ -71,12 +76,25 @@ void Pad_SetScript(const char* script)
     }
 }
 
+void Pad_SetRaceFrame(int frame)
+{
+    s_raceFrame = frame;
+}
+
+/* la entrada i esta activa en este frame (de la carrera con "r", si no del programa) */
+static int ScriptActive(int i)
+{
+    int f = s_script[i].race ? s_raceFrame : Gfx_GetFlipCount();
+    if (s_script[i].race && f < 0)
+        return 0;
+    return f >= s_script[i].frame && f < s_script[i].frame + s_script[i].len;
+}
+
 static uint32_t ScriptButtons(int port)
 {
     uint32_t m = 0;
-    int f = Gfx_GetFlipCount();
     for (int i = 0; i < s_scriptCount; i++)
-        if (s_script[i].port == port && f >= s_script[i].frame && f < s_script[i].frame + s_script[i].len)
+        if (s_script[i].port == port && ScriptActive(i))
             m |= s_script[i].mask;
     return m;
 }
@@ -84,10 +102,9 @@ static uint32_t ScriptButtons(int port)
 /* eje del stick simulado: el ultimo valor activo, o el centro */
 static int ScriptStick(int port, int axis)
 {
-    int v = 0x80, f = Gfx_GetFlipCount();
+    int v = 0x80;
     for (int i = 0; i < s_scriptCount; i++)
-        if (s_script[i].port == port && s_script[i].axis == axis && f >= s_script[i].frame &&
-            f < s_script[i].frame + s_script[i].len)
+        if (s_script[i].port == port && s_script[i].axis == axis && ScriptActive(i))
             v = s_script[i].value;
     return v;
 }

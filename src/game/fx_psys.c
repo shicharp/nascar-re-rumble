@@ -294,12 +294,12 @@ static void Psys_Gen(Psys* ps, Particle* p, int range)
 {
     int r;
     if (ps->radius < 0)
-        r = (-ps->radius * (Rand_B() & 0xfff)) >> 12;
+        r = (-ps->radius * (Rand_Fx() & 0xfff)) >> 12;
     else
         r = ps->radius > 0 ? ps->radius : 0;
-    unsigned rp = (unsigned)Rand_B();
+    unsigned rp = (unsigned)Rand_Fx();
     int pmin = ps->pitchMin, pmax = ps->pitchMax;
-    unsigned ry = (unsigned)Rand_B();
+    unsigned ry = (unsigned)Rand_Fx();
     int m[9];
     Math_RotMatrix((int)((ry & 0xffff) >> 4), pmin + (int)((rp & 0xffff) * (unsigned)(pmax - pmin) >> 16), 0, m);
     const int* dir = m + 3;   /* eje Y */
@@ -312,11 +312,11 @@ static void Psys_Gen(Psys* ps, Particle* p, int range)
     if (range == 0)
         speed = ps->speedMax;
     else
-        speed = (int16_t)(ps->speedMin + (int16_t)((int)(Rand_B() & 0xfff) * range >> 12));
+        speed = (int16_t)(ps->speedMin + (int16_t)((int)(Rand_Fx() & 0xfff) * range >> 12));
     for (int k = 0; k < 3; k++)
         p->vel[k] = (int16_t)((dir[k] >> 4) * speed >> 12);
     if (ps->lifeK < 0)
-        p->lifeK = (int16_t)(-ps->lifeK * (Rand_B() & 0xfff) >> 12);
+        p->lifeK = (int16_t)(-ps->lifeK * (Rand_Fx() & 0xfff) >> 12);
     else
         p->lifeK = ps->lifeK;
     int d = p->lifeK ? (int16_t)(0x100000 / p->lifeK) : 0;
@@ -399,10 +399,10 @@ static void Psys_Emit(Psys* ps, Particle* burst, int fresh, const FxSpawn* sp)
         int jv = 0x20 - ps->jitV, jp = 0x20 - ps->jitP;
         if (jv < 0x20)
             for (int k = 0; k < 3; k++)
-                q->vel[k] = (int16_t)(q->vel[k] + (int16_t)(Rand_B() >> jv));
+                q->vel[k] = (int16_t)(q->vel[k] + (int16_t)(Rand_Fx() >> jv));
         if (jp < 0x20)
             for (int k = 0; k < 3; k++)
-                q->pos[k] = (int16_t)(q->pos[k] + (int16_t)(Rand_B() >> jp));
+                q->pos[k] = (int16_t)(q->pos[k] + (int16_t)(Rand_Fx() >> jp));
         if (!(in->tflags & 0x100))
         {
             Fx_RotS(wf, q->vel, q->vel);
@@ -436,7 +436,7 @@ static void Psys_Emit(Psys* ps, Particle* burst, int fresh, const FxSpawn* sp)
         q->ticks = (uint16_t)ticks;
         if (ps->sprite == 0)
         {
-            int s = ps->dotSize < 0 ? (int)((unsigned)Rand_B() % (unsigned)-ps->dotSize) + 1 : ps->dotSize;
+            int s = ps->dotSize < 0 ? (int)((unsigned)Rand_Fx() % (unsigned)-ps->dotSize) + 1 : ps->dotSize;
             q->ticks = (uint16_t)(ticks | s << 13);
         }
         else
@@ -444,19 +444,19 @@ static void Psys_Emit(Psys* ps, Particle* burst, int fresh, const FxSpawn* sp)
             int a = rot << 4;
             if (rot < 0)
             {
-                unsigned u = ((unsigned)Rand_B() % (unsigned)-rot) * 2 + 1 & 0xff;
+                unsigned u = ((unsigned)Rand_Fx() % (unsigned)-rot) * 2 + 1 & 0xff;
                 a = ((int)u < -rot ? 0x100 - (int)u : (int)u + rot) << 4;
             }
             q->angle = (int16_t)a;
-            q->flutter = (int8_t)Rand_B();
+            q->flutter = (int8_t)Rand_Fx();
             if (q->spin == 0 || spin == 0 || !(ps->draw & 2))
                 q->spin = (int8_t)spin;
             else
             {
                 unsigned as = (unsigned)(spin < 0 ? -spin : spin);
-                q->spin = (int8_t)((int)((unsigned)Rand_B() % (as * 2)) - (int)as + 2);
+                q->spin = (int8_t)((int)((unsigned)Rand_Fx() % (as * 2)) - (int)as + 2);
             }
-            int s = ps->dotSize < 0 ? (int)((unsigned)Rand_B() % (unsigned)-ps->dotSize) + 1 : ps->dotSize;
+            int s = ps->dotSize < 0 ? (int)((unsigned)Rand_Fx() % (unsigned)-ps->dotSize) + 1 : ps->dotSize;
             q->size = (uint16_t)(s << 8);
             q->grow = (int8_t)grow;
         }

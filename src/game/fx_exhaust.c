@@ -234,7 +234,7 @@ void Car_DrawExhaust(int view)
             }
             if (type >= 0 && !(fl & 8))
             {
-                unsigned r = (unsigned)Rand_B();
+                unsigned r = (unsigned)Rand_Fx();
                 if (drawn)
                     Exhaust_Flame(c, x, type, base + (var * (int)(r & 0xff) >> 7));
             }

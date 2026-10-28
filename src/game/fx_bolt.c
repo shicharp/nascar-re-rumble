@@ -122,7 +122,7 @@ static void Fx_LocalPointAny(GfxObj* o, int lp, int random, int* out)
     {
         int n;
         const uint8_t* v = Model_FrameVerts(o->model, o->frame, &n);
-        const int16_t* p = (const int16_t*)(v + ((Rand_B() & 0xfff) * n >> 12) * 8);
+        const int16_t* p = (const int16_t*)(v + ((Rand_Fx() & 0xfff) * n >> 12) * 8);
         out[0] = p[0];
         out[1] = p[1];
         out[2] = p[2];
@@ -174,8 +174,8 @@ static int End_Resolve(Bolt* b, BoltEnd* e, int* out, const int* ref)
     int tmp[3];
     if ((e->flags & 2) && g_NumHumans > 0)
     {
-        unsigned k = (unsigned)Rand_B() % (unsigned)g_NumHumans;
-        if (Rand_B() & 1)
+        unsigned k = (unsigned)Rand_Fx() % (unsigned)g_NumHumans;
+        if (Rand_Fx() & 1)
         {
             int sh = (b->flags & 0x20) ? 4 : 5;
             RaceCar* c = g_Humans[k];
@@ -201,8 +201,8 @@ static int End_Resolve(Bolt* b, BoltEnd* e, int* out, const int* ref)
     {
         /* punto al azar en la esfera */
         int sa, ca, sb, cb;
-        Math_SinCos(Rand_B() & 0xfff, &sa, &ca);
-        Math_SinCos(Rand_B() & 0xfff, &sb, &cb);
+        Math_SinCos(Rand_Fx() & 0xfff, &sa, &ca);
+        Math_SinCos(Rand_Fx() & 0xfff, &sb, &cb);
         int bx = base[0], by = base[1], bz = base[2];
         out[0] = bx + (((ca >> 2) * (sb >> 2) >> 16) * rr >> 8);
         out[1] = by + ((-sa >> 4) * rr >> 8);
@@ -211,9 +211,9 @@ static int End_Resolve(Bolt* b, BoltEnd* e, int* out, const int* ref)
     else
     {
         /* punto al azar en el disco, a la altura de la sombra del objeto */
-        unsigned u = (unsigned)Rand_B();
+        unsigned u = (unsigned)Rand_Fx();
         int s, c;
-        Math_SinCos(Rand_B() & 0xfff, &s, &c);
+        Math_SinCos(Rand_Fx() & 0xfff, &s, &c);
         int bx = base[0], bz = base[2];
         int gy = e->obj ? e->obj->shadowY << 4 : base[1];
         int local = e->obj && (b->flags & 8) && srcObj;
@@ -266,7 +266,7 @@ static void Strand_Gen(Bolt* b, Strand* s, int regen)
             /* por la superficie: de un vertice a otro de una cara al azar */
             /* por la superficie: entre los dos primeros vertices (frame 0) de una cara de 3 o 4 lados */
             const uint32_t* f = o->model->faces;
-            unsigned fi = f[0] ? (unsigned)Rand_B() % f[0] : 0;
+            unsigned fi = f[0] ? (unsigned)Rand_Fx() % f[0] : 0;
             const uint8_t* fc = (const uint8_t*)(f + 1) + fi * 0x18;
             if (fc[1] < 5 && fc[1] > 2)
             {
@@ -348,7 +348,7 @@ static void Strand_Gen(Bolt* b, Strand* s, int regen)
     int k = 0x1000, dk = n ? 0x1000 / n : 0;
     for (int i = 1; i < n; i++)
     {
-        unsigned ra = (unsigned)Rand_B() % 5, rb = (unsigned)Rand_B() % 5, rc = (unsigned)Rand_B();
+        unsigned ra = (unsigned)Rand_Fx() % 5, rb = (unsigned)Rand_Fx() % 5, rc = (unsigned)Rand_Fx();
         int o[3];
         for (int a = 0; a < 3; a++)
         {
@@ -462,7 +462,7 @@ static int Strand_Update(Bolt* b, Strand* s, int dr, int dg, int db)
         if (s->rgb[a])
             s->rgb[a] = (int)s->rgb[a] < d[a] ? 0 : (uint8_t)(s->rgb[a] - d[a]);
     int alive = (dr && s->rgb[0]) || (dg && s->rgb[1]) || (db && s->rgb[2]);
-    if ((b->flags & 0x8000) && ((Rand_B() & 1) || !(b->flags & 2)) && (!(b->flags & 0x2000) || !alive))
+    if ((b->flags & 0x8000) && ((Rand_Fx() & 1) || !(b->flags & 2)) && (!(b->flags & 0x2000) || !alive))
     {
         if (b->count < 1 || --b->count > 0)
         {

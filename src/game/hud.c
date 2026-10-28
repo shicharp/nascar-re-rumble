@@ -71,9 +71,43 @@ void Hud_CycleLevel(RaceCar* e, int dir)
     s_hudSetting[ctrl[0x59] & 1] = (uint8_t)v;
 }
 
+/* 800429d0 (parte): tics yendo hacia atras por la pista (ctrl +4, -1 si no: mas de 0x600 de diferencia con la
+ * direccion de la curva); en Kid Play (clase 0), a los 900 el coche vuelve a la pista. El original lo cuenta al
+ * dibujar el marcador del humano de la vista, con el dt del frame (tambien en pausa); en el port va en la
+ * simulacion y para todos los humanos, porque recoloca el coche (en red, el remoto no tiene vista aqui). */
+static void Hud_UpdateWrongWay(int dt)
+{
+    for (int i = 0; i < g_NumHumans && i < 2; i++)
+    {
+        RaceCar* h = g_Humans[i];
+        if (!h || !h->phys || !h->ctrl)
+            continue;
+        uint8_t* ctrl = h->ctrl;
+        uint8_t* c = h->phys;
+        if (I32(c, 0x330) != 0 || !g_Track || g_Track->numCurve <= 0 || h->tpos.curve < 0)
+            continue;
+        int n = g_Track->numCurve, a[3], b[3];
+        Track_GetCurvePoint(h->tpos.curve, a);
+        Track_GetCurvePoint(h->tpos.curve + 1 >= n ? 0 : h->tpos.curve + 1, b);
+        int d[3] = { b[0] - a[0], b[1] - a[1], b[2] - a[2] };
+        int l = Vec_ApproxLen3(d);
+        Vec_Scale(l < 2 ? 0 : (int)(0x80000000u / (unsigned)(l >> 1)), d);
+        int diff = ((Math_Atan2(d[0], d[2]) & 0xfff) - I16(c, 0x432)) & 0xfff;
+        if (diff > 0x800)
+            diff -= 0x1000;
+        I32(ctrl, 4) = Abs_(diff) < 0x601 ? -1 : I32(ctrl, 4) + dt;
+        if (g_GameInfo->racingClass == 0 && I32(ctrl, 4) > 899)
+        {
+            Car_Reset(h, 0);
+            I32(ctrl, 4) = -1;
+        }
+    }
+}
+
 /* 80042330: aguja del cuentarrevoluciones con un muelle hacia las rpm del coche que sigue la camara */
 void Hud_Update(int dt)
 {
+    Hud_UpdateWrongWay(dt);
     RaceCar* e = RaceCam_GetTarget(0);
     uint8_t* c = Hud_Phys(e);
     if (!c || g_NumHumans >= 2)
@@ -344,30 +378,12 @@ static void Hud_Messages(int view, int y, int level)
         Font_Measure(s, &w, &hh);
         Font_DrawString(s, 0xa0 - w / 2, y + off + mir, blink ? 9 : 1);
     }
-    if (I32(c, 0x330) == 0 && g_Track && g_Track->numCurve > 0 && h->tpos.curve >= 0)
+    if (I32(c, 0x330) == 0 && I32(ctrl, 4) > 299)   /* (el contador lo lleva Hud_UpdateWrongWay) */
     {
-        int n = g_Track->numCurve, a[3], b[3];
-        Track_GetCurvePoint(h->tpos.curve, a);
-        Track_GetCurvePoint(h->tpos.curve + 1 >= n ? 0 : h->tpos.curve + 1, b);
-        int d[3] = { b[0] - a[0], b[1] - a[1], b[2] - a[2] };
-        int l = Vec_ApproxLen3(d);
-        Vec_Scale(l < 2 ? 0 : (int)(0x80000000u / (unsigned)(l >> 1)), d);
-        int diff = ((Math_Atan2(d[0], d[2]) & 0xfff) - I16(c, 0x432)) & 0xfff;
-        if (diff > 0x800)
-            diff -= 0x1000;
-        I32(ctrl, 4) = Abs_(diff) < 0x601 ? -1 : I32(ctrl, 4) + g_FrameDelta;
-        if (g_GameInfo->racingClass == 0 && I32(ctrl, 4) > 899)
-        {
-            Car_Reset(h, 0);
-            I32(ctrl, 4) = -1;
-        }
-        if (I32(ctrl, 4) > 299)
-        {
-            int w, hh;
-            Font_Measure("WRONG WAY", &w, &hh);
-            Font_DrawString("WRONG WAY", 0xa0 - w / 2, y + off + mir + 10, 9);
-            Speech_Say(0x2c, 8, h, 1);
-        }
+        int w, hh;
+        Font_Measure("WRONG WAY", &w, &hh);
+        Font_DrawString("WRONG WAY", 0xa0 - w / 2, y + off + mir + 10, 9);
+        Speech_Say(0x2c, 8, h, 1);
     }
     Font_Select(1);
 }
