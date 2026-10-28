@@ -8,6 +8,7 @@
 #include "pause.h"
 #include "pad.h"
 #include "padmap.h"
+#include "net.h"
 
 uint32_t g_PadButtons[2];
 uint32_t g_PadBinds[2][14];                 /* DAT_800b0570 */
@@ -239,4 +240,5 @@ void Pad_ReadAll(void)
     PsyX_UpdateInput();
     for (int i = 0; i < 2; i++)
         g_PadButtons[i] = Pad_GetButtons(i);
+    Net_Poll();   /* solo en el port: la red de las partidas en LAN (aqui pasa por todos los bucles) */
 }

@@ -39,6 +39,18 @@ if(MSVC)
     target_compile_options(psycross PRIVATE /W0)
 endif()
 
+# --- ENet (submodulo, v1.3.18): red UDP de las partidas en LAN -------------------
+set(ENET_DIR ${TP}/enet)
+add_library(enet STATIC
+    ${ENET_DIR}/callbacks.c ${ENET_DIR}/compress.c ${ENET_DIR}/host.c ${ENET_DIR}/list.c
+    ${ENET_DIR}/packet.c ${ENET_DIR}/peer.c ${ENET_DIR}/protocol.c ${ENET_DIR}/win32.c)
+target_include_directories(enet PUBLIC ${ENET_DIR}/include)
+target_compile_definitions(enet PRIVATE _CRT_SECURE_NO_WARNINGS _WINSOCK_DEPRECATED_NO_WARNINGS)
+target_link_libraries(enet PUBLIC ws2_32 winmm)
+if(MSVC)
+    target_compile_options(enet PRIVATE /W0)
+endif()
+
 # --- Juego ---------------------------------------------------------------------
 file(GLOB GAME_SRCS CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/*.c ${CMAKE_SOURCE_DIR}/src/game/*.c)
 # El juego se compila como C++ (igual que REDRIVER2): con PGXP las coordenadas de las primitivas
@@ -46,7 +58,7 @@ file(GLOB GAME_SRCS CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/*.c ${CMAKE_SOURCE
 set_source_files_properties(${GAME_SRCS} PROPERTIES LANGUAGE CXX)
 add_executable(nascar ${GAME_SRCS})
 target_include_directories(nascar PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(nascar PRIVATE psycross)
+target_link_libraries(nascar PRIVATE psycross enet)
 if(MSVC)
     target_compile_options(nascar PRIVATE /W3 /wd4244)   # C4244: int -> half en coordenadas PGXP
     set_target_properties(nascar PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

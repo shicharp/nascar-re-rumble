@@ -7,6 +7,7 @@
  *                 [--viewer [fichero] [--page N]]          visor de paginas Cpag
  *                 [--display N]                            abre la ventana en el monitor N de SDL
  *                 [--fixed-step]                           carrera a paso fijo de 5 tics (red por entradas)
+ *                 [--net-host | --net-join ip]             partida en LAN (anfitrion o cliente; ver net.h)
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,6 +23,7 @@
 #include "game/gfx.h"
 #include "game/pad.h"
 #include "game/padmap.h"
+#include "game/net.h"
 #include "game/game.h"
 #include "debug_viewer.h"
 #include "crash_log.h"
@@ -71,6 +73,8 @@ int main(int argc, char** argv)
     int shotFrame = 120;
     int page = 0;
     int display = -1;
+    int netHost = 0;
+    const char* netJoin = NULL;
 
     for (int i = 1; i < argc; i++)
     {
@@ -85,6 +89,8 @@ int main(int argc, char** argv)
         else if (!strcmp(argv[i], "--press") && i + 1 < argc) Pad_SetScript(argv[++i]);
         else if (!strcmp(argv[i], "--display") && i + 1 < argc) display = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--fixed-step")) g_Options.fixedStep = 1;
+        else if (!strcmp(argv[i], "--net-host")) netHost = 1;
+        else if (!strcmp(argv[i], "--net-join") && i + 1 < argc) netJoin = argv[++i];
     }
 
     PsyX_Initialise((char*)"NASCAR Rumble", 960, 720, 0);
@@ -116,7 +122,13 @@ int main(int argc, char** argv)
     }
     else
     {
+        Net_Init();
+        if (netHost)
+            Net_Host(NET_DEFAULT_PORT);
+        else if (netJoin)
+            Net_Join(netJoin, NET_DEFAULT_PORT);
         ret = Game_Main();
+        Net_Shutdown();
     }
 
     PsyX_Shutdown();
