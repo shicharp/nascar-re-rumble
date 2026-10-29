@@ -69,7 +69,7 @@ start, select, l1, r1, l2, r2).
 Variables de depuracion: `NR_LAPS=n` vueltas, `NR_CAMCAR=n` camara en el coche n, `NR_POWER=n` poder n en la
 mano del jugador al salir, `NR_POWERLOG=1` cajas recogidas y poderes usados en el log, `NR_SNDLOG=1` sonidos,
 `NR_FXLOG=1` efectos creados, `NR_FXTEST=clase[,golpe]` crea un efecto en el coche del jugador cada segundo,
-`NR_BODYLOG=1` golpes a los objetos sueltos, `NR_SCRIPTLOG=1` guiones, `NR_TRIGTEST=1` el coche humano toca todos los disparadores, `NR_KILLTEST=id` rompe ese actor a los 5 s (guiones de golpe y de muerte), `NR_VEHLOG=1` nodos que cruzan los vehiculos de la pista, `NR_ENDRACE=t` el jugador 1 termina la carrera a los t tics, `NR_SCREENLOG=1` cambios de pantalla del front-end, `NR_REPLAYLOG=1` sumas de control de los coches, los actores y los aleatorios cada 150 tics (la carrera y su repeticion, o dos instancias con las mismas entradas, deben coincidir), `NR_SEED=n` fija la semilla de la carrera, `--fixed-step` carrera a paso fijo de 5 tics (60 Hz, el de la red por entradas), `--net-host` / `--net-join <ip>` crean o se unen a una partida en LAN sin pasar por la pantalla, `NR_CARS=n` fuerza el numero de coches (hasta 8), `--press` admite el mando 2 con el prefijo `2` (`900:2cross`) y frames contados desde el principio de la carrera con `r` (`r120:cross*600`), `--movie <fichero>` pone ese vídeo y sale (`--skip-legal` también salta los vídeos de arranque),
+`NR_BODYLOG=1` golpes a los objetos sueltos, `NR_SCRIPTLOG=1` guiones, `NR_TRIGTEST=1` el coche humano toca todos los disparadores, `NR_KILLTEST=id` rompe ese actor a los 5 s (guiones de golpe y de muerte), `NR_VEHLOG=1` nodos que cruzan los vehiculos de la pista, `NR_ENDRACE=t` el jugador 1 termina la carrera a los t tics, `NR_SCREENLOG=1` cambios de pantalla del front-end, `NR_SHOTSCREEN=prefijo` una captura de cada pantalla del front-end al segundo de entrar, `NR_REPLAYLOG=1` sumas de control de los coches, los actores y los aleatorios cada 150 tics (la carrera y su repeticion, o dos instancias con las mismas entradas, deben coincidir), `NR_SEED=n` fija la semilla de la carrera, `--fixed-step` carrera a paso fijo de 5 tics (60 Hz, el de la red por entradas), `--net-host` / `--net-join <ip>` crean o se unen a una partida en LAN sin pasar por la pantalla (y empiezan en la sala), `NR_CARS=n` fuerza el numero de coches (hasta 8), `--press` admite el mando 2 con el prefijo `2` (`900:2cross`) y frames contados desde el principio de la carrera con `r` (`r120:cross*600`), `--movie <fichero>` pone ese vídeo y sale (`--skip-legal` también salta los vídeos de arranque),
 `NR_POWERUPS=n` / `NR_CLASS=n` fuerzan los poderes y la clase de la carrera, `NR_TVLOG=1` camaras de TV, `NR_TVCAM=1` empieza con las camaras de TV (`vN`: la virtual N), `NR_PSXLOD=1`
 niveles de detalle de la PS1 (por defecto, todo con el detalle completo).
 `--viewer` es el visor de páginas Cpag (flechas para cambiar de página).
@@ -103,8 +103,11 @@ valen conduciendo: en los menus, la pausa, los resultados, la carga y la repetic
 **Partidas en red local (LAN), hasta 8 jugadores, uno por PC:** SELECT en el menu principal abre *LAN Game*. Uno
 crea la partida (*Host a Game*) y los demas se unen (*Join a Game*: salen las partidas de la red local, o se escribe la
 direccion IP del anfitrion con el teclado e Intro). En la sala cada uno elige su piloto con izquierda / derecha y el
-anfitrion pulsa X para elegir la carrera (solo carrera suelta); la parrilla se completa con la IA hasta los coches de
-las opciones (o hasta 8 si hay mas jugadores). En red no hay pausa ni repeticion, y al acabar todos vuelven a la sala.
+anfitrion pulsa X para elegir la carrera (carrera suelta, o campeonato con hasta 6 jugadores); la parrilla se completa
+con la IA hasta los coches de las opciones (o hasta 8 si hay mas jugadores). En red no hay pausa ni repeticion, y al
+acabar todos vuelven a la sala. En un campeonato cada PC lleva la copa como en un jugador (records, podio y desbloqueos
+en su partida guardada), el anfitrion da la siguiente carrera cuando todos estan en la clasificacion y el coche de quien
+se va lo lleva la IA con sus puntos.
 Usa los puertos UDP 37120 (partida) y 37121 (busqueda): la primera vez Windows puede pedir permiso en el cortafuegos.
 Cada PC simula la carrera entera y solo viajan las pulsaciones (ver NOTAS, *Multijugador*).
 

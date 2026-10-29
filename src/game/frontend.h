@@ -332,6 +332,8 @@ extern uint8_t g_DemoCount;         /* DAT_800b711a */
 extern int8_t g_FeUnlockShow;        /* fe +0xA84: clase recien desbloqueada; -1 todo ganado en Elite (la 600 pone
                                          el final), -2 el video de la intro */
 int  Fe_AfterRace(void);                                                  /* 80090fb4: siguiente pantalla */
+int  Fe_NetAfterRace(void);       /* solo en el port: lo mismo tras una carrera en red */
+extern int g_FeNetRace;           /* solo en el port: la ultima carrera ha sido en red */
 int  Fe_DrawTime(int r, int g, int b, int x, int y, int t);               /* 8008ee98 */
 void Fe_Screen1400(void);                                                 /* 800855a0: records de la pista */
 void Fe_Screen900(void);                                                  /* 8007ddb4: Hall of Champs */
@@ -346,6 +348,7 @@ void Fe_InitVenues(void);                                                 /* par
 int  Fe_CarAvailable(int driver, int car);                                /* 80090674 */
 void Fe_StartRace(int demo);                                              /* 8008927c */
 void Fe_NetStartRace(void);       /* solo en el port: cliente de la red, la carrera que manda el anfitrion */
+void Fe_NetRestoreSettings(void); /* solo en el port: cliente, sus ajustes al volver a la sala */
 const char* Fe_VenueCode(int venue);                                      /* 800abdd4[sede][0] */
 int  Fe_DecodeLmdc(int index, int x, int y);
 void Fe_LoadAtlas(void);                                                  /* 80092f5c */

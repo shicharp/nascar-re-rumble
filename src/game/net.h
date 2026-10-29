@@ -25,7 +25,7 @@ typedef struct
     uint8_t driver;               /* piloto elegido (g_Settings.lastDriver[0]) */
     uint8_t car;                  /* clase del coche (g_Settings.lastCar[0]: 0 rookie, 1 pro, 2 elite) */
     uint8_t transmission;         /* esquema de botones y cambio (g_Settings.transmission[0], 0-5) */
-    uint8_t inRace;               /* sigue en la carrera (manda pulsaciones) */
+    uint8_t inRace;               /* donde esta: NET_P_* */
     char    name[NET_NAME_LEN + 1];
 } NetPlayer;
 
@@ -46,6 +46,13 @@ int  Net_NumPlayers(void);
 const char* Net_Status(void);                  /* texto del ultimo suceso (conectando, rechazado...) */
 
 void Net_UpdateLocalPlayer(void);              /* el piloto o el nombre de esta maquina han cambiado: a la sala */
+
+/* donde esta cada maquina (NetPlayer.inRace; los clientes lo dicen desde el front-end con Net_SetStage) */
+#define NET_P_LOBBY      0        /* en la sala: entra en la siguiente carrera */
+#define NET_P_RACING     1
+#define NET_P_STANDINGS  2        /* campeonato: en la clasificacion, lista para la siguiente carrera */
+#define NET_P_BUSY       3        /* despues de una carrera: resultados, records, podio, guardar... */
+void Net_SetStage(int stage);                  /* cliente: se manda al anfitrion si cambia */
 
 /* ---- busqueda de partidas en la red local (difusion UDP en NET_FIND_PORT; el anfitrion contesta) ---- */
 
@@ -85,6 +92,10 @@ typedef struct
     int32_t  gameInfo[43];                     /* g_GameInfo entero (los guiones leen y guardan cosas en el) */
     uint8_t  inputDelay;                       /* frames de retardo de las pulsaciones (segun el ping) */
     uint8_t  assists;                          /* NET_ASSIST_*: las ayudas que ha puesto el anfitrion */
+    /* campeonato (champType != 0): la copa, la carrera que toca y lo que lleva cada coche */
+    uint8_t  champType, cupRaces, raceIndex, cupSelVenue, cupSelTrack;
+    uint8_t  cupVenue[6], cupTrack[6];
+    uint8_t  records[8][0x18];                 /* g_CarRecords en el orden de salida (puntos y tiempo de la copa) */
 } NetRaceSetup;
 
 /* ayudas para los humanos que elige el anfitrion en la sala (racecar.c, Race_Assists) */
@@ -98,6 +109,7 @@ int  Net_InRace(void);                         /* esta maquina corre una carrera
 int  Net_HumanView(int human);                 /* vista de esta maquina (0 / 1) del humano o -1 (remoto, IA); sin
                                                   red, la del original: human si es 0 o 1 */
 const char* Net_HumanName(int human);          /* nombre del jugador en red (NULL sin red) */
+int  Net_HumanGone(int human);                 /* su maquina ha dejado la carrera (desde el frame que se simula) */
 int  Net_HumanTransmission(int human);         /* cambio del humano (sin red, g_Settings.transmission[human & 1]) */
 int  Net_RaceSeed(void);
 const NetRaceSetup* Net_Setup(void);
@@ -112,5 +124,20 @@ void Net_RaceFrame(void);                      /* Race_UpdateTime, tras leer el 
 void Net_RaceStep(void);                       /* tras simular el frame: sumas de control */
 void Net_RaceEnd(void);                        /* al acabar la carrera en esta maquina */
 int  Net_DesyncFrame(void);                    /* primer frame desincronizado (0 ninguno) */
+
+/* ---- campeonato (como mucho NET_CUP_MAX humanos: la clasificacion del original es de 6 coches) ----
+ * El anfitrion lo empieza con la primera salida; cada maquina sigue la copa en su front-end con su humano como
+ * jugador 1 (records, podio y desbloqueos en su partida). Entre carrera y carrera los de la copa esperan en la
+ * clasificacion y el anfitrion da la siguiente salida cuando estan todos; el coche de quien se va lo lleva la IA. */
+#define NET_CUP_MAX 6
+int  Net_CupActive(void);                      /* esta maquina sigue en un campeonato en red */
+int  Net_CupAllReady(void);                    /* anfitrion: todos los de la copa estan en la clasificacion */
+int  Net_HostCupHuman(int human);              /* anfitrion: numero en la siguiente carrera del humano de la ultima
+                                                  (-1 si se ha ido) */
+void Net_LeaveCup(void);                       /* cliente: la deja; anfitrion: la acaba para todos */
+void Net_CupFinished(void);                    /* despues de la ultima carrera: ya no hay copa */
+int  Net_LocalHuman(void);                     /* numero de humano de esta maquina en la ultima carrera */
+const char* Net_ViewHumanName(int player);     /* nombre del humano de la parrilla del front-end tras la carrera
+                                                  (ver Fe_NetAfterRace; NULL si no es de la red) */
 
 #endif

@@ -3,7 +3,7 @@
  *  - Sin partida: crear (anfitrion) o unirse.
  *  - Unirse: las partidas que contestan a la busqueda por difusion, o una direccion escrita con el teclado.
  *  - Sala: los jugadores; cada uno elige su piloto con izquierda / derecha. El anfitrion pasa con X a elegir la
- *    carrera (pantalla 200, solo carrera suelta) y Fe_StartRace mete a los demas en la parrilla. */
+ *    carrera (pantalla 200: carrera suelta o campeonato) y Fe_StartRace mete a los demas en la parrilla. */
 #include <stdio.h>
 #include <string.h>
 #include <SDL.h>
@@ -149,7 +149,8 @@ static void Lan_Lobby(void)
         Lan_Text(v, m == me ? 0x1c : v, m == me ? 0 : v, line, 0x22, y, 0);
         Lan_Text(v, v, v, p->driver < NUM_DRIVERS ? g_Drivers[p->driver].name : "?", 0x80, y, 0);
         Lan_Text(v, v, v, cars[p->car <= 2 ? p->car : 0], 0xe0, y, 0);
-        const char* tag = m == 0 ? "Host" : p->inRace ? "Racing" : "";
+        static const char* const stage[4] = { "", "Racing", "Standings", "Busy" };
+        const char* tag = m == 0 ? "Host" : stage[p->inRace & 3];
         Lan_Text(0x12, 0x12, 0x12, tag, 0x120, y, 2);
         row++;
     }
@@ -231,6 +232,7 @@ void Fe_ScreenLan(void)
     {
         Fe_SetBackground(6);
         s_sel = 0;
+        Fe_NetRestoreSettings();     /* (cliente: los ajustes de antes de las carreras del anfitrion) */
         g_Settings.numPlayers = 1;   /* un jugador por maquina (el menu principal deja 2: aviso del mando 2) */
         Net_UpdateLocalPlayer();     /* (el anfitrion puede haber cambiado de coche en la pantalla 1200) */
         if (s_mode == LAN_FIND)

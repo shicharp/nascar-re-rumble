@@ -765,9 +765,10 @@ void Fe_Screen200(void)
             fe->popup = 1;
             fe->nextScreen = -1;
         }
-        else if (Net_IsHost() && Net_NumPlayers() > 1 && fe->cursor != 0)
+        else if (Net_IsHost() && Net_NumPlayers() > 1 &&
+                 (fe->cursor > 1 || (fe->cursor == 1 && Net_NumPlayers() > NET_CUP_MAX)))
         {
-            Snd_PlayUi(0x4c, NULL);   /* port: en red solo carrera suelta */
+            Snd_PlayUi(0x4c, NULL);   /* port: en red carrera suelta o campeonato (este, hasta 6 jugadores) */
             fe->nextScreen = -1;
         }
         else
@@ -1709,8 +1710,8 @@ int Fe_SavePrompt(int ask)
     FrontendState* fe = g_Frontend;
     if (!ask)
     {
-        if (!g_FeSaveReturn || (fe->nextScreen != 100 && fe->nextScreen != 600))
-            return 0;
+        if (!g_FeSaveReturn || (fe->nextScreen != 100 && fe->nextScreen != 600 && fe->nextScreen != 2100))
+            return 0;   /* (port: 2100, la sala de la red al acabar un campeonato) */
         if (g_FeSaveReturn == 1)
         {
             Pw_Encode(s_pwCurrent);

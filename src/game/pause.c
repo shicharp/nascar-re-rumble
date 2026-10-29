@@ -44,6 +44,8 @@ static int8_t s_items[2][8];       /* DAT_800aa88c */
 static char s_text[2][14][40];     /* textos de 800aa89c (se modifican como en el original) */
 static int  s_resSel;              /* DAT_800af73c */
 static int  s_resConfirm;          /* DAT_800af73d: 0 no, 1 NO, 2 SI */
+static CarRecord s_netRecords[8];  /* port: campeonato en red, el resultado al entrar en los resultados */
+static int  s_netRecordsSet;
 static int  s_resTime;             /* DAT_800af70c */
 static int  s_specShown;           /* solo en el port: en red, la tabla del que ya ha llegado ya esta puesta */
 static int  s_resHidden;           /* solo en el port: el espectador ha quitado la tabla (triangulo) */
@@ -195,6 +197,7 @@ void Pause_Init(void)
     s_resTime = -1;
     s_raceTicks = 0;
     s_specShown = s_resHidden = 0;
+    s_netRecordsSet = 0;
     memset(s_hold, 0, sizeof(s_hold));
     for (int p = 0; p < 2; p++)
         for (int b = 0; b < 16; b++)
@@ -226,6 +229,15 @@ static void Pause_Begin(int player)
 /* resultados (estado 0xD) con la primera opcion elegida; cruz y START cuentan como pulsados hasta soltarlos */
 static void Pause_ShowResults(void)
 {
+    /* port: en un campeonato en red el resultado se fija aqui, en el mismo frame en todas las maquinas (el
+     * Race_Finalize de la salida estima a los que no han llegado segun cuando sale cada una): los puntos de la
+     * copa salen iguales en todas */
+    if (Net_InRace() && g_Settings.champType)
+    {
+        Race_Finalize();
+        memcpy(s_netRecords, g_CarRecords, sizeof(s_netRecords));
+        s_netRecordsSet = 1;
+    }
     g_GameState = GAMESTATE_RESULTS;
     s_resSel = 0;
     s_resConfirm = 0;
@@ -493,14 +505,15 @@ void Pause_Menu(void)
     }
 }
 
-/* 800266f0: tiempos de los que no han terminado (por la diferencia con el primero) y posiciones finales */
+/* 800266f0: tiempos de los que no han terminado (por la diferencia con el primero) y posiciones finales. Port: en
+ * red tambien los humanos que han dejado la carrera (sin tiempo sumarian 0 en la copa) */
 void Race_Finalize(void)
 {
     for (int i = 0; i < g_NumCars; i++)
     {
         uint8_t* c = g_CarPhys[i];
         RaceCar* e = (RaceCar*)ENT(c);
-        if (I32(c, 0x330) == 0 && e->type != 1)
+        if (I32(c, 0x330) == 0 && (e->type != 1 || Net_InRace()))
             I32(c, 0x330) = g_RaceTime - 900 + Hud_GapTime(c, g_CarPhys[0]);
         int slot = e->id - 1000;
         if (slot >= 0 && slot < 8 && g_CarRecords[slot].startPos == 0)
@@ -656,7 +669,12 @@ void Race_Results(int dt)
     Font_DrawString(ExeStr(0x80010ad4), 0xc0, yb - 0x20, 0xe);
     Font_DrawString(ExeStr(Pad_GetType(0) == 2 ? 0x80010d00 : 0x80010d0c), 0xcb, yb - 0x15, 0xe);
     const char* const opts[3] = { "Restart Race", "Show Replay", champ ? "Continue" : "Exit Race" };
-    for (int i = first; i < 3; i++)
+    /* port: en un campeonato en red el que ya ha llegado espera a los demas (el resultado es el de todos; para
+     * dejar la copa, START y Quit) */
+    int waitAll = Net_InRace() && champ && g_GameState != GAMESTATE_RESULTS;
+    if (waitAll)
+        Font_DrawString("Waiting for the other players...", 0x26, yb - 0x25 - 6 + 2 * 0xb, 0x10);
+    for (int i = first; i < 3 && !waitAll; i++)
     {
         char o[48];
         snprintf(o, sizeof(o), "%s", opts[i]);
@@ -683,6 +701,8 @@ void Race_Results(int dt)
         int spectator = Net_InRace() && g_GameState != GAMESTATE_RESULTS;
         if (spectator && tr == 0)
             s_resHidden = 1;
+        if (waitAll)
+            cr = up = dn = 1;
         if (cr == 0 || ((le == 0 || ri == 0) && s_resConfirm != 0) || up == 0 || dn == 0)
             Snd_PlayUi(0x22, g_ViewHumans[p]);   /* 80029950 (izquierda / derecha, solo con la pregunta NO / YES) */
         if (cr == 0)
@@ -694,6 +714,8 @@ void Race_Results(int dt)
             else if (s_resConfirm == 2)
             {
                 Race_Finalize();
+                if (s_netRecordsSet)
+                    memcpy(g_CarRecords, s_netRecords, sizeof(s_netRecords));
                 g_GameState = 0xb;
                 if (s_resSel == 0)
                     g_RaceRestart = 1;

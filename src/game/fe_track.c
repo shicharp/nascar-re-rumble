@@ -947,6 +947,32 @@ static int Fe_AddNetHumans(int np, int cls)
     return np;
 }
 
+/* Solo en el port: siguiente carrera de un campeonato en red (anfitrion). La parrilla viene de la clasificacion con
+ * los numeros de humano de la carrera anterior: se renumeran como los numerara Net_HostStartRace, y el coche de
+ * quien ha dejado la copa pasa a la IA (con sus puntos). Devuelve el numero de humanos. */
+static int Fe_NetCupGrid(void)
+{
+    int np = 0;
+    for (int i = 0; i < g_RaceGrid.count; i++)
+    {
+        GridCar* e = &g_RaceGrid.car[i];
+        if (e->player == 0xff)
+            continue;
+        int h = Net_HostCupHuman(e->player);
+        if (h < 0)
+        {
+            e->player = 0xff;
+            e->cls = g_Settings.racingClass;
+        }
+        else
+        {
+            e->player = (uint8_t)h;
+            np++;
+        }
+    }
+    return np;
+}
+
 /* 8008927c: completa la parrilla (rivales al azar, niveles, rival destacado, orden de salida), elige el
  * fichero de la pista y sale del front-end (estado 0xB). Con demo (Frontend_Update tras 30 s sin tocar nada): 6
  * coches de la IA a 1 vuelta en una sede y pista al azar, sin rival destacado; la camara sigue al ultimo de la
@@ -1062,8 +1088,11 @@ void Fe_StartRace(int demo)
         default: grid->count = 6; gs->laps = 4; break;
         }
     }
-    if (!demo && !gs->champType && Net_IsHost() && npLocal == 1)   /* (en red, un jugador por maquina) */
+    if (!demo && Net_IsHost() && npLocal == 1)   /* (en red, un jugador por maquina) */
+    {
+        Net_CupFinished();   /* (carrera suelta o copa nueva: no sigue ninguna) */
         np = Fe_AddNetHumans(np, cls);
+    }
     {
         const char* nc = getenv("NR_CARS");   /* solo en el port (pruebas): numero de coches (hasta 8) */
         if (nc && !demo && atoi(nc) > 0)
@@ -1081,10 +1110,10 @@ void Fe_StartRace(int demo)
         while (s < grid->count && grid->car[s].team != 100)
             s++;   /* rivales y compañeros elegidos en la pantalla 1200 */
         int truckSlot = -1, legendSlot = -1;
-        if (gs->champType)
+        if (gs->champType && grid->count > np)   /* (port: en red puede no quedar hueco para la IA) */
         {
             truckSlot = np + rand() % (grid->count - np);
-            if (gs->gameMode == 4)
+            if (gs->gameMode == 4 && grid->count - np > 1)
                 do
                     legendSlot = np + rand() % (grid->count - np);
                 while (legendSlot == truckSlot);
@@ -1298,6 +1327,8 @@ void Fe_StartRace(int demo)
     }
 
 pickTrack:
+    if (gs->champType && gs->raceIndex != 0 && Net_CupActive())
+        np = Fe_NetCupGrid();   /* port: siguiente carrera de un campeonato en red */
     for (int i = 0; i < 8; i++)
     {
         g_CarRecords[i].b = 0;
@@ -1340,30 +1371,60 @@ pickTrack:
         NR_Log("  %d: %-20s clase %d nivel %d equipo %d %s%s\n", i + 1, g_Drivers[grid->car[i].driver].name,
                grid->car[i].car, grid->car[i].cls, grid->car[i].team,
                grid->car[i].player == 0xff ? "IA" : "JUGADOR", grid->car[i].flag ? " (rival)" : "");
-    if (np > npLocal)
+    g_FeNetRace = np > npLocal || (gs->champType && Net_CupActive());
+    if (g_FeNetRace)
         Net_HostStartRace();   /* port: manda la carrera a las demas maquinas */
     g_GameState = 0xb;
 }
 
+int g_FeNetRace;   /* solo en el port: la ultima carrera ha sido en red */
+
+static GameSettings s_netSaved;   /* cliente: sus ajustes, que pisan las salidas del anfitrion */
+static int          s_netHaveSaved;
+
 /* Solo en el port: cliente de una partida en red. Pone la carrera que ha mandado el anfitrion (Net_Setup: ajustes,
- * parrilla en el orden de salida) y sale del front-end como Fe_StartRace. Los ajustes de esta maquina se recuperan
- * al acabar (Net_RaceEnd). */
+ * parrilla en el orden de salida; en un campeonato, la copa y sus puntos) y sale del front-end como Fe_StartRace.
+ * Los ajustes de esta maquina se recuperan al volver a la sala (Fe_NetRestoreSettings). */
 void Fe_NetStartRace(void)
 {
     GameSettings* gs = &g_Settings;
     const NetRaceSetup* s = Net_Setup();
-    gs->venue = s->venue;
-    gs->track = s->track;
+    if (!s_netHaveSaved)
+    {
+        s_netSaved = *gs;
+        s_netHaveSaved = 1;
+    }
     gs->laps = s->laps;
     gs->racingClass = s->racingClass;
     gs->teamRace = s->teamRace;
     gs->gameMode = s->gameMode;
-    gs->champType = 0;
+    gs->champType = s->champType;
     gs->demo = 0;
     gs->numPlayers = 1;
+    if (!s->champType)
+    {
+        gs->venue = s->venue;
+        gs->track = s->track;
+    }
+    else
+    {
+        /* como en Fe_StartRace: la sede y la pista elegidas para la copa, y la carrera que toca */
+        gs->venue = s->cupSelVenue;
+        gs->track = s->cupSelTrack;
+        gs->curVenue = s->venue;
+        gs->curTrack = s->track;
+        gs->cupRaces = s->cupRaces;
+        gs->raceIndex = s->raceIndex;
+        memcpy(gs->cupVenue, s->cupVenue, sizeof(gs->cupVenue));
+        memcpy(gs->cupTrack, s->cupTrack, sizeof(gs->cupTrack));
+    }
+    g_FeNetRace = 1;
     g_RaceGrid.count = s->gridCount;
     memcpy(g_RaceGrid.car, s->grid, sizeof(g_RaceGrid.car));
-    memset(g_CarRecords, 0, sizeof(g_CarRecords));
+    if (s->champType)
+        memcpy(g_CarRecords, s->records, sizeof(g_CarRecords));
+    else
+        memset(g_CarRecords, 0, sizeof(g_CarRecords));
     memcpy(g_GameInfo, s->gameInfo, sizeof(GameInfo));   /* (los guiones pueden guardar cosas de una carrera a otra) */
     g_GameInfo->isReplay = 0;
     g_GameInfo->unk5c = 0;
@@ -1381,7 +1442,22 @@ void Fe_NetStartRace(void)
     g_Venue = (short)venue;
     snprintf(g_SelectedTrack, sizeof(g_SelectedTrack), "%s", s_trackFiles[venue][track + 1]);
     snprintf(g_TrackName, sizeof(g_TrackName), "%s", Fe_GetString(5000 + venue * 10 + track + 1));
-    NR_Log("Carrera en red: %s (%s), %d coches, %d vueltas, %d humanos\n", g_TrackName, g_SelectedTrack,
-           g_RaceGrid.count, gs->laps, s->numHumans);
+    NR_Log("Carrera en red: %s (%s), %d coches, %d vueltas, %d humanos%s\n", g_TrackName, g_SelectedTrack,
+           g_RaceGrid.count, gs->laps, s->numHumans, s->champType ? ", campeonato" : "");
     g_GameState = 0xb;
+}
+
+/* Solo en el port: cliente, de vuelta en la sala. Los ajustes que habian cambiado las salidas del anfitrion (lo
+ * demas, como lo desbloqueado en un campeonato, se queda) */
+void Fe_NetRestoreSettings(void)
+{
+    GameSettings* gs = &g_Settings;
+    if (!s_netHaveSaved)
+        return;
+    s_netHaveSaved = 0;
+    gs->numPlayers = s_netSaved.numPlayers;
+    gs->gameMode = s_netSaved.gameMode;
+    gs->racingClass = s_netSaved.racingClass;
+    /* de la sede elegida a demo, todo seguido */
+    memcpy(&gs->venue, &s_netSaved.venue, offsetof(GameSettings, demo) + 1 - offsetof(GameSettings, venue));
 }

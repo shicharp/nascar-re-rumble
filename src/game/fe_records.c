@@ -33,6 +33,7 @@
 #include "fe_internal.h"
 #include "pad.h"
 #include "savegame.h"
+#include "net.h"
 
 #define P(a) PROGRESS(a)
 
@@ -94,6 +95,12 @@ static int GridFind(int p)
     return 0;
 }
 
+/* solo en el port: el nombre de un humano de otra maquina tras una carrera en red (NULL si no lo es) */
+static const char* NetName(const GridCar* c)
+{
+    return g_FeNetRace && c->player != 0xff && c->player != 0 ? Net_ViewHumanName(c->player) : NULL;
+}
+
 /* 8008f0c8: nombre de un coche de la parrilla para las tablas de copa */
 static void GridName(char* dst, const GridCar* c)
 {
@@ -103,6 +110,8 @@ static void GridName(char* dst, const GridCar* c)
         dst[1] = (char)(c->driver + 1);
         dst[2] = 0;
     }
+    else if (NetName(c))
+        snprintf(dst, 9, "%s", NetName(c));
     else
         snprintf(dst, 9, "%s", c->player < 2 ? g_Settings.playerName[c->player] : Fe_GetString(0xa2b));
 }
@@ -367,6 +376,7 @@ int Fe_AfterRace(void)
             Fe_StartRace(0);   /* siguiente carrera de la copa */
             return fe->screen;
         }
+        Net_CupFinished();   /* port: en red, cada uno sigue con su podio */
         CupPodium();
         if (s_numWinners)
         {
@@ -430,7 +440,41 @@ menu:
         fe->raceMenu1P[gs->raceMenuCursor].active = 1;
     else if (gs->numPlayers == 2)
         fe->raceMenu2P[gs->raceMenuCursor].active = 1;
+    if (g_FeNetRace && Net_Active())
+        return 2100;   /* port: de un campeonato en red, a la sala (el final sigue en el menu Showcase) */
     return g_FeUnlockShow == -1 ? 600 : 100;
+}
+
+/* Solo en el port: lo que sigue a una carrera en red (pantalla 2000). Carrera suelta: la sala. Campeonato: cada
+ * maquina sigue la copa como en un jugador, con su humano como jugador 1 (records, clasificacion, podio y
+ * desbloqueos en su partida); si la deja, o el anfitrion la acaba antes de la ultima carrera, a la sala. */
+int Fe_NetAfterRace(void)
+{
+    GameSettings* gs = &g_Settings;
+    if (!gs->champType)
+        return 2100;
+    /* el cliente cambia en la parrilla su humano por el 0 (el del anfitrion): el front-end busca al jugador 1 con
+     * el mando 0 (GridFind). La siguiente salida trae la parrilla del anfitrion. */
+    int me = Net_LocalHuman();
+    if (!Net_IsHost() && me > 0)
+        for (int i = 0; i < g_RaceGrid.count; i++)
+        {
+            GridCar* c = &g_RaceGrid.car[i];
+            if (c->player == me)
+                c->player = 0;
+            else if (c->player == 0)
+                c->player = (uint8_t)me;
+        }
+    /* especiales: solo los que se han cogido en la carrera (la salida trae los que tenia el anfitrion) */
+    g_GameInfo->unlockMask &= ~(int)Net_Setup()->unlockMask;
+    if (g_RaceExit != 0)
+    {
+        Net_LeaveCup();   /* (la ha dejado en carrera) */
+        return 2100;
+    }
+    if (!Net_CupActive() && gs->raceIndex < gs->cupRaces)
+        return 2100;
+    return Fe_AfterRace();
 }
 
 /* ---------------------------------------------------------------- pantalla 1400: records de la pista */
@@ -550,10 +594,13 @@ static short s_cupView;   /* fe +0x91A: 0 clasificacion de la copa, 1 resultado 
 
 static const char* CarName(const GridCar* c)
 {
+    if (NetName(c))
+        return NetName(c);   /* port: en red, el de su maquina */
     return c->player == 0xff ? g_Drivers[c->driver].name : g_Settings.playerName[c->player & 1];
 }
 
-/* color de una fila: el equipo del jugador 1 amarillo, el del 2 naranja, el resto blanco */
+/* color de una fila: el equipo del jugador 1 amarillo, el del 2 naranja, el resto blanco (port: en red, naranja
+ * tambien los de las otras maquinas) */
 static void RowColor(int k, int* r, int* g, int* b)
 {
     *r = 0x1c;
@@ -561,6 +608,8 @@ static void RowColor(int k, int* r, int* g, int* b)
     if (g_RaceGrid.car[k].team == g_RaceGrid.car[GridFind(0)].team)
         *g = 0x1c;
     else if (g_Settings.numPlayers == 2 && g_RaceGrid.car[k].team == g_RaceGrid.car[GridFind(1)].team)
+        *g = 0xe;
+    else if (NetName(&g_RaceGrid.car[k]))
         *g = 0xe;
     else
         *g = *b = 0x1c;
@@ -677,13 +726,16 @@ static void DrawTrackTitle(int y)
 
 /* 80085d90: despues de cada carrera de una copa. Arriba / abajo cambia entre la clasificacion (puntos y tiempo
  * acumulados; por equipos, de dos en dos con la suma) y el resultado de la carrera; X sigue (siguiente carrera o
- * podio, 80090fb4) y triangulo pregunta si abandonar la copa (0xA28). */
+ * podio, 80090fb4) y triangulo pregunta si abandonar la copa (0xA28).
+ * Port: en un campeonato en red con carreras por delante, la siguiente la da el anfitrion cuando estan todos en
+ * esta pantalla (Net_SetStage); los demas esperan. */
 void Fe_Screen1500(void)
 {
     FrontendState* fe = g_Frontend;
     GameSettings* gs = &g_Settings;
     int port = gs->numPlayers == 2 ? -1 : 0;
     int n = g_RaceGrid.count < 6 ? g_RaceGrid.count : 6;
+    int netWait = g_FeNetRace && gs->champType && gs->raceIndex < gs->cupRaces;
     if (fe->firstFrame)
     {
         Fe_SetBackground(8);
@@ -698,7 +750,12 @@ void Fe_Screen1500(void)
         s_slide = 6;
     }
     Fe_DrawBackground(0x800);
-    Fe_DrawHelp(0, HelpText(10), 0x21, 0xd5, 0x23, 300, 0);
+    if (!netWait || (Net_IsHost() && Net_CupAllReady()))
+        Fe_DrawHelp(0, HelpText(10), 0x21, 0xd5, 0x23, 300, 0);
+    else
+        Fe_DrawHelp(0, Net_IsHost() ? "Waiting for the other players...   \x1b^\x13 View   \x1b~\x13 Quit" :
+                                      "Waiting for the host...   \x1b^\x13 View   \x1b~\x13 Quit",
+                    0x21, 0xd5, 0x23, 300, 0);
     DrawTrackTitle(0x11);
     Fe_DrawVramRect(0x380, s_cupView * 0x20, 99, 0x1f, 0x27, 0x33, 0, 0);
     Fe_DrawVramRect(0x380, 0x40, 0xf, 0x1a, 0x91, 0x35, 0, 0);
@@ -762,10 +819,17 @@ void Fe_Screen1500(void)
         }
 
     Fe_ReadPads();
+    if (netWait && !Net_IsHost() && !Net_CupActive() && fe->nextScreen == -1)
+        fe->nextScreen = 2100;   /* port: el anfitrion ha acabado la copa (o se ha ido) */
     if (fe->popup == 0)
     {
         if (Fe_PadPressed(PADB_CROSS, port, 1))
-            fe->nextScreen = 0;   /* (al terminar el fundido se cambia por lo que siga) */
+        {
+            if (!netWait || (Net_IsHost() && Net_CupAllReady()))
+                fe->nextScreen = 0;   /* (al terminar el fundido se cambia por lo que siga) */
+            else
+                Fe_PlaySound(0x4c);
+        }
         else if (Fe_PadPressed(PADB_TRIANGLE, port, 1))
         {
             fe->popup = 1;
@@ -784,10 +848,15 @@ void Fe_Screen1500(void)
         {
             if (res != 0)
             {
-                /* abandonar la copa */
+                /* abandonar la copa (port: en red, el anfitrion la acaba para todos y un cliente la deja; su
+                 * coche lo lleva la IA) */
+                if (netWait)
+                    Net_LeaveCup();
+                else
+                    Net_CupFinished();
                 if (!Fe_CheckUnlocks())
                 {
-                    fe->nextScreen = 100;
+                    fe->nextScreen = g_FeNetRace && Net_Active() ? 2100 : 100;
                     if (g_FeSaveReturn)
                         fe->marquee = 1;
                 }
@@ -804,7 +873,8 @@ void Fe_Screen1500(void)
         if (s_slide > 0x9e)
             s_slide = 0x9e;
     }
-    if (fe->fadeDone && fe->nextScreen != 100 && fe->nextScreen != 1800 && fe->nextScreen != 800)
+    if (fe->fadeDone && fe->nextScreen != 100 && fe->nextScreen != 1800 && fe->nextScreen != 800 &&
+        fe->nextScreen != 2100)
     {
         if (gs->champType && gs->raceIndex < gs->cupRaces)
             SortByPos(0);   /* la parrilla de la siguiente carrera sale de la clasificacion */

@@ -22,6 +22,7 @@
 #include "hud.h"
 #include "globals.h"
 #include "tvcam.h"
+#include "pause.h"
 
 RaceCar g_Cars[RACE_MAX_CARS];
 int     g_NumCars;
@@ -333,6 +334,28 @@ static void Race_Assists(void)
     }
 }
 
+/* Solo en el port: en red la carrera acaba cuando han llegado todos los humanos (Ai_UpdateLaps, al cruzar la meta).
+ * Los de una maquina que ha dejado la carrera ya no llegan: cuentan como llegados desde el frame en que van sin
+ * mando (el mismo en todas las maquinas), y si el ultimo que faltaba se va, la carrera acaba igual. */
+static void Race_NetCheckEnd(void)
+{
+    if (!Net_InRace() || g_RaceEndTimer != 0)
+        return;
+    int arrived = 0;
+    for (int h = 0; h < RACE_MAX_HUMANS; h++)
+    {
+        RaceCar* e = g_Humans[h];
+        if (!e || !e->phys)
+            continue;
+        if (I32(e->phys, 0x330) != 0)
+            arrived++;
+        else if (!Net_HumanGone(h))
+            return;
+    }
+    if (arrived)
+        g_RaceEndTimer = 5;
+}
+
 /* Race_UpdateSim 80030cac: posiciones (8002fc9c), mando de los humanos (8005ffbc -> 8004cae8), vueltas
  * (8003014c), poderes (8002ec00), IA (80030928, 8002de7c, 8002f4ac) y fisica (80056c6c). */
 void Race_UpdateCars(int dt)
@@ -360,6 +383,7 @@ void Race_UpdateCars(int dt)
     }
     Ai_UpdateAll(dt);
     Race_Assists();                /* solo en el port: rebufo y ayuda al rezagado en red */
+    Race_NetCheckEnd();            /* solo en el port: en red, sin esperar a los que se han ido */
     Physics_StepAll(dt);
     Race_CollideCars();            /* 800268c0 (tras dibujar en el original) */
     Actors_CollideCars();

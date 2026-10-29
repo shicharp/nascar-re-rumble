@@ -14,7 +14,7 @@
 #include "pause.h"
 #include "net.h"
 
-#define NET_VERSION   8
+#define NET_VERSION   9
 #define NET_CHANNELS  2           /* 0 sala y ordenes; 1 pulsaciones y salidas de la carrera (fiables y en orden) */
 #define NET_RING      128         /* frames de pulsaciones guardados por humano */
 #define NET_SUM_EVERY 30          /* frames entre sumas de control (medio segundo) */
@@ -35,6 +35,9 @@ enum
     MSG_SUM,          /* cliente -> anfitrion: sumas de la carrera en un frame */
     MSG_DESYNC,       /* anfitrion -> todos: frame desincronizado */
     MSG_UPDATE,       /* cliente -> anfitrion: su piloto o su nombre han cambiado */
+    MSG_STAGE,        /* cliente -> anfitrion: donde esta (NET_P_*) */
+    MSG_CUPQUIT,      /* cliente -> anfitrion: deja el campeonato */
+    MSG_CUPEND,       /* anfitrion -> todos: el campeonato se acaba antes de la ultima carrera */
 };
 
 /* busqueda: la pregunta y la respuesta (con la version, los jugadores y el nombre del anfitrion) */
@@ -46,6 +49,9 @@ static ENetPeer* s_server;                      /* cliente: la conexion con el a
 static ENetPeer* s_peers[NET_MAX_MACHINES];     /* anfitrion: la de cada maquina */
 static int       s_isHost, s_active, s_machine = -1;
 static int       s_assists;                     /* NET_ASSIST_* de la sala (las elige el anfitrion) */
+static int       s_stage = -1;                  /* cliente: lo ultimo que ha dicho de donde esta (NET_P_*) */
+static uint32_t  s_cupMask;                     /* anfitrion: maquinas del campeonato en curso (bit 0 el) */
+static int       s_cup;                         /* cliente: esta en un campeonato en curso */
 static NetPlayer s_players[NET_MAX_MACHINES];
 static char      s_status[64];
 static int       s_init;
@@ -73,7 +79,7 @@ static NetRaceSetup s_setup;
 static NetInput     s_inputs[NET_MAX_HUMANS][NET_RING];
 static uint32_t     s_leftFrom[NET_MAX_MACHINES];   /* frame desde el que la maquina ya no manda (0 sigue) */
 static uint32_t     s_lastInput[NET_MAX_MACHINES];  /* anfitrion: ultimo frame recibido de cada maquina */
-static GameSettings s_savedSettings;                /* cliente: sus ajustes, que la salida pisa */
+static char         s_humanNames[NET_MAX_HUMANS][NET_NAME_LEN + 1];   /* los de la ultima carrera */
 static struct
 {
     uint32_t frame;
@@ -131,7 +137,7 @@ static void Net_LogFile(const char* fmt, ...)
 
 typedef struct
 {
-    uint8_t buf[512];
+    uint8_t buf[1024];
     int     len;
 } Msg;
 
@@ -373,7 +379,7 @@ static void MarkLeft(int machine, uint32_t from)
     if (machine < 0 || machine >= NET_MAX_MACHINES || (s_leftFrom[machine] && s_leftFrom[machine] <= from))
         return;
     s_leftFrom[machine] = from;
-    s_players[machine].inRace = 0;
+    s_players[machine].inRace = NET_P_BUSY;   /* (el cliente dice despues donde esta) */
     if (s_inRace)
         Net_Log("[red] la maquina %d deja la carrera (desde el frame %u)\n", machine, s_leftFrom[machine]);
 }
@@ -538,8 +544,9 @@ static void Host_Drop(ENetPeer* peer)
     if (id <= 0 || id >= NET_MAX_MACHINES || s_peers[id] != peer)
         return;
     Net_Log("[red] sale %s (maquina %d)\n", s_players[id].name, id);
-    if (s_inRace && s_players[id].inRace)
+    if (s_inRace && s_players[id].inRace == NET_P_RACING)
         Host_MachineLeaves(id);
+    s_cupMask &= ~(1u << id);
     s_peers[id] = NULL;
     memset(&s_players[id], 0, sizeof(s_players[id]));
     Host_SendLobby();
@@ -580,6 +587,25 @@ static void Host_Receive(ENetPeer* peer, const uint8_t* data, int len, int chann
         if (from > 0 && from < NET_MAX_MACHINES)
             Host_MachineLeaves(from);
         break;
+    case MSG_STAGE:
+    {
+        int st = Rd_U8(&r);
+        /* (mientras corre manda la carrera: la deja con MSG_LEAVE, que llega antes) */
+        if (!r.bad && from > 0 && from < NET_MAX_MACHINES && s_players[from].used &&
+            s_players[from].inRace != NET_P_RACING && st != NET_P_RACING && st <= NET_P_BUSY)
+        {
+            s_players[from].inRace = (uint8_t)st;
+            Host_SendLobby();
+        }
+        break;
+    }
+    case MSG_CUPQUIT:
+        if (from > 0 && from < NET_MAX_MACHINES && (s_cupMask & 1u << from))
+        {
+            s_cupMask &= ~(1u << from);
+            Net_Log("[red] %s deja el campeonato\n", s_players[from].name);
+        }
+        break;
     case MSG_SUM:
     {
         uint32_t frame = Rd_U32(&r), sum[3];
@@ -609,10 +635,14 @@ static void Race_Reset(void)
     s_frame = 0;
     s_desync = 0;
     s_myHuman = -1;
+    memset(s_humanNames, 0, sizeof(s_humanNames));
     for (int h = 0; h < s_setup.numHumans; h++)
     {
         if (s_setup.humanMachine[h] == s_machine)
             s_myHuman = h;
+        int m = s_setup.humanMachine[h];
+        snprintf(s_humanNames[h], sizeof(s_humanNames[h]), "%s",
+                 m < NET_MAX_MACHINES && s_players[m].used ? s_players[m].name : "Player");
         /* los primeros frames no tienen mando: nadie los ha leido todavia */
         for (uint32_t f = 1; f <= (uint32_t)s_delay; f++)
             StoreInput(h, f, 0, 0x80, 0x80, 4);
@@ -675,8 +705,9 @@ static void Client_Receive(const uint8_t* data, int len)
         Rd_Bytes(&r, &s_setup, (int)sizeof(s_setup));
         if (r.bad || s_setup.numHumans > NET_MAX_HUMANS)
             break;
-        s_savedSettings = g_Settings;
         s_inRace = 1;
+        s_stage = NET_P_RACING;
+        s_cup = s_setup.champType != 0;
         Race_Reset();
         s_startPending = 1;
         Net_Log("[red] salida: %d humanos, soy el %d, semilla %u\n", s_setup.numHumans, s_myHuman, s_setup.seed);
@@ -694,6 +725,11 @@ static void Client_Receive(const uint8_t* data, int len)
             MarkLeft(m, from);
         break;
     }
+    case MSG_CUPEND:
+        if (s_cup)
+            Net_Log("[red] el anfitrion acaba el campeonato\n");
+        s_cup = 0;
+        break;
     case MSG_DESYNC:
     {
         uint32_t frame = Rd_U32(&r);
@@ -743,6 +779,9 @@ static void Net_Reset(void)
     s_isHost = s_active = 0;
     s_machine = -1;
     s_inRace = s_startPending = 0;
+    s_stage = -1;
+    s_cupMask = 0;
+    s_cup = 0;
 }
 
 int Net_Host(int port)
@@ -1132,8 +1171,12 @@ int Net_HumanView(int human)
 
 const char* Net_HumanName(int human)
 {
-    int m = s_inRace ? MachineOfHuman(human) : -1;
-    return m >= 0 && s_players[m].used ? s_players[m].name : (s_inRace ? "Player" : NULL);
+    if (!s_inRace)
+        return NULL;
+    int m = MachineOfHuman(human);
+    if (m >= 0 && s_players[m].used)
+        return s_players[m].name;
+    return human >= 0 && human < NET_MAX_HUMANS && s_humanNames[human][0] ? s_humanNames[human] : "Player";
 }
 
 int Net_HumanTransmission(int human)
@@ -1158,8 +1201,12 @@ int Net_HostRacers(int* machines)
     int n = 0;
     if (!s_isHost)
         return 0;
-    for (int m = 1; m < NET_MAX_MACHINES && n < NET_MAX_HUMANS - 1; m++)
-        if (s_players[m].used && s_peers[m] && !s_players[m].inRace)
+    /* los de la sala o, en un campeonato empezado, los suyos que esperan en la clasificacion */
+    int max = (g_Settings.champType ? NET_CUP_MAX : NET_MAX_HUMANS) - 1;
+    for (int m = 1; m < NET_MAX_MACHINES && n < max; m++)
+        if (s_players[m].used && s_peers[m] &&
+            (s_cupMask ? (s_cupMask & 1u << m) && s_players[m].inRace == NET_P_STANDINGS
+                       : s_players[m].inRace == NET_P_LOBBY))
             machines[n++] = m;
     return n;
 }
@@ -1170,8 +1217,17 @@ void Net_HostStartRace(void)
     GameSettings* gs = &g_Settings;
     s->seed = (uint32_t)g_FrontendFrames;
     s->unlockMask = (uint32_t)g_GameInfo->unlockMask;
-    s->venue = gs->venue;
-    s->track = gs->track;
+    s->venue = gs->champType ? gs->curVenue : gs->venue;
+    s->track = gs->champType ? gs->curTrack : gs->track;
+    s->champType = gs->champType;
+    s->cupRaces = gs->cupRaces;
+    s->raceIndex = gs->raceIndex;
+    s->cupSelVenue = gs->venue;
+    s->cupSelTrack = gs->track;
+    memcpy(s->cupVenue, gs->cupVenue, sizeof(s->cupVenue));
+    memcpy(s->cupTrack, gs->cupTrack, sizeof(s->cupTrack));
+    static_assert(sizeof(s->records) == sizeof(g_CarRecords), "NetRaceSetup.records = g_CarRecords");
+    memcpy(s->records, g_CarRecords, sizeof(s->records));
     s->laps = gs->laps;
     s->racingClass = gs->racingClass;
     s->powerUps = (uint8_t)g_GameInfo->powerUps;
@@ -1186,6 +1242,9 @@ void Net_HostStartRace(void)
      * puesto en ese orden con Net_HostRacers) */
     int machines[NET_MAX_HUMANS], n = Net_HostRacers(machines);
     s->numHumans = (uint8_t)(n + 1);
+    s_cupMask = gs->champType ? 1 : 0;
+    for (int i = 0; i < n && gs->champType; i++)
+        s_cupMask |= 1u << machines[i];
     memset(s->humanMachine, 0xff, sizeof(s->humanMachine));
     s->humanMachine[0] = 0;
     s->transmission[0] = s_players[0].transmission = gs->transmission[0] <= 5 ? gs->transmission[0] : 0;
@@ -1213,6 +1272,7 @@ void Net_HostStartRace(void)
     s->inputDelay = (uint8_t)(delay < NET_INPUT_DELAY ? NET_INPUT_DELAY : delay > NET_MAX_DELAY ? NET_MAX_DELAY : delay);
     Net_Log("[red] ping de los clientes: %u y %u ms -> retardo de %d frames\n", r1, r2, s->inputDelay);
     Msg m;
+    static_assert(sizeof(*s) < sizeof(m.buf), "NetRaceSetup en un mensaje");
     Msg_Begin(&m, MSG_START);
     Msg_Bytes(&m, s, (int)sizeof(*s));
     for (int i = 0; i < n; i++)
@@ -1365,9 +1425,9 @@ void Net_RaceEnd(void)
         Msg_U8(&m, s_machine);
         Msg_U32(&m, 0);
         Send(s_server, &m, 0);
-        g_Settings = s_savedSettings;   /* sus ajustes, que la salida habia cambiado */
     }
-    s_players[s_machine >= 0 ? s_machine : 0].inRace = 0;
+    s_players[s_machine >= 0 ? s_machine : 0].inRace = NET_P_BUSY;
+    s_stage = NET_P_BUSY;   /* (como lo apunta el anfitrion al recibir la salida) */
     s_inRace = 0;
     Net_Log("[red] fin de la carrera en red (frame %d%s)\n", s_frame, s_desync ? ", desincronizada" : "");
 }
@@ -1375,4 +1435,91 @@ void Net_RaceEnd(void)
 int Net_DesyncFrame(void)
 {
     return s_desync;
+}
+
+/* ---------------------------------------------------------------- donde esta cada uno y campeonato */
+
+void Net_SetStage(int stage)
+{
+    if (s_isHost || !s_server || s_machine < 0 || s_inRace || stage == s_stage)
+        return;
+    s_stage = stage;
+    Msg m;
+    Msg_Begin(&m, MSG_STAGE);
+    Msg_U8(&m, stage);
+    Send(s_server, &m, 0);
+}
+
+int Net_CupActive(void)
+{
+    return s_isHost ? s_cupMask != 0 : s_cup && s_active;
+}
+
+int Net_CupAllReady(void)
+{
+    for (int m = 1; m < NET_MAX_MACHINES; m++)
+        if ((s_cupMask & 1u << m) && s_peers[m] && s_players[m].used && s_players[m].inRace != NET_P_STANDINGS)
+            return 0;
+    return 1;
+}
+
+int Net_HostCupHuman(int human)
+{
+    int m = MachineOfHuman(human);
+    if (m == 0)
+        return 0;
+    int machines[NET_MAX_HUMANS], n = Net_HostRacers(machines);
+    for (int i = 0; i < n; i++)
+        if (machines[i] == m)
+            return i + 1;   /* (Net_HostStartRace los numera en este orden) */
+    return -1;
+}
+
+void Net_LeaveCup(void)
+{
+    Msg m;
+    if (s_isHost && s_cupMask)
+    {
+        Msg_Begin(&m, MSG_CUPEND);
+        Broadcast(&m, 0, -1);
+        Net_Log("[red] el anfitrion acaba el campeonato\n");
+    }
+    else if (!s_isHost && s_cup && s_server)
+    {
+        Msg_Begin(&m, MSG_CUPQUIT);
+        Send(s_server, &m, 0);
+        Net_Log("[red] deja el campeonato\n");
+    }
+    s_cupMask = 0;
+    s_cup = 0;
+}
+
+void Net_CupFinished(void)
+{
+    s_cupMask = 0;
+    s_cup = 0;
+}
+
+int Net_LocalHuman(void)
+{
+    return s_myHuman;
+}
+
+const char* Net_ViewHumanName(int player)
+{
+    if (player < 0 || player >= NET_MAX_HUMANS)
+        return NULL;
+    /* el cliente intercambia en la parrilla su humano con el 0 (el del anfitrion) para ser el jugador 1 */
+    int h = player;
+    if (!s_isHost && s_myHuman > 0)
+        h = player == 0 ? s_myHuman : player == s_myHuman ? 0 : player;
+    return h < s_setup.numHumans && s_humanNames[h][0] ? s_humanNames[h] : NULL;
+}
+
+int Net_HumanGone(int human)
+{
+    /* (frame >= el de la salida: todas las maquinas lo saben antes de simularlo, porque sin el no tienen sus
+     * pulsaciones) */
+    int m = s_inRace ? MachineOfHuman(human) : -1;
+    return m >= 0 && s_leftFrom[m] && (uint32_t)s_frame >= s_leftFrom[m];
 }

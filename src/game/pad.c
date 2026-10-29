@@ -14,7 +14,7 @@ uint32_t g_PadButtons[2];
 uint32_t g_PadBinds[2][14];                 /* DAT_800b0570 */
 static uint8_t s_vibration[2] = { 1, 1 };   /* DAT_800b04ef + puerto * 0x28 */
 
-#define MAX_SCRIPT 256
+#define MAX_SCRIPT 1024
 /* --press "N:[2]boton[*frames]"; el stick izquierdo con "N:[2]lx=valor[*frames]" / "ly=valor" (axis 0 / 1); con
  * "rN" el frame cuenta desde el principio de la carrera (Pad_SetRaceFrame) */
 static struct { int frame, len, port, axis, value, race; uint32_t mask; } s_script[MAX_SCRIPT];

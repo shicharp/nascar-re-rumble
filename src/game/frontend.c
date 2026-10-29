@@ -235,14 +235,14 @@ void Frontend_InitScreens(void)
         g_DemoCount = 0;
         g_LoadHelp = 1;            /* DAT_800b7117: la ayuda de los mandos en la primera carga de carrera */
         g_BootState = 1;
-        fe->nextScreen = 100;
+        fe->nextScreen = Net_Active() ? 2100 : 100;   /* port: con --net-host / --net-join, a la sala */
     }
     else if (!g_Settings.demo)
     {
         /* vuelta de una carrera: nivel del marcador (DAT_800b715e + jugadores) y lo que sigue (80090fb4) */
         g_SaveExtra.hudPref[(g_Settings.numPlayers - 1) & 1] = (uint8_t)Hud_GetSetting(0);
         fe->screen = 2000;
-        fe->nextScreen = Net_Active() ? 2100 : (short)Fe_AfterRace();   /* port: en red, a la sala */
+        fe->nextScreen = (short)(g_FeNetRace ? Fe_NetAfterRace() : Fe_AfterRace());   /* port: Fe_NetAfterRace */
     }
     else
     {
@@ -303,6 +303,12 @@ void Frontend_Update(void)
 {
     FrontendState* fe = g_Frontend;
 
+    /* port: un cliente de la red dice al anfitrion si esta en la sala, esperando la siguiente carrera de un
+     * campeonato o en otra pantalla (no entra en la carrera que empiece) */
+    Net_SetStage(fe->screen == 2100 ? NET_P_LOBBY :
+                 fe->screen == 1500 && g_Settings.champType && g_Settings.raceIndex < g_Settings.cupRaces &&
+                 Net_CupActive() ? NET_P_STANDINGS : NET_P_BUSY);
+
     if (g_FadeDir != 0)
     {
         if (g_FadeLevel < 0x100)
@@ -343,6 +349,29 @@ void Frontend_Update(void)
         }
     }
 
+    {
+        /* solo en el port (depuracion): NR_SHOTSCREEN=prefijo guarda una captura de cada pantalla al segundo de
+         * entrar (prefijo_pantalla_n.bmp) */
+        static const char* s_prefix;
+        static int s_shotScreen = -1, s_frames, s_count;
+        if (!s_prefix)
+            s_prefix = getenv("NR_SHOTSCREEN") ? getenv("NR_SHOTSCREEN") : "";
+        if (s_prefix[0])
+        {
+            if (fe->screen != s_shotScreen)
+            {
+                s_shotScreen = fe->screen;
+                s_frames = 0;
+            }
+            if (++s_frames == 60)
+            {
+                char path[260];
+                snprintf(path, sizeof(path), "%s_%d_%d.bmp", s_prefix, fe->screen, s_count++);
+                Gfx_SaveScreenshot(path);
+            }
+        }
+    }
+
     int savePrompt = Fe_SavePrompt(0);   /* DAT_800b7118 */
     switch (fe->screen)
     {
@@ -374,7 +403,7 @@ void Frontend_Update(void)
         fe->firstFrame = 0;
     /* 9000 tics (30 s) sin tocar nada en el menu principal: una demostracion (Fe_StartRace(1), que sale del
      * front-end); a la cuarta seguida, la intro (pantalla 600 con fe +0xA84 = -2) */
-    if (fe->idleTimer > 0x2328)
+    if (fe->idleTimer > 0x2328 && !Net_Active())   /* (port: en una partida en red no) */
     {
         g_DemoCount = (uint8_t)Fe_Clamp(g_DemoCount + 1, 0, 4);
         if (g_DemoCount < 4)
