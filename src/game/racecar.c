@@ -10,6 +10,7 @@
 #include "vecmath.h"
 #include "frontend.h"
 #include "racecar.h"
+#include "net.h"
 #include "actor.h"
 #include "powerup.h"
 #include "snd.h"
@@ -30,7 +31,8 @@ int     g_StartCurve;
 int     g_HaveStart;
 int     g_PrevRaceTime;
 int     g_NumHumans;
-RaceCar* g_Humans[2];
+RaceCar* g_Humans[RACE_MAX_HUMANS];
+RaceCar* g_ViewHumans[2];
 uint8_t* g_CarPhys[RACE_MAX_CARS];
 
 /* ---------------------------------------------------------------- salida y parrilla */
@@ -185,10 +187,16 @@ void Race_CreateCars(void)
         Car_LoadWheels(c, &g_RaceGrid.car[i], wheels);
         if (human)
         {
-            int p = c->player < 2 && !g_Humans[c->player] ? c->player : (g_Humans[0] ? 1 : 0);
+            int p = c->player >= 0 && c->player < RACE_MAX_HUMANS ? c->player : 0;
+            while (g_Humans[p] && p < RACE_MAX_HUMANS - 1)
+                p++;
             g_Humans[p] = c;
             g_NumHumans++;
-            c->ctrl[0x59] = (uint8_t)p;
+            /* +0x59: la vista (y el mando) de esta maquina; 0xFF el de otra maquina en red */
+            int view = Net_HumanView(p);
+            c->ctrl[0x59] = (uint8_t)(view < 0 ? 0xff : view);
+            if (view >= 0)
+                g_ViewHumans[view] = c;
             Human_InitCtrl(c->ctrl);
         }
         else
@@ -227,7 +235,8 @@ void Race_FreeCars(void)
         c->phys = c->phys2 = c->ctrl = NULL;
         g_CarPhys[i] = NULL;
     }
-    g_Humans[0] = g_Humans[1] = NULL;
+    memset(g_Humans, 0, sizeof(g_Humans));
+    memset(g_ViewHumans, 0, sizeof(g_ViewHumans));
     g_NumHumans = 0;
     g_NumCars = 0;
     Ai_Reset();
@@ -236,8 +245,8 @@ void Race_FreeCars(void)
 /* Race_UpdateTime 800269c0: mando de cada humano (8005fc54 + 8005f928), cada frame y tambien en pausa */
 void Race_ReadPads(void)
 {
-    for (int i = 0; i < 2; i++)
-        if (g_Humans[i] && g_Humans[i]->ctrl)
+    for (int i = 0; i < RACE_MAX_HUMANS; i++)
+        if (g_Humans[i] && g_Humans[i]->ctrl && g_Humans[i]->ctrl[0x59] < 2)
             Human_ReadPad(g_Humans[i], g_Humans[i]->ctrl[0x59]);
 }
 
@@ -306,7 +315,7 @@ void Race_AddCarsToDrawList(int view, int mirror)
     for (int i = 0; i < g_NumCars; i++)
     {
         RaceCar* c = &g_Cars[i];
-        if (!c->obj.model || !RaceCam_CarVisible(view, c) || (mirror && c == g_Humans[0]))
+        if (!c->obj.model || !RaceCam_CarVisible(view, c) || (mirror && c == g_ViewHumans[0]))
             continue;
         GfxObj* wheels = Car_Wheels(c);
         /* 80060190 / 80030f84: modelo segun el nivel de detalle (80013db0); las ruedas solo en los niveles 0 y 1,
@@ -360,7 +369,7 @@ static CamPreset s_presetTab[2][4] = {
         { 2, 1, 2, 0, 0, 0, 0, 0x300 },
     },
 };
-#define s_presets (s_presetTab[g_NumHumans == 2])
+#define s_presets (s_presetTab[g_SplitScreen != 0])
 
 /* DAT_800b6160 + vista * 0x40 */
 typedef struct
@@ -457,7 +466,7 @@ void RaceCam_Init(void)
     /* 8003132c: cada vista sigue a su jugador (DAT_800b6188 + jugador * 0x40); sin humanos (demostracion), la
      * primera de la lista de la IA (DAT_800af7c4: la ultima creada, el ultimo de la parrilla) */
     for (int v = 0; v < 2; v++)
-        s_views[v].target = g_Humans[v];
+        s_views[v].target = g_ViewHumans[v];
     if (!s_views[0].target && g_NumCars > 0)
         s_views[0].target = &g_Cars[g_NumCars - 1];
     /* solo en el port (depuracion): NR_CAMCAR=n sigue al coche del hueco n */

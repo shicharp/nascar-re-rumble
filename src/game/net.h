@@ -42,4 +42,40 @@ const NetPlayer* Net_Player(int machine);      /* NULL si el hueco esta libre */
 int  Net_NumPlayers(void);
 const char* Net_Status(void);                  /* texto del ultimo suceso (conectando, rechazado...) */
 
+/* ---- carrera ---- */
+
+#define NET_MAX_HUMANS   8
+#define NET_INPUT_DELAY  3        /* frames entre leer el mando y usarlo (60 Hz: 50 ms) */
+
+/* Lo que manda el anfitrion al empezar (MSG_START): basta para que cada maquina cargue la misma carrera */
+typedef struct
+{
+    uint32_t seed;                             /* Rand_SetSeed */
+    uint32_t unlockMask;                       /* g_GameInfo->unlockMask */
+    uint8_t  venue, track, laps, racingClass, powerUps, teamRace, gameMode, numHumans;
+    uint8_t  humanMachine[NET_MAX_HUMANS];     /* maquina de cada humano (GridCar.player = numero de humano) */
+    uint8_t  transmission[NET_MAX_HUMANS];     /* cambio de cada humano (< 3 automatico) */
+    uint8_t  gridCount;
+    uint8_t  grid[8][8];                       /* g_RaceGrid.car, ya en el orden de salida */
+} NetRaceSetup;
+
+int  Net_InRace(void);                         /* esta maquina corre una carrera en red */
+int  Net_HumanView(int human);                 /* vista de esta maquina (0 / 1) del humano o -1 (remoto, IA); sin
+                                                  red, la del original: human si es 0 o 1 */
+const char* Net_HumanName(int human);          /* nombre del jugador en red (NULL sin red) */
+int  Net_HumanTransmission(int human);         /* cambio del humano (sin red, g_Settings.transmission[human & 1]) */
+int  Net_RaceSeed(void);
+const NetRaceSetup* Net_Setup(void);
+
+/* anfitrion (Fe_StartRace): las maquinas que entran en la carrera; Net_HostStartRace manda la salida */
+int  Net_HostRacers(int* machines);            /* devuelve cuantas (sin el anfitrion) y sus numeros */
+void Net_HostStartRace(void);
+/* cliente: la salida ha llegado y hay que dejar el front-end (Frontend_MainLoop) */
+int  Net_TakeStart(void);
+
+void Net_RaceFrame(void);                      /* Race_UpdateTime, tras leer el mando: pulsaciones en lockstep */
+void Net_RaceStep(void);                       /* tras simular el frame: sumas de control */
+void Net_RaceEnd(void);                        /* al acabar la carrera en esta maquina */
+int  Net_DesyncFrame(void);                    /* primer frame desincronizado (0 ninguno) */
+
 #endif

@@ -28,6 +28,7 @@
 #include "cpag.h"
 #include "snd.h"
 #include "hud.h"
+#include "net.h"
 
 static uint8_t s_hudSetting[2] = { 1, 1 };   /* DAT_800b7112 */
 
@@ -77,7 +78,7 @@ void Hud_CycleLevel(RaceCar* e, int dir)
  * simulacion y para todos los humanos, porque recoloca el coche (en red, el remoto no tiene vista aqui). */
 static void Hud_UpdateWrongWay(int dt)
 {
-    for (int i = 0; i < g_NumHumans && i < 2; i++)
+    for (int i = 0; i < RACE_MAX_HUMANS; i++)
     {
         RaceCar* h = g_Humans[i];
         if (!h || !h->phys || !h->ctrl)
@@ -110,7 +111,7 @@ void Hud_Update(int dt)
     Hud_UpdateWrongWay(dt);
     RaceCar* e = RaceCam_GetTarget(0);
     uint8_t* c = Hud_Phys(e);
-    if (!c || g_NumHumans >= 2)
+    if (!c || g_SplitScreen)
         return;
     int target = (((((I32(c, 0x3ec) * 0x3c) >> 8) * 0xaaa) / 9000) + 0x5a0) & 0xfff;
     s_needleVel += ((((target - s_needle) * 0x400 - s_needleVel * 0x100) >> 4) * dt) >> 8;
@@ -216,7 +217,7 @@ static void Hud_Map(int view, int* w, int* h, int* y)
 static void Hud_Gauge(uint8_t* c, int y)
 {
     RaceCar* e = (RaceCar*)ENT(c);
-    if (g_NumHumans != 1)
+    if (g_SplitScreen)
     {
         /* con dos jugadores, compacto: fondo oscuro, barra de revoluciones (region (200, 0x1F), hasta 0x37 pixeles)
          * y el marco (0xC4, 0) con la marcha y la velocidad */
@@ -340,7 +341,7 @@ static void Hud_PowerIcon(int icon, int slot, int ticks, int dx, int y)
  * mas de 300 tics */
 static void Hud_Messages(int view, int y, int level)
 {
-    RaceCar* h = g_Humans[view];
+    RaceCar* h = g_ViewHumans[view];
     if (!h)
         return;
     uint8_t* ctrl = h->ctrl;
@@ -402,7 +403,7 @@ void Hud_Draw(int view)
             Hud_SpriteSlot(0xc, r, 0, 0, 0x40, 0x20, 1, HUD_R(0xee), g_SplitScreen && view == 0 ? 0x44 : 0xbc);
         return;
     }
-    int level = g_Humans[view] ? g_Humans[view]->ctrl[0x58] : 0;
+    int level = g_ViewHumans[view] ? g_ViewHumans[view]->ctrl[0x58] : 0;
     int mapW = 0, mapH = 0, mapY = g_SplitScreen ? (view == 0 ? 0x78 : 0x6e) : 0xdc;
     if (level)
         Hud_Map(view, &mapW, &mapH, &mapY);
@@ -503,7 +504,8 @@ void Hud_Draw(int view)
     RaceCar* oe = (RaceCar*)ENT(other);
     int gap = Hud_GapTime(c, other);
     const GridCar* g = &g_RaceGrid.car[oe->id - 1000];
-    const char* name = oe->type == 1 ? g_Settings.playerName[g->player & 1] : g_Drivers[g->driver].name;
+    const char* name = oe->type == 1 ? (Net_HumanName(g->player) ? Net_HumanName(g->player) :
+                                        g_Settings.playerName[g->player & 1]) : g_Drivers[g->driver].name;
     Font_Select(0);
     if (gap < 0x7405)
         snprintf(s, sizeof(s), "%c%02d.%01d %s", ahead ? '-' : '+', gap / 300, gap / 0x1e - (gap / 300) * 10, name);

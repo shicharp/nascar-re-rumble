@@ -390,7 +390,7 @@ static RaceCar* Ai_FindCars(RaceCar* e, RaceCar** ahead, RaceCar** behind, int* 
             *aheadD = rel;
         }
     }
-    for (int h = 0; h < 2; h++)
+    for (int h = 0; h < RACE_MAX_HUMANS; h++)
     {
         RaceCar* o = g_Humans[h];
         if (!o)
@@ -656,7 +656,7 @@ int Car_TrackDeltaPublic(uint8_t* p1, uint8_t* p2)
 static int Ai_RubberBand(RaceCar* e)
 {
     int best = 0, found = 0;
-    for (int h = 0; h < 2; h++)
+    for (int h = 0; h < RACE_MAX_HUMANS; h++)
         if (g_Humans[h])
         {
             int v = Car_TrackDeltaPublic(Ai_Phys(e), g_Humans[h]->phys);
@@ -1001,8 +1001,13 @@ void Car_UpdateLap(uint8_t* c, int curve)
                             int pos = U8(c, 0x31a);
                             Speech_Say(pos == 0 ? 7 : pos == g_NumCars - 1 ? 9 : 8, 0, e, 0);
                         }
-                        RaceCar* other = g_Humans[0] == e ? g_Humans[1] : g_Humans[0];
-                        if (g_NumHumans < 2 || (other && I32(other->phys, 0x330) != 0))
+                        /* cuando han llegado todos los humanos (port: de todas las maquinas) */
+                        int all = 1;
+                        for (int h = 0; h < RACE_MAX_HUMANS; h++)
+                            if (g_Humans[h] && g_Humans[h] != e && g_Humans[h]->phys &&
+                                I32(g_Humans[h]->phys, 0x330) == 0)
+                                all = 0;
+                        if (all)
                             g_RaceEndTimer = 5;
                     }
                     else if (g_NumHumans == 0 && e == RaceCam_GetTarget(0))
@@ -1030,7 +1035,7 @@ void Race_UpdatePositions(int dt)
     int n = 0;
     uint8_t* cand[RACE_MAX_CARS];
     int nc = 0;
-    for (int h = 0; h < 2; h++)
+    for (int h = 0; h < RACE_MAX_HUMANS; h++)
         if (g_Humans[h] && g_Humans[h]->phys)
             cand[nc++] = g_Humans[h]->phys;
     for (int i = 0; i < s_numAi; i++)
@@ -1145,7 +1150,7 @@ void Ai_UpdateLaps(void)
 {
     for (int i = 0; i < s_numAi; i++)
         Car_UpdateLap(Ai_Phys(s_aiList[i]), s_aiList[i]->tpos.curve);
-    for (int h = 0; h < 2; h++)
+    for (int h = 0; h < RACE_MAX_HUMANS; h++)
         if (g_Humans[h] && g_Humans[h]->phys)
             Car_UpdateLap(g_Humans[h]->phys, g_Humans[h]->tpos.curve);
 }

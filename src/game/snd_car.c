@@ -15,6 +15,7 @@
 #include "frontend.h"
 #include "globals.h"
 #include "racecar.h"
+#include "net.h"
 #include "carphys_int.h"
 #include "snd.h"
 #include "snd_int.h"
@@ -124,8 +125,8 @@ int Engine_BanksForCar(int type)
         if (Grid_EngineType(g) != type)
             continue;
         used = 1;
-        if (g->player == 0xff)
-            continue;
+        if (Net_HumanView(g->player == 0xff ? -1 : g->player) < 0)
+            continue;   /* (port: el humano de otra maquina suena como la IA) */
         human = 1;
         if (g_SplitScreen)
         {
@@ -373,7 +374,7 @@ void Engine_Create(uint8_t* c)
     e->srcSkid = -1;
     e->srcHorn = -1;
     const GridCar* g = &g_RaceGrid.car[(ent->id - 1000) & 7];
-    e->player = (int8_t)(g->player == 0xff ? -1 : g->player);
+    e->player = (int8_t)Net_HumanView(g->player == 0xff ? -1 : g->player);   /* port: la vista, -1 la IA o remoto */
     if (e->player != -1)
     {
         e->voice[0] = Voice_Alloc(0x7f, 10, 2, 0xff);   /* 8003f524 */
@@ -518,7 +519,7 @@ void Engine_UpdateAll(int dt)
             continue;
         for (int view = 0; view < views; view++)
         {
-            const RaceCar* lis = g_Humans[view];
+            const RaceCar* lis = g_ViewHumans[view];
             SndPan p;
             if (view == e->player)
             {
@@ -738,8 +739,8 @@ void Car_PlaySfxAt(int id, int x, int z, const RaceCar* car)
     const RaceCar* ent = NULL;
     if (g_SplitScreen)
     {
-        Snd_PlayDef(x, z, d, g_Humans[0], 1, 0x10000, id, e->patchMain, -1);
-        ent = g_Humans[1];
+        Snd_PlayDef(x, z, d, g_ViewHumans[0], 1, 0x10000, id, e->patchMain, -1);
+        ent = g_ViewHumans[1];
     }
     Snd_PlayDef(x, z, d, ent, 1, 0x10000, id, e->patchMain, -1);
 }

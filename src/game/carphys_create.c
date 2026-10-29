@@ -9,6 +9,7 @@
 #include "frontend.h"
 #include "carphys.h"
 #include "carphys_int.h"
+#include "net.h"
 #include "snd.h"
 #include "fx.h"
 
@@ -469,7 +470,7 @@ uint8_t* Car_CreatePhys(RaceCar* e, GfxObj* wheels, const void* desc)
     Car_InitGears(c);
     SETPTR(c, 0x3e8, B_(c) + 0x350);
     const int8_t* d = (const int8_t*)desc;
-    IA(c, 0x10a) = (d[0] == -1 || g_Settings.transmission[d[0] & 1] < 3) ? 1 : 0;
+    IA(c, 0x10a) = (d[0] == -1 || Net_HumanTransmission(d[0]) < 3) ? 1 : 0;   /* (port: en red, el de su maquina) */
     U8(c, 0x3f4) = 0xff;
     for (int k = 0; k < 4; k++)
     {

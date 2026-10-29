@@ -9,6 +9,7 @@
 #include "mem.h"
 #include "gfx.h"
 #include "pad.h"
+#include "net.h"
 #include "font.h"
 #include "globals.h"
 #include "asset.h"
@@ -64,7 +65,7 @@ void Race_Load(const char* path)
     /* 80074d90 + 8001836c + 800182ec: aleatorios con los frames del front-end como semilla (en la repeticion, la
      * grabada; tambien vuelve a poner la clase de la carrera grabada) */
     const char* fseed = getenv("NR_SEED");   /* solo en el port (pruebas): la semilla de la carrera */
-    int seed = Replay_Begin(fseed ? atoi(fseed) : g_FrontendFrames);
+    int seed = Replay_Begin(Net_InRace() ? Net_RaceSeed() : fseed ? atoi(fseed) : g_FrontendFrames);
     Physics_Init();
     Rand_SetSeed(seed);
     g_HaveStart = 0;
@@ -231,8 +232,8 @@ static void Race_DrawScene(int view, int mirror, int seg)
     Actors_AddToDrawList(view);        /* 80061a0c + Actors_DrawView 80061b28 */
     Render_DrawListView(view, mirror);
     Race_RestoreCarModels();
-    if (g_Humans[view])
-        Race_DrawTeamMarkers(view, g_Humans[view]);   /* 80033724 */
+    if (g_ViewHumans[view])
+        Race_DrawTeamMarkers(view, g_ViewHumans[view]);   /* 80033724 */
     Fx_Draw(view, mirror);             /* 80038ccc */
     Sprite_DrawAll();                  /* 80045268 */
 }
@@ -275,8 +276,8 @@ static void Race_SetDrawHalf(int half, int otIndex)
  * (Gfx_Flip(2)) con un marco negro. En el port va en una segunda capa de la OT recortada con DR_AREA. */
 static void Race_DrawMirror(void)
 {
-    RaceCar* h = g_Humans[0];
-    if (g_NumHumans != 1 || !h || !h->phys || !h->ctrl || g_RaceTime <= 0x4af || g_RacePaused)
+    RaceCar* h = g_ViewHumans[0];
+    if (g_SplitScreen || !h || !h->phys || !h->ctrl || g_RaceTime <= 0x4af || g_RacePaused)
         return;
     if (*(const int*)(h->phys + 0x330) != 0 || !(*(const uint32_t*)(h->ctrl + 8) & 0x800000))
         return;
@@ -360,7 +361,7 @@ static void Race_DebugEnd(void)
     if (s_end <= 0)
         return;
     int done = 0;
-    for (int p = 0; p < 2; p++)
+    for (int p = 0; p < RACE_MAX_HUMANS; p++)
     {
         RaceCar* e = g_Humans[p];
         if (!e || !e->phys)
@@ -444,9 +445,10 @@ static int Race_UpdateTime(void)
 {
     Frame_Wait();
     Race_ReadPads();
+    Net_RaceFrame();   /* solo en el port: en red, las pulsaciones de todas las maquinas para este frame */
     if (!g_GameInfo->isReplay)
     {
-        if (g_NumHumans > 0 && !g_RacePaused && g_NumCars > 0 && I32(g_CarPhys[g_NumCars - 1], 0x330) == 0)
+        if (g_NumHumans > 0 && !Net_InRace() && !g_RacePaused && g_NumCars > 0 && I32(g_CarPhys[g_NumCars - 1], 0x330) == 0)
             Replay_RecordFrame(g_FrameDelta);
     }
     else if (!g_RacePaused)
@@ -518,6 +520,7 @@ void Race_MainLoop(void)
             Race_UpdateCars(dt);
             Race_DebugEnd();
             Race_DebugReplay();
+            Net_RaceStep();            /* solo en el port: sumas de control de la partida en red */
             Actors_PostUpdate();       /* 80048e84 */
             Fx_Update(dt);             /* 80038b50 */
             Hud_Update(dt);            /* 80042330 */
@@ -574,6 +577,7 @@ void Race_MainLoop(void)
     Pad_SetRaceFrame(-1);
     Snd_StopRace();                    /* 8003d04c */
     Replay_End();                      /* 800747a4 (8002456c, fuera de la repeticion) */
+    Net_RaceEnd();
     Script_Disable();                  /* 80067880 (8002456c) */
     Fx_FreeAll(2);                     /* 80038e28 (8002456c) */
     TvCam_Free();                      /* RaceCam_ResetPresets 80072348 (8002456c) */

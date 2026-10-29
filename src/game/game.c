@@ -12,6 +12,7 @@
 #include "asset.h"
 #include "gfx.h"
 #include "pad.h"
+#include "net.h"
 #include "lsc.h"
 #include "globals.h"
 #include "frontend.h"
@@ -80,7 +81,7 @@ void Legal_Show(int skippable)
 void Frame_Wait(void)
 {
     int delta;
-    int step = g_Options.fixedStep && !g_IsFrontend ? FIXED_STEP : 1;
+    int step = (g_Options.fixedStep || Net_InRace()) && !g_IsFrontend ? FIXED_STEP : 1;
     do
     {
         Pad_ReadAll();
@@ -211,6 +212,9 @@ void Frontend_MainLoop(void)
         Frame_Wait();
         Gfx_BeginFrame(0, 0, 0);
         Frontend_Update();
+        if (Net_TakeStart())
+            Fe_NetStartRace();   /* solo en el port: el anfitrion de la partida en red ha dado la salida (como
+                                    Fe_StartRace, tras Frame_Wait: en el estado 0xB el tiempo de juego no avanza) */
         Frontend_DrawFade();
         Snd_SetListenerCount(0);    /* 8003d48c(0) */
         Snd_Update();               /* 8003e848 */

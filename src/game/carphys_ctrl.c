@@ -416,19 +416,20 @@ void Human_Buttons(RaceCar* e)
     uint8_t* ctrl = e->ctrl;
     uint8_t* c = PTR(ctrl, 0);
     uint32_t a = U32(ctrl, 8);
+    int local = ctrl[0x59] < 2;   /* port: la camara y el marcador solo los de esta maquina (en red) */
     if (I32(c, 0x428) != 0)
     {
         Pad_Edge(a, ctrl + 0x18);
-        if (I32(ctrl, 0x1c) == 0)
+        if (I32(ctrl, 0x1c) == 0 && local)
             RaceCam_CycleView(ctrl[0x59], 1);
         Pad_Edge(a, ctrl + 0x20);
-        if (I32(ctrl, 0x24) == 0)
+        if (I32(ctrl, 0x24) == 0 && local)
             Hud_CycleLevel(e, 1);
     }
     Pad_Edge(a, ctrl + 0x10);
     if (I32(ctrl, 0x14) == 0)
         I32(ctrl, 0x54) = g_RaceTime;
-    else if (I32(ctrl, 0x14) == 1)
+    else if (I32(ctrl, 0x14) == 1 && local)
     {
         if (g_RaceTime - I32(ctrl, 0x54) < 300)
             RaceCam_CycleView(ctrl[0x59], 1);

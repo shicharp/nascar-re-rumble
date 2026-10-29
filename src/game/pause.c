@@ -24,6 +24,7 @@
 #include "hud.h"
 #include "ai.h"
 #include "pause.h"
+#include "net.h"
 #include "snd.h"
 #include "script.h"
 #include "tvcam.h"
@@ -207,7 +208,7 @@ static void Pause_Begin(int player)
     s_resume = 0;
     s_sel = 0;
     s_menu = 0;
-    Pause_UpdateTexts(g_Humans[player]);
+    Pause_UpdateTexts(g_ViewHumans[player]);
     Pause_SetQuitItem(7, 10);
     for (int b = 0; b < 16; b++)
         if (s_hold[player][b] != 2)
@@ -250,7 +251,7 @@ void Pause_ReplayEnded(void)
 /* Race_UpdateTime 800269c0: parado al final de la repeticion, cualquier boton pasa a los resultados */
 void Pause_ReplayWait(void)
 {
-    if (g_ReplayEnd == 1 && (g_PadButtons[0] || (g_NumHumans == 2 && g_PadButtons[1])))
+    if (g_ReplayEnd == 1 && (g_PadButtons[0] || (g_SplitScreen && g_PadButtons[1])))
     {
         g_ReplayEnd = 2;
         Pause_ShowResults();
@@ -277,12 +278,13 @@ void Race_UpdateState(int dt)
         g_GameState = 5;             /* cualquier boton corta la demostracion */
     for (int p = 0; p < 2; p++)
     {
-        if (!g_Humans[p])
+        if (!g_ViewHumans[p])
             continue;
         uint32_t b = g_PadButtons[p];
         if (g_GameState != GAMESTATE_RESULTS && !g_RacePaused)
         {
-            if (Edge(p, B_START, b) == 0)
+            /* port: en red no hay pausa (las demas maquinas no pueden parar) */
+            if (Edge(p, B_START, b) == 0 && !Net_InRace())
                 Pause_Begin(p);
         }
     }
@@ -304,7 +306,7 @@ void Pause_Menu(void)
     if (s_pausePlayer < 0)
         return;
     int p = s_pausePlayer;
-    RaceCar* h = g_Humans[p];
+    RaceCar* h = g_ViewHumans[p];
     int replay = g_GameInfo->isReplay;
     int w = replay ? 0x12e : 0x11a, count = 0;
     while (count < 8 && s_items[s_menu][count] >= 0)
@@ -509,6 +511,8 @@ void Race_Finalize(void)
 static const char* Car_Name(RaceCar* e)
 {
     const GridCar* g = &g_RaceGrid.car[e->id - 1000];
+    if (e->type == 1 && Net_HumanName(g->player))
+        return Net_HumanName(g->player);   /* port: en red, el nombre de su maquina */
     return e->type == 1 ? g_Settings.playerName[g->player & 1] : g_Drivers[g->driver].name;
 }
 
@@ -624,15 +628,17 @@ void Race_Results(int dt)
             Font_DrawString(s, 0xae, yy, 8);
         }
     }
-    if (champ && s_resSel == 0)
-        s_resSel = 1;
+    /* en campeonato solo las dos ultimas; port: en red solo salir (repetir o ver la repeticion son de una maquina) */
+    int first = Net_InRace() ? 2 : champ;
+    if (s_resSel < first)
+        s_resSel = first;
     int yb = y0 + h;
     Hud_Rect15(1, 0x3c, (yb - 0x2a) * 2, 0x208, 4, 1);
     Hud_Rect15(0x1084, 0x158, (yb - 0x28) * 2, 2, 0x50, 1);
     Font_DrawString(ExeStr(0x80010ad4), 0xc0, yb - 0x20, 0xe);
     Font_DrawString(ExeStr(Pad_GetType(0) == 2 ? 0x80010d00 : 0x80010d0c), 0xcb, yb - 0x15, 0xe);
     const char* const opts[3] = { "Restart Race", "Show Replay", champ ? "Continue" : "Exit Race" };
-    for (int i = champ; i < 3; i++)
+    for (int i = first; i < 3; i++)
     {
         char o[48];
         snprintf(o, sizeof(o), "%s", opts[i]);
@@ -651,13 +657,13 @@ void Race_Results(int dt)
     }
     for (int p = 0; p < 2; p++)
     {
-        if (!g_Humans[p])
+        if (!g_ViewHumans[p])
             continue;
         uint32_t b = g_PadButtons[p];
         int cr = Edge(p, B_CROSS, b), le = Edge(p, B_LEFT, b), ri = Edge(p, B_RIGHT, b);
         int up = Edge(p, B_UP, b), dn = Edge(p, B_DOWN, b);
         if (cr == 0 || ((le == 0 || ri == 0) && s_resConfirm != 0) || up == 0 || dn == 0)
-            Snd_PlayUi(0x22, g_Humans[p]);   /* 80029950 (izquierda / derecha, solo con la pregunta NO / YES) */
+            Snd_PlayUi(0x22, g_ViewHumans[p]);   /* 80029950 (izquierda / derecha, solo con la pregunta NO / YES) */
         if (cr == 0)
         {
             if (s_resConfirm == 1)
@@ -682,11 +688,10 @@ void Race_Results(int dt)
         else if (up == 0 || dn == 0)
         {
             s_resConfirm = 0;
-            /* en campeonato solo las dos ultimas */
             if (up == 0)
-                s_resSel = s_resSel == champ ? 2 : s_resSel - 1;
+                s_resSel = s_resSel == first ? 2 : s_resSel - 1;
             else
-                s_resSel = s_resSel == 2 ? champ : s_resSel + 1;
+                s_resSel = s_resSel == 2 ? first : s_resSel + 1;
         }
     }
 }

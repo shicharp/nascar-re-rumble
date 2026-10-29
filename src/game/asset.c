@@ -105,7 +105,11 @@ static int Asset_Dispatch(NrAsset* a)
     case NR_TAG('C', 's', 'f', 'x'):
         return Fx_OnCsfx(a);       /* 80035adc */
     case ASSET_Cctr:
-        /* cambia el estado del nivel: id 0 -> 2, id 1 -> 4 (en juego) */
+        /* cambia el estado del nivel: id 0 -> 2, id 1 -> 4 (en juego). Port: solo durante la carga; el front-end
+         * sigue leyendo su stream en el menu y, si ya ha salido (la salida de una partida en red puede llegar
+         * antes de que acabe), no debe volver a "en juego" */
+        if (g_GameState != GAMESTATE_LOADING && g_GameState != GAMESTATE_LOADED_PART)
+            return 0;
         if (a->id == 0)
             g_GameState = GAMESTATE_LOADED_PART;
         else if (a->id == 1)

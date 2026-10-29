@@ -986,8 +986,8 @@ void Snd_PlayAt(int id, int x, int z)
     const RaceCar* ent = NULL;
     if (g_SplitScreen)
     {
-        Snd_PlayDef(x, z, d, g_Humans[0], 1, 0x10000, id, -1, -1);
-        ent = g_Humans[1];
+        Snd_PlayDef(x, z, d, g_ViewHumans[0], 1, 0x10000, id, -1, -1);
+        ent = g_ViewHumans[1];
     }
     Snd_PlayDef(x, z, d, ent, 1, 0x10000, id, -1, -1);
 }
@@ -1300,7 +1300,7 @@ static Actor* Snd_NearestPickup(const SndListener* l)
 static void Snd_UpdateSources(int view, int dt)
 {
     (void)dt;
-    const RaceCar* ent = g_Humans[view];
+    const RaceCar* ent = g_ViewHumans[view];
     int maxv = g_SplitScreen ? 4 : 6;
     if (!s_srcCount || !s_raceActive)
         return;

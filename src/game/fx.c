@@ -203,7 +203,7 @@ static void Mat_Identity(int* m)
 void Fx_Focus(int view, int* out)
 {
     RaceCar* t = RaceCam_GetTarget(view);
-    const RaceCar* c = (!t || t->type == 1) ? g_Humans[view] : t;
+    const RaceCar* c = (!t || t->type == 1) ? g_ViewHumans[view] : t;
     if (c)
         memcpy(out, c->obj.pos, 3 * sizeof(int));
     else

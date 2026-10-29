@@ -21,6 +21,7 @@
 #include "frontend.h"
 #include "fe_internal.h"
 #include "savegame.h"
+#include "net.h"
 
 #define GTE_OP_NCCS 0x0108041B
 
@@ -913,6 +914,38 @@ static int GridFindPlayer(int p)
     return 0;
 }
 
+/* Solo en el port: en una partida en red, el anfitrion pone detras de sus jugadores a los de las demas maquinas
+ * (GridCar.player = numero de humano, en el orden de Net_HostRacers), cada uno con su piloto si esta libre y
+ * disponible en la clase (si no, uno al azar). Devuelve el numero de humanos. */
+static int Fe_AddNetHumans(int np, int cls)
+{
+    int machines[NET_MAX_HUMANS];
+    int n = Net_HostRacers(machines);
+    for (int i = 0; i < n && np < 8; i++, np++)
+    {
+        const NetPlayer* p = Net_Player(machines[i]);
+        GridCar* e = &g_RaceGrid.car[np];
+        memset(e, 0, sizeof(*e));
+        e->player = (uint8_t)np;
+        e->car = (uint8_t)cls;
+        e->cls = g_Settings.racingClass;
+        e->team = (uint8_t)np;
+        int d = p ? p->driver : 0;
+        for (int tries = 0; tries < 500; tries++)
+        {
+            int dup = 0;
+            for (int j = 0; j < np; j++)
+                if (g_RaceGrid.car[j].driver == d)
+                    dup = 1;
+            if (!dup && d < 0x21 && Fe_CarAvailable(d, cls))
+                break;
+            d = rand() % 0x21;
+        }
+        e->driver = (uint8_t)d;
+    }
+    return np;
+}
+
 /* 8008927c: completa la parrilla (rivales al azar, niveles, rival destacado, orden de salida), elige el
  * fichero de la pista y sale del front-end (estado 0xB). Con demo (Frontend_Update tras 30 s sin tocar nada): 6
  * coches de la IA a 1 vuelta en una sede y pista al azar, sin rival destacado; la camara sigue al ultimo de la
@@ -924,6 +957,7 @@ void Fe_StartRace(int demo)
     unsigned seed = (unsigned)rand() & 0xffff;
     int cls = ClassIndex();
     int np = gs->numPlayers;
+    int npLocal = np;   /* port: los de esta maquina (np cuenta tambien los de la red) */
 
     if (!demo)
     {
@@ -951,7 +985,7 @@ void Fe_StartRace(int demo)
         gs->venue = (uint8_t)(rand() % (PROGRESS(0x800b7136u) + 4));
         gs->track = (uint8_t)(rand() % 3);
         g_GameInfo->powerUps = g_DemoCount != 3;
-        np = 0;
+        np = npLocal = 0;
     }
 
     if (gs->champType)
@@ -1027,6 +1061,8 @@ void Fe_StartRace(int demo)
         default: grid->count = 6; gs->laps = 4; break;
         }
     }
+    if (!demo && !gs->champType && Net_IsHost())
+        np = Fe_AddNetHumans(np, cls);
     if (grid->count < np)
         grid->count = (uint8_t)np;
     if (grid->count > 8)
@@ -1264,10 +1300,10 @@ pickTrack:
     {
         /* 8008a370: el tipo de cada mando y los botones del esquema de cada jugador (pantalla 1000) */
         Pad_SetupControls(-1, 0, 0);
-        for (int p = 0; p < np; p++)
+        for (int p = 0; p < npLocal; p++)
             Pad_SetupControls(p, (int8_t)g_SaveExtra.padKind[p], gs->transmission[p]);
         g_GameInfo->powerUps = (gs->gameMode == 5 || gs->gameMode == 13) ? 0 : gs->powerUps;
-        g_SplitScreen = np == 2;
+        g_SplitScreen = npLocal == 2;
     }
 
     int venue, track;
@@ -1293,5 +1329,46 @@ pickTrack:
         NR_Log("  %d: %-20s clase %d nivel %d equipo %d %s%s\n", i + 1, g_Drivers[grid->car[i].driver].name,
                grid->car[i].car, grid->car[i].cls, grid->car[i].team,
                grid->car[i].player == 0xff ? "IA" : "JUGADOR", grid->car[i].flag ? " (rival)" : "");
+    if (np > npLocal)
+        Net_HostStartRace();   /* port: manda la carrera a las demas maquinas */
+    g_GameState = 0xb;
+}
+
+/* Solo en el port: cliente de una partida en red. Pone la carrera que ha mandado el anfitrion (Net_Setup: ajustes,
+ * parrilla en el orden de salida) y sale del front-end como Fe_StartRace. Los ajustes de esta maquina se recuperan
+ * al acabar (Net_RaceEnd). */
+void Fe_NetStartRace(void)
+{
+    GameSettings* gs = &g_Settings;
+    const NetRaceSetup* s = Net_Setup();
+    gs->venue = s->venue;
+    gs->track = s->track;
+    gs->laps = s->laps;
+    gs->racingClass = s->racingClass;
+    gs->teamRace = s->teamRace;
+    gs->gameMode = s->gameMode;
+    gs->champType = 0;
+    gs->demo = 0;
+    gs->numPlayers = 1;
+    g_RaceGrid.count = s->gridCount;
+    memcpy(g_RaceGrid.car, s->grid, sizeof(g_RaceGrid.car));
+    memset(g_CarRecords, 0, sizeof(g_CarRecords));
+    g_GameInfo->unk5c = 0;
+    g_GameInfo->numPlayers = s->numHumans;
+    g_GameInfo->racingClass = 1;
+    g_GameInfo->powerUps = s->powerUps;
+    g_GameInfo->unlockMask = (int)s->unlockMask;
+    for (int i = 0; i < g_RaceGrid.count; i++)
+        if (g_RaceGrid.car[i].player != 0xff && Net_HumanView(g_RaceGrid.car[i].player) == 0)
+            g_PlayerTeam[0] = g_RaceGrid.car[i].team;
+    Pad_SetupControls(-1, 0, 0);
+    Pad_SetupControls(0, (int8_t)g_SaveExtra.padKind[0], gs->transmission[0]);
+    g_SplitScreen = 0;
+    int venue = s->venue, track = s->track;
+    g_Venue = (short)venue;
+    snprintf(g_SelectedTrack, sizeof(g_SelectedTrack), "%s", s_trackFiles[venue][track + 1]);
+    snprintf(g_TrackName, sizeof(g_TrackName), "%s", Fe_GetString(5000 + venue * 10 + track + 1));
+    NR_Log("Carrera en red: %s (%s), %d coches, %d vueltas, %d humanos\n", g_TrackName, g_SelectedTrack,
+           g_RaceGrid.count, gs->laps, s->numHumans);
     g_GameState = 0xb;
 }

@@ -61,7 +61,11 @@ extern RaceCar  g_Cars[RACE_MAX_CARS];
 extern uint8_t* g_CarPhys[RACE_MAX_CARS]; /* DAT_800b12c0: fisica de cada coche (por hueco) */
 extern int      g_NumCars;                /* DAT_800af7cc */
 extern int      g_NumHumans;              /* DAT_800af6e8 */
-extern RaceCar* g_Humans[2];              /* DAT_800af730 */
+#define RACE_MAX_HUMANS 8
+extern RaceCar* g_Humans[RACE_MAX_HUMANS]; /* DAT_800af730 (2 en el original): por numero de jugador, todas las
+                                              maquinas; para la logica */
+extern RaceCar* g_ViewHumans[2];          /* solo en el port: el humano de cada vista de esta maquina (camara,
+                                              marcador, sonido, pausa); en red, los remotos no tienen vista */
 extern int      g_RaceTime;               /* DAT_800af748: tics (1/300 s) desde el final de la carga */
 extern int      g_PrevRaceTime;           /* DAT_800af718 */
 extern int      g_StartPos[3];            /* DAT_800b12b0 */

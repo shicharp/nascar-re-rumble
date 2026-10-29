@@ -345,6 +345,7 @@ void Fe_Screen1300(void);                                                 /* 800
 void Fe_InitVenues(void);                                                 /* parte de 80079814 */
 int  Fe_CarAvailable(int driver, int car);                                /* 80090674 */
 void Fe_StartRace(int demo);                                              /* 8008927c */
+void Fe_NetStartRace(void);       /* solo en el port: cliente de la red, la carrera que manda el anfitrion */
 const char* Fe_VenueCode(int venue);                                      /* 800abdd4[sede][0] */
 int  Fe_DecodeLmdc(int index, int x, int y);
 void Fe_LoadAtlas(void);                                                  /* 80092f5c */
