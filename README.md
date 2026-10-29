@@ -9,6 +9,7 @@ Requisitos: Visual Studio 2022 (MSVC 14.38), CMake 3.31 y Ninja
 (`pip install --user cmake==3.31.10 ninja`). Dependencias en `third_party/`:
 
 - PsyCross: submódulo git (`git submodule update --init`).
+- ENet 1.3.18 (MIT, red de las partidas en LAN): submódulo git en `third_party/enet`, se compila desde fuente.
 - SDL2 2.32.8: descomprimir `SDL2-devel-2.32.8-VC.zip`
   (https://github.com/libsdl-org/SDL/releases/tag/release-2.32.8) en `third_party/`.
 - OpenAL Soft 1.25.2: descomprimir `openal-soft-1.25.2-bin.zip`
@@ -61,7 +62,7 @@ start, select, l1, r1, l2, r2).
 Variables de depuracion: `NR_LAPS=n` vueltas, `NR_CAMCAR=n` camara en el coche n, `NR_POWER=n` poder n en la
 mano del jugador al salir, `NR_POWERLOG=1` cajas recogidas y poderes usados en el log, `NR_SNDLOG=1` sonidos,
 `NR_FXLOG=1` efectos creados, `NR_FXTEST=clase[,golpe]` crea un efecto en el coche del jugador cada segundo,
-`NR_BODYLOG=1` golpes a los objetos sueltos, `NR_SCRIPTLOG=1` guiones, `NR_TRIGTEST=1` el coche humano toca todos los disparadores, `NR_KILLTEST=id` rompe ese actor a los 5 s (guiones de golpe y de muerte), `NR_VEHLOG=1` nodos que cruzan los vehiculos de la pista, `NR_ENDRACE=t` el jugador 1 termina la carrera a los t tics, `NR_SCREENLOG=1` cambios de pantalla del front-end, `NR_REPLAYLOG=1` sumas de control de los coches, los actores y los aleatorios cada 150 tics (la carrera y su repeticion, o dos instancias con las mismas entradas, deben coincidir), `NR_SEED=n` fija la semilla de la carrera, `--fixed-step` carrera a paso fijo de 5 tics (60 Hz, el de la red por entradas), `--press` admite el mando 2 con el prefijo `2` (`900:2cross`) y frames contados desde el principio de la carrera con `r` (`r120:cross*600`), `--movie <fichero>` pone ese vídeo y sale (`--skip-legal` también salta los vídeos de arranque),
+`NR_BODYLOG=1` golpes a los objetos sueltos, `NR_SCRIPTLOG=1` guiones, `NR_TRIGTEST=1` el coche humano toca todos los disparadores, `NR_KILLTEST=id` rompe ese actor a los 5 s (guiones de golpe y de muerte), `NR_VEHLOG=1` nodos que cruzan los vehiculos de la pista, `NR_ENDRACE=t` el jugador 1 termina la carrera a los t tics, `NR_SCREENLOG=1` cambios de pantalla del front-end, `NR_REPLAYLOG=1` sumas de control de los coches, los actores y los aleatorios cada 150 tics (la carrera y su repeticion, o dos instancias con las mismas entradas, deben coincidir), `NR_SEED=n` fija la semilla de la carrera, `--fixed-step` carrera a paso fijo de 5 tics (60 Hz, el de la red por entradas), `--net-host` / `--net-join <ip>` crean o se unen a una partida en LAN sin pasar por la pantalla, `NR_CARS=n` fuerza el numero de coches (hasta 8), `--press` admite el mando 2 con el prefijo `2` (`900:2cross`) y frames contados desde el principio de la carrera con `r` (`r120:cross*600`), `--movie <fichero>` pone ese vídeo y sale (`--skip-legal` también salta los vídeos de arranque),
 `NR_POWERUPS=n` / `NR_CLASS=n` fuerzan los poderes y la clase de la carrera, `NR_TVLOG=1` camaras de TV, `NR_TVCAM=1` empieza con las camaras de TV (`vN`: la virtual N), `NR_PSXLOD=1`
 niveles de detalle de la PS1 (por defecto, todo con el detalle completo).
 `--viewer` es el visor de páginas Cpag (flechas para cambiar de página).
@@ -92,6 +93,14 @@ vuelve a los de por defecto y triangulo sale y los guarda en `controls.cfg` (jun
 1 (F4 de PsyCross lo cambia); cada mando tiene los suyos. Esc, F1-F12 y Alt derecho no se pueden asignar. Solo
 valen conduciendo: en los menus, la pausa, los resultados, la carga y la repeticion siguen los de la tabla de arriba.
 
+**Partidas en red local (LAN), hasta 8 jugadores, uno por PC:** SELECT en el menu principal abre *LAN Game*. Uno
+crea la partida (*Host a Game*) y los demas se unen (*Join a Game*: salen las partidas de la red local, o se escribe la
+direccion IP del anfitrion con el teclado e Intro). En la sala cada uno elige su piloto con izquierda / derecha y el
+anfitrion pulsa X para elegir la carrera (solo carrera suelta); la parrilla se completa con la IA hasta los coches de
+las opciones (o hasta 8 si hay mas jugadores). En red no hay pausa ni repeticion, y al acabar todos vuelven a la sala.
+Usa los puertos UDP 37120 (partida) y 37121 (busqueda): la primera vez Windows puede pedir permiso en el cortafuegos.
+Cada PC simula la carrera entera y solo viajan las pulsaciones (ver NOTAS, *Multijugador*).
+
 Pantalla completa con **Alt derecho + Intro**. La imagen se ensancha al aspecto de la ventana (16:9, etc.)
 mostrando mas escenario a los lados; el marcador se ancla a los bordes.
 
@@ -107,6 +116,7 @@ mostrando mas escenario a los lados; el marcador se ancla a los bordes.
 | `src/game/password.c` | contraseña del progreso: 8008f344, 8008fb60, 80090008 |
 | `src/game/movie.c` | vídeos WVE: Movie_Play 800991e4 (bucle 8009743c, audio 80096e90 / 80096d7c); `mdec.c` hace la tabla VLC como 80098ee0 / 80098f28 / 8009905c |
 | `src/game/fe_pads.c` | configuración de mandos 1000 (8007f810; en el port, también las teclas y botones del PC), esquema de botones de cada jugador 8008b160 y Hints and Tips 1900 (8008a52c) |
+| `src/game/net.c`, `fe_lan.c` | solo en el port: partidas en LAN con ENet (sala, busqueda, salida, pulsaciones en lockstep, sumas de control) y su pantalla (2100) |
 | `src/game/padmap.c` | solo en el port: teclas y botones del PC de cada botón de la PS1 (mapeos de PsyCross), captura y `controls.cfg` |
 | `src/game/fe_records.c` | vuelta de la carrera 80090fb4, desbloqueos 80091ae0, tiempos 8008ee98 y pantallas 900 (8007ddb4), 1400 (800855a0), 1500 (80085d90), 1600 (8007ea64), 1700 (80087130), 1800 (80087fa8) |
 | `src/game/fe_select.c` | pantalla 1200 (80081a9c): tabla de pilotos 800aa5ec, atlas de miniaturas (80092f5c, 8008e2ec, RLE 8009307c), carrusel (8008b9d4, 8008bc34), coches del garaje (800923cc, 80090a88, 80090674), 8008aee4, 8008dc1c, 8008efec |
