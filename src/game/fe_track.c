@@ -1063,6 +1063,11 @@ void Fe_StartRace(int demo)
     }
     if (!demo && !gs->champType && Net_IsHost())
         np = Fe_AddNetHumans(np, cls);
+    {
+        const char* nc = getenv("NR_CARS");   /* solo en el port (pruebas): numero de coches (hasta 8) */
+        if (nc && !demo && atoi(nc) > 0)
+            grid->count = (uint8_t)(atoi(nc) < 8 ? atoi(nc) : 8);
+    }
     if (grid->count < np)
         grid->count = (uint8_t)np;
     if (grid->count > 8)
@@ -1169,7 +1174,7 @@ void Fe_StartRace(int demo)
     }
     else
     {
-        for (int i = 0; i < 6; i++)
+        for (int i = 0; i < 8; i++)
         {
             g_CarRecords[i].points = 0;
             g_CarRecords[i].d = 0;
@@ -1242,8 +1247,7 @@ void Fe_StartRace(int demo)
         for (int i = 0; i < grid->count; i++)
         {
             grid->car[i] = cars[i];
-            if (i < 6)
-                g_CarRecords[i] = recs[i];
+            g_CarRecords[i] = recs[i];
         }
     }
     {
@@ -1287,7 +1291,7 @@ void Fe_StartRace(int demo)
     }
 
 pickTrack:
-    for (int i = 0; i < 6; i++)
+    for (int i = 0; i < 8; i++)
     {
         g_CarRecords[i].b = 0;
         g_CarRecords[i].a = 0;

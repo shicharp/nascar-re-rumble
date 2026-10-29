@@ -465,7 +465,7 @@ void Hud_Draw(int view)
         Fmt_Time(s, sizeof(s), lt);
         Font_DrawString(s, HUD_R(0xf6), ty, 8);
         int slot = t->id - 1000;
-        int best = slot >= 0 && slot < 6 ? g_CarRecords[slot].b * 3 : 0;
+        int best = slot >= 0 && slot < 8 ? g_CarRecords[slot].b * 3 : 0;
         if (t->type == 1 && I32(c, 0x328) + 1 >= g_Settings.laps)
             best = 0;
         if (best > 0)

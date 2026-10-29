@@ -375,7 +375,7 @@ static void Race_DebugEnd(void)
             continue;
         I32(e->phys, 0x330) = g_RaceTime - 900;
         int slot = e->id - 1000;
-        if (slot >= 0 && slot < 6 && g_CarRecords[slot].b == 0)
+        if (slot >= 0 && slot < 8 && g_CarRecords[slot].b == 0)
             g_CarRecords[slot].b = (g_RaceTime - 900) / 3;
         done++;
         NR_Log("[depuracion] NR_ENDRACE: el jugador %d termina a los %d tics\n", p + 1, g_RaceTime);

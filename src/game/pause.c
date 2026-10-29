@@ -493,7 +493,7 @@ void Race_Finalize(void)
         if (I32(c, 0x330) == 0 && e->type != 1)
             I32(c, 0x330) = g_RaceTime - 900 + Hud_GapTime(c, g_CarPhys[0]);
         int slot = e->id - 1000;
-        if (slot >= 0 && slot < 6 && g_CarRecords[slot].startPos == 0)
+        if (slot >= 0 && slot < 8 && g_CarRecords[slot].startPos == 0)
         {
             g_CarRecords[slot].startPos = (uint8_t)(i + 1);
             g_CarRecords[slot].a = (I32(c, 0x330) + 1) / 3;
@@ -503,7 +503,7 @@ void Race_Finalize(void)
     for (int i = 0; i < g_NumCars; i++)
     {
         int slot = ((RaceCar*)ENT(g_CarPhys[i]))->id - 1000;
-        if (slot >= 0 && slot < 6)
+        if (slot >= 0 && slot < 8)
             g_CarRecords[slot].startPos = (uint8_t)(i + 1);
     }
 }
@@ -562,7 +562,7 @@ void Race_Results(int dt)
         int col = e->type == 1 && !g_Settings.teamRace ? 6 : 8;
         Font_DrawString(s, 0x26, yy, col);
         int slot = e->id - 1000;
-        CarRecord* r = slot >= 0 && slot < 6 ? &g_CarRecords[slot] : NULL;
+        CarRecord* r = slot >= 0 && slot < 8 ? &g_CarRecords[slot] : NULL;
         int t = I32(c, 0x330);
         if (teams && t != 0 && e->team < 4)
             teamTime[e->team][teamTime[e->team][0] < 1 ? 0 : 1] = t;

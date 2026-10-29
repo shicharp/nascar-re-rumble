@@ -22,7 +22,7 @@ short g_FadeLevel;
 unsigned g_MenuFrame;
 GameSettings g_Settings;
 RaceGrid g_RaceGrid;
-CarRecord g_CarRecords[6];
+CarRecord g_CarRecords[8];
 uint8_t g_DemoCount;            /* DAT_800b711a: demostraciones seguidas sin tocar nada (a la cuarta, la intro) */
 static const uint8_t* s_crle;   /* solo en el port: Crle 0 en RAM (el original lo relee de VRAM) */
 static int s_bmdcSize[13];   /* solo en el port: tamano de cada Bmdc para acotar la lectura del MDEC */

@@ -286,7 +286,7 @@ typedef struct
     uint8_t taken;
     uint8_t pad15[3];
 } CarRecord;
-extern CarRecord g_CarRecords[6];
+extern CarRecord g_CarRecords[8];   /* (6 en el original; el port admite 8 coches en red) */
 
 
 

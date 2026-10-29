@@ -980,7 +980,7 @@ void Car_UpdateLap(uint8_t* c, int curve)
             int rec = (t + 1) / 3;
             if (rec > 0xffff)
                 rec = 0xffff;
-            if (slot >= 0 && slot < 6 && (g_CarRecords[slot].b == 0 || rec < g_CarRecords[slot].b))
+            if (slot >= 0 && slot < 8 && (g_CarRecords[slot].b == 0 || rec < g_CarRecords[slot].b))
                 g_CarRecords[slot].b = rec;   /* mejor vuelta (DAT_800b12b4 + id * 0x18) */
             I32(c, 0x328)++;
             RaceCar* lapCar = (RaceCar*)ENT(c);

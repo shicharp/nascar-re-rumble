@@ -276,7 +276,7 @@ int Level_Run(const char* name, int isFrontend)
         if (!g_RaceRestart)
             break;
         /* "Restart Race": borra la posicion final y el tiempo de cada registro y vuelve a cargar */
-        for (int i = 0; i < g_RaceGrid.count && i < 6; i++)
+        for (int i = 0; i < g_RaceGrid.count && i < 8; i++)
         {
             g_CarRecords[i].a = 0;
             g_CarRecords[i].startPos = 0;
