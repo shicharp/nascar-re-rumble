@@ -81,6 +81,7 @@ void Race_AddCarsToDrawList(int view, int mirror);   /* mirror: el retrovisor (s
 void Race_RestoreCarModels(void);         /* solo en el port: tras Render_DrawList */
 
 void RaceCam_Init(void);                  /* 8005d4c8 */
+void RaceCam_Spectate(int view, int dir); /* solo en el port: la vista sigue al siguiente coche que sigue corriendo */
 void RaceCam_Update(int view, int dt);    /* 8005f034 */
 int  RaceCam_GetSegment(int view);        /* camara +0x6C (0xFF si no hay suelo bajo ella) */
 int  RaceCam_GetViewMode(int view);       /* DAT_800af8c0 */

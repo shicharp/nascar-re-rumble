@@ -402,6 +402,29 @@ RaceCar* RaceCam_GetTarget(int view)
     return s_views[view & 1].target;
 }
 
+/* Solo en el port (red): el que ya ha llegado mira a otro coche. dir +-1: el siguiente de la parrilla que no ha
+ * llegado (si no queda ninguno, no cambia), con la camara de persecucion (sale de las de TV) */
+void RaceCam_Spectate(int view, int dir)
+{
+    view &= 1;
+    int n = g_NumCars;
+    if (n <= 0)
+        return;
+    const RaceCar* cur = s_views[view].target;
+    int start = cur ? cur->slot : 0;
+    for (int k = 1; k <= n; k++)
+    {
+        RaceCar* c = &g_Cars[((start + dir * k) % n + n) % n];
+        if (c->phys && I32(c->phys, 0x330) == 0)
+        {
+            s_views[view].target = c;
+            s_views[view].init = 0;
+            TvCam_Leave(view);
+            return;
+        }
+    }
+}
+
 /* 8005ed10: siguiente vista (3 de persecucion y la de dentro del coche). Desde las camaras de TV vuelve a la vista
  * sin avanzar si se pasaria del principio o del final de la lista. Con dir 0 (o en la repeticion al pasarse de un
  * extremo) prueba las camaras de TV; si no hay ninguna, sigue hacia delante */

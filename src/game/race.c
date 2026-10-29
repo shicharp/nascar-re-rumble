@@ -371,7 +371,7 @@ static void Race_DebugEnd(void)
             done++;
             continue;
         }
-        if (g_RaceTime < s_end + p * 300)
+        if (g_RaceTime < s_end + p * 1500)   /* (cada jugador 5 s despues del anterior) */
             continue;
         I32(e->phys, 0x330) = g_RaceTime - 900;
         int slot = e->id - 1000;
@@ -421,6 +421,28 @@ void Race_StateChecksum(uint32_t out[3])
     out[0] = cars;
     out[1] = acts;
     out[2] = Rand_StateSum();
+}
+
+/* Solo en el port (depuracion): NR_SHOTRACE="N:fichero.bmp[,N2:fichero2.bmp...]" guarda capturas en esos frames de
+ * la carrera, sin salir */
+static void Race_DebugShot(void)
+{
+    const char* v = getenv("NR_SHOTRACE");
+    for (const char* p = v; p && *p;)
+    {
+        int f = atoi(p);
+        const char* c = strchr(p, ':');
+        if (!c)
+            break;
+        const char* e = strchr(c, ',');
+        if (f == g_FrameCount)
+        {
+            char path[260];
+            snprintf(path, sizeof(path), "%.*s", (int)(e ? e - c - 1 : (int)strlen(c + 1)), c + 1);
+            Gfx_SaveScreenshot(path);
+        }
+        p = e ? e + 1 : NULL;
+    }
 }
 
 /* Solo en el port (depuracion): NR_REPLAYLOG=1 apunta cada 150 tics de carrera las sumas de Race_StateChecksum; las
@@ -564,6 +586,8 @@ void Race_MainLoop(void)
             Race_Results(dt);          /* 8002896c */
         else if (g_RacePaused)
             Pause_Menu();              /* 80025ad4 */
+        else if (Net_InRace() && g_ViewHumans[0] && g_ViewHumans[0]->phys && I32(g_ViewHumans[0]->phys, 0x330) != 0)
+            Race_SpectatorResults(dt);   /* port: en red, el que ya ha llegado mientras corren los demas */
 
         Snd_SetListenerCount(g_SplitScreen ? 2 : 1);   /* 8003d48c */
         Snd_Update();                  /* 8003e848 */
@@ -572,6 +596,7 @@ void Race_MainLoop(void)
             Csacs_Update(dt);          /* 80060a60 */
         Asset_DispatchAll();
         Gfx_Flip(GFX_FLIP_FULL);
+        Race_DebugShot();
         Race_UpdateState(dt);          /* 80027e90 */
     }
     Pad_SetRaceFrame(-1);

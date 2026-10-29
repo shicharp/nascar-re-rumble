@@ -21,6 +21,7 @@ typedef struct
 {
     uint8_t used;
     uint8_t driver;               /* piloto elegido (g_Settings.lastDriver[0]) */
+    uint8_t car;                  /* clase del coche (g_Settings.lastCar[0]: 0 rookie, 1 pro, 2 elite) */
     uint8_t transmission;         /* esquema de botones y cambio (g_Settings.transmission[0], 0-5) */
     uint8_t inRace;               /* sigue en la carrera (manda pulsaciones) */
     char    name[NET_NAME_LEN + 1];

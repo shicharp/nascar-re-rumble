@@ -12,7 +12,7 @@
 #include "carphys_int.h"
 #include "net.h"
 
-#define NET_VERSION   3
+#define NET_VERSION   4
 #define NET_CHANNELS  2           /* 0 sala y ordenes; 1 pulsaciones y salidas de la carrera (fiables y en orden) */
 #define NET_RING      128         /* frames de pulsaciones guardados por humano */
 #define NET_SUM_EVERY 30          /* frames entre sumas de control (medio segundo) */
@@ -164,6 +164,7 @@ static void Broadcast(const Msg* m, int channel, int except)
 static void Msg_Player(Msg* m, const NetPlayer* p)
 {
     Msg_U8(m, p->driver);
+    Msg_U8(m, p->car);
     Msg_U8(m, p->transmission);
     Msg_U8(m, p->inRace);
     Msg_Bytes(m, p->name, NET_NAME_LEN + 1);
@@ -172,6 +173,7 @@ static void Msg_Player(Msg* m, const NetPlayer* p)
 static void Rd_Player(Rd* r, NetPlayer* p)
 {
     p->driver = (uint8_t)Rd_U8(r);
+    p->car = (uint8_t)Rd_U8(r);
     p->transmission = (uint8_t)Rd_U8(r);
     p->inRace = (uint8_t)Rd_U8(r);
     Rd_Bytes(r, p->name, NET_NAME_LEN + 1);
@@ -184,6 +186,7 @@ static void LocalPlayer(NetPlayer* p)
     memset(p, 0, sizeof(*p));
     p->used = 1;
     p->driver = g_Settings.lastDriver[0];
+    p->car = g_Settings.lastCar[0] <= 2 ? g_Settings.lastCar[0] : 0;
     p->transmission = g_Settings.transmission[0] <= 5 ? g_Settings.transmission[0] : 0;
     if (g_Settings.playerNameSet[0] && g_Settings.playerName[0][0])
         snprintf(p->name, sizeof(p->name), "%s", g_Settings.playerName[0]);

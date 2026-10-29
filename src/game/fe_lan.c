@@ -88,6 +88,41 @@ static int Lan_Down(void)
     return Fe_PadPressed(PADB_DOWN, -1, 1);
 }
 
+/* el piloto y la clase de coche se pueden elegir con lo desbloqueado en esta maquina (como en la pantalla 1200:
+ * los pilotos de las sedes, solo con la copa ganada en esa clase) */
+static int Lan_CarOk(int driver, int car)
+{
+    if (driver >= 0x27 && driver < 0x2e && PROGRESS(0x800b70c5u + driver * 3 + car) != 2)
+        return 0;
+    return Fe_CarAvailable(driver, car);
+}
+
+/* siguiente piloto (dir +-1) que se pueda llevar con la clase elegida */
+static void Lan_NextDriver(int dir)
+{
+    int d = g_Settings.lastDriver[0], car = g_Settings.lastCar[0] <= 2 ? g_Settings.lastCar[0] : 0;
+    for (int k = 0; k < NUM_DRIVERS; k++)
+    {
+        d = (d + NUM_DRIVERS + dir) % NUM_DRIVERS;
+        if (Lan_CarOk(d, car))
+            break;
+    }
+    g_Settings.lastDriver[0] = (uint8_t)d;
+}
+
+/* siguiente clase de coche desbloqueada para el piloto; si no hay ninguna mas, se queda */
+static int Lan_NextCar(int dir)
+{
+    int car = g_Settings.lastCar[0] <= 2 ? g_Settings.lastCar[0] : 0;
+    for (int c = car + dir; c >= 0 && c <= 2; c += dir)
+        if (Lan_CarOk(g_Settings.lastDriver[0], c))
+        {
+            g_Settings.lastCar[0] = (uint8_t)c;
+            return 1;
+        }
+    return 0;
+}
+
 /* la sala: los jugadores, el piloto de cada uno y quien corre */
 static void Lan_Lobby(void)
 {
@@ -96,7 +131,9 @@ static void Lan_Lobby(void)
     char line[96];
     Lan_Box(host ? "LAN Game - Hosting" : "LAN Game");
     Lan_Text(0x12, 0x12, 0x12, "Player", 0x22, 0x2a, 0);
-    Lan_Text(0x12, 0x12, 0x12, "Driver", 0x90, 0x2a, 0);
+    Lan_Text(0x12, 0x12, 0x12, "Driver", 0x80, 0x2a, 0);
+    Lan_Text(0x12, 0x12, 0x12, "Car", 0xe0, 0x2a, 0);
+    static const char* const cars[3] = { "Rookie", "Pro", "Elite" };
     int row = 0;
     for (int m = 0; m < NET_MAX_MACHINES; m++)
     {
@@ -109,7 +146,8 @@ static void Lan_Lobby(void)
         if (m == me)
             Fe_DrawBox(0x28, 0x0a, 0x0a, 0x1a, y - 1, 0x123, y + 9, 0);
         Lan_Text(v, m == me ? 0x1c : v, m == me ? 0 : v, line, 0x22, y, 0);
-        Lan_Text(v, v, v, p->driver < NUM_DRIVERS ? g_Drivers[p->driver].name : "?", 0x90, y, 0);
+        Lan_Text(v, v, v, p->driver < NUM_DRIVERS ? g_Drivers[p->driver].name : "?", 0x80, y, 0);
+        Lan_Text(v, v, v, cars[p->car <= 2 ? p->car : 0], 0xe0, y, 0);
         const char* tag = m == 0 ? "Host" : p->inRace ? "Racing" : "";
         Lan_Text(0x12, 0x12, 0x12, tag, 0x120, y, 2);
         row++;
@@ -118,16 +156,29 @@ static void Lan_Lobby(void)
         Lan_Text(0x1f, 0x08, 0x08, "The last race went out of sync", 0x9e, 0xb6, 1);
     Lan_Text(0x14, 0x14, 0x14, host ? "Up to 8 players. Press X to choose the race." :
                                       "Waiting for the host to start the race...", 0x9e, 0xc2, 1);
-    Lan_Help(host ? "\x1b*\x13 Choose Race   \x1b$\x13 Driver   \x1b~\x13 Leave" :
-                    "\x1b$\x13 Driver   \x1b~\x13 Leave");
+    Lan_Help(host ? "\x1b*\x13 Choose Race   \x1b~\x13 Leave   (your car: in the driver screen)" :
+                    "\x1b$\x13 Driver   \x1b^\x13 Car   \x1b~\x13 Leave");
 
-    int d = Fe_PadPressed(PADB_LEFT, -1, 1) ? -1 : Fe_PadPressed(PADB_RIGHT, -1, 1) ? 1 : 0;
+    /* el anfitrion elige el suyo en la pantalla 1200, como siempre */
+    int d = host ? 0 : Fe_PadPressed(PADB_LEFT, -1, 1) ? -1 : Fe_PadPressed(PADB_RIGHT, -1, 1) ? 1 : 0;
+    int c = host ? 0 : Fe_PadPressed(PADB_UP, -1, 1) ? 1 : Fe_PadPressed(PADB_DOWN, -1, 1) ? -1 : 0;
+    if (!host && !Lan_CarOk(g_Settings.lastDriver[0], g_Settings.lastCar[0] <= 2 ? g_Settings.lastCar[0] : 0))
+    {
+        /* lo guardado ya no vale (otra partida): el primero que se pueda */
+        g_Settings.lastCar[0] = 0;
+        Lan_NextDriver(1);
+        Net_UpdateLocalPlayer();
+    }
     if (d)
     {
-        /* los pilotos normales (0..0x20); el anfitrion comprueba que este libre y disponible */
-        g_Settings.lastDriver[0] = (uint8_t)((g_Settings.lastDriver[0] + 0x21 + d) % 0x21);
+        Lan_NextDriver(d);
         Net_UpdateLocalPlayer();
         Snd_PlayUi(0x47, NULL);
+    }
+    else if (c && Lan_NextCar(c))
+    {
+        Net_UpdateLocalPlayer();
+        Snd_PlayUi(0x46, NULL);
     }
     else if (host && Fe_PadPressed(PADB_CROSS, -1, 1))
     {
@@ -151,6 +202,7 @@ void Fe_ScreenLan(void)
         Fe_SetBackground(6);
         s_sel = 0;
         g_Settings.numPlayers = 1;   /* un jugador por maquina (el menu principal deja 2: aviso del mando 2) */
+        Net_UpdateLocalPlayer();     /* (el anfitrion puede haber cambiado de coche en la pantalla 1200) */
         if (s_mode == LAN_FIND)
             Net_FindStart();
     }

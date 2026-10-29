@@ -16,6 +16,7 @@ void Race_Results(int dt);       /* 8002896c */
 void Race_Finalize(void);        /* 800266f0 */
 void Pause_ReplayEnded(void);   /* 800269c0 con 80074860 = -2: para la carrera al acabarse la repeticion */
 void Pause_ReplayWait(void);    /* 800269c0: con la repeticion acabada, un boton pasa a los resultados */
+void Race_SpectatorResults(int dt);   /* solo en el port: en red, los resultados del que ya ha llegado */
 int  Pause_ResultsTime(void);     /* DAT_800af70c: tics en los resultados (-1 antes) */
 
 #endif

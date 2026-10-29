@@ -915,8 +915,9 @@ static int GridFindPlayer(int p)
 }
 
 /* Solo en el port: en una partida en red, el anfitrion pone detras de sus jugadores a los de las demas maquinas
- * (GridCar.player = numero de humano, en el orden de Net_HostRacers), cada uno con su piloto si esta libre y
- * disponible en la clase (si no, uno al azar). Devuelve el numero de humanos. */
+ * (GridCar.player = numero de humano, en el orden de Net_HostRacers), cada uno con el piloto y la clase de coche
+ * que ha elegido en la sala (con lo desbloqueado en su maquina, como en la pantalla 1200); si el piloto ya lo
+ * lleva otro, uno normal al azar. Devuelve el numero de humanos. */
 static int Fe_AddNetHumans(int np, int cls)
 {
     int machines[NET_MAX_HUMANS];
@@ -927,7 +928,7 @@ static int Fe_AddNetHumans(int np, int cls)
         GridCar* e = &g_RaceGrid.car[np];
         memset(e, 0, sizeof(*e));
         e->player = (uint8_t)np;
-        e->car = (uint8_t)cls;
+        e->car = (uint8_t)(p && p->car <= 2 ? p->car : cls);
         e->cls = g_Settings.racingClass;
         e->team = (uint8_t)np;
         int d = p ? p->driver : 0;
@@ -937,7 +938,7 @@ static int Fe_AddNetHumans(int np, int cls)
             for (int j = 0; j < np; j++)
                 if (g_RaceGrid.car[j].driver == d)
                     dup = 1;
-            if (!dup && d < 0x21 && Fe_CarAvailable(d, cls))
+            if (!dup && d < NUM_DRIVERS)
                 break;
             d = rand() % 0x21;
         }

@@ -45,6 +45,8 @@ static char s_text[2][14][40];     /* textos de 800aa89c (se modifican como en e
 static int  s_resSel;              /* DAT_800af73c */
 static int  s_resConfirm;          /* DAT_800af73d: 0 no, 1 NO, 2 SI */
 static int  s_resTime;             /* DAT_800af70c */
+static int  s_specShown;           /* solo en el port: en red, la tabla del que ya ha llegado ya esta puesta */
+static int  s_resHidden;           /* solo en el port: el espectador ha quitado la tabla (triangulo) */
 static int  s_raceTicks;           /* DAT_800af6f8: tiempo de la carrera sin pausas (limite de 20 min) */
 static uint32_t s_prevButtons[2];
 static int  s_hold[2][16];         /* estado de cada boton para 80025a10 */
@@ -192,6 +194,7 @@ void Pause_Init(void)
     s_resume = 0;
     s_resTime = -1;
     s_raceTicks = 0;
+    s_specShown = s_resHidden = 0;
     memset(s_hold, 0, sizeof(s_hold));
     for (int p = 0; p < 2; p++)
         for (int b = 0; b < 16; b++)
@@ -221,6 +224,7 @@ static void Pause_ShowResults(void)
     g_GameState = GAMESTATE_RESULTS;
     s_resSel = 0;
     s_resConfirm = 0;
+    s_resHidden = 0;
     for (int p = 0; p < 2; p++)
     {
         s_hold[p][B_CROSS] = 3;
@@ -589,12 +593,14 @@ void Race_Results(int dt)
             Font_DrawString(s, 0xe8, yy, col);
         }
     }
-    if (allDone && !g_RacePaused)
+    /* port: solo en el estado de resultados (lo usa la logica: el tornado se va a los 0x5DC tics; en red el que ya
+     * ha llegado ve esta tabla antes) y, en red, sin pararse al minuto (las demas maquinas no paran) */
+    if (allDone && !g_RacePaused && g_GameState == GAMESTATE_RESULTS)
     {
         if (s_resTime < 0)
             s_resTime = 0;
         s_resTime += dt;
-        if (s_resTime > 17999)
+        if (s_resTime > 17999 && !Net_InRace())
             g_RacePaused = 1;
     }
     if (teams)
@@ -661,7 +667,10 @@ void Race_Results(int dt)
             continue;
         uint32_t b = g_PadButtons[p];
         int cr = Edge(p, B_CROSS, b), le = Edge(p, B_LEFT, b), ri = Edge(p, B_RIGHT, b);
-        int up = Edge(p, B_UP, b), dn = Edge(p, B_DOWN, b);
+        int up = Edge(p, B_UP, b), dn = Edge(p, B_DOWN, b), tr = Edge(p, B_TRIANGLE, b);
+        int spectator = Net_InRace() && g_GameState != GAMESTATE_RESULTS;
+        if (spectator && tr == 0)
+            s_resHidden = 1;
         if (cr == 0 || ((le == 0 || ri == 0) && s_resConfirm != 0) || up == 0 || dn == 0)
             Snd_PlayUi(0x22, g_ViewHumans[p]);   /* 80029950 (izquierda / derecha, solo con la pregunta NO / YES) */
         if (cr == 0)
@@ -684,6 +693,8 @@ void Race_Results(int dt)
         {
             if (s_resConfirm != 0)
                 s_resConfirm = 3 - s_resConfirm;
+            else if (spectator)
+                RaceCam_Spectate(p, le == 0 ? -1 : 1);   /* port: mira a otro coche que sigue corriendo */
         }
         else if (up == 0 || dn == 0)
         {
@@ -694,4 +705,44 @@ void Race_Results(int dt)
                 s_resSel = s_resSel == 2 ? first : s_resSel + 1;
         }
     }
+}
+
+/* Solo en el port: en red, el que ya ha llegado mientras los demas siguen ve los resultados (con quien falta) sin
+ * pasar al estado de resultados, que es de toda la carrera. Izquierda / derecha siguen a otro coche que siga
+ * corriendo, triangulo quita o pone la tabla y Exit Race le saca de la carrera (los demas siguen sin el). */
+void Race_SpectatorResults(int dt)
+{
+    if (!s_specShown)
+    {
+        s_specShown = 1;
+        s_resHidden = 0;
+        s_resSel = 2;
+        s_resConfirm = 0;
+        for (int p = 0; p < 2; p++)
+        {
+            s_hold[p][B_CROSS] = 3;
+            s_hold[p][B_START] = 3;
+        }
+    }
+    if (!s_resHidden)
+        Race_Results(dt);
+    else
+        for (int p = 0; p < 2; p++)
+        {
+            if (!g_ViewHumans[p])
+                continue;
+            uint32_t b = g_PadButtons[p];
+            int le = Edge(p, B_LEFT, b), ri = Edge(p, B_RIGHT, b), tr = Edge(p, B_TRIANGLE, b);
+            if (tr == 0)
+                s_resHidden = 0;
+            else if (le == 0 || ri == 0)
+                RaceCam_Spectate(p, le == 0 ? -1 : 1);
+        }
+    /* (las fuentes de la carrera no tienen los iconos de los botones del front-end) */
+    const char* hint = s_resHidden ? "Left/Right: Watch   Triangle: Results" : "Left/Right: Watch   Triangle: Hide";
+    int w, h;
+    Font_Select(0);
+    Font_Measure(hint, &w, &h);
+    Font_DrawString(hint, 0xa0 - w / 2, 0xd8, 9);
+    Font_Select(1);
 }
