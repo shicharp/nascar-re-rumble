@@ -354,9 +354,16 @@ handbrake:
 }
 
 /* 8004cae8: direccion, pedales, cambio manual (L1 / L2) y triangulo = volver a la pista */
+static uint8_t s_shiftHeld;   /* DAT_800af30c */
+
+/* Solo en el port: al cargar la carrera (el original lo deja de la anterior) */
+void Human_ResetStatics(void)
+{
+    s_shiftHeld = 0;
+}
+
 void Human_Control(RaceCar* e)
 {
-    static uint8_t s_shiftHeld;   /* DAT_800af30c */
     uint8_t* ctrl = e->ctrl;
     uint8_t* c = PTR(ctrl, 0);
     if (I32(c, 0x330) != 0)

@@ -1,5 +1,6 @@
 /* Solo en el port: partidas en LAN con ENet (ver net.h). */
 #include <enet/enet.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,9 +11,10 @@
 #include "racecar.h"
 #include "race.h"
 #include "carphys_int.h"
+#include "pause.h"
 #include "net.h"
 
-#define NET_VERSION   4
+#define NET_VERSION   5
 #define NET_CHANNELS  2           /* 0 sala y ordenes; 1 pulsaciones y salidas de la carrera (fiables y en orden) */
 #define NET_RING      128         /* frames de pulsaciones guardados por humano */
 #define NET_SUM_EVERY 30          /* frames entre sumas de control (medio segundo) */
@@ -71,6 +73,52 @@ static struct
     uint32_t sum[NET_MAX_MACHINES][3];
     uint8_t  have[NET_MAX_MACHINES];
 } s_sums[NET_SUM_RING];
+
+/* ---------------------------------------------------------------- log */
+
+/* Solo para estas partidas: los sucesos de la red van a la salida y a red_m<maquina>.txt (junto al ejecutable),
+ * con las sumas de cada punto de control; si una carrera se desincroniza, los ficheros de las dos maquinas dicen en
+ * que frame y en que parte (coches, actores y guiones, aleatorios) */
+static FILE* s_logFile;
+
+static void Net_LogV(int toStdout, const char* fmt, va_list ap)
+{
+    if (toStdout)
+    {
+        va_list ap2;
+        va_copy(ap2, ap);
+        vprintf(fmt, ap2);
+        va_end(ap2);
+        fflush(stdout);
+    }
+    if (!s_logFile && s_machine >= 0)
+    {
+        char name[32];
+        snprintf(name, sizeof(name), "red_m%d.txt", s_machine);
+        s_logFile = fopen(name, "w");
+    }
+    if (s_logFile)
+    {
+        vfprintf(s_logFile, fmt, ap);
+        fflush(s_logFile);
+    }
+}
+
+static void Net_Log(const char* fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    Net_LogV(1, fmt, ap);
+    va_end(ap);
+}
+
+static void Net_LogFile(const char* fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    Net_LogV(0, fmt, ap);
+    va_end(ap);
+}
 
 /* ---------------------------------------------------------------- mensajes */
 
@@ -197,7 +245,7 @@ static void LocalPlayer(NetPlayer* p)
 static void SetStatus(const char* s)
 {
     snprintf(s_status, sizeof(s_status), "%s", s);
-    NR_Log("[red] %s\n", s);
+    Net_Log("[red] %s\n", s);
 }
 
 static void Host_SendLobby(void)
@@ -212,7 +260,7 @@ static void Host_SendLobby(void)
     }
     Broadcast(&m, 0, -1);
     int n = Net_NumPlayers();
-    NR_Log("[red] sala: %d jugador%s\n", n, n == 1 ? "" : "es");
+    Net_Log("[red] sala: %d jugador%s\n", n, n == 1 ? "" : "es");
 }
 
 /* ---------------------------------------------------------------- carrera: pulsaciones y salidas */
@@ -268,7 +316,7 @@ static void MarkLeft(int machine, uint32_t from)
     s_leftFrom[machine] = from;
     s_players[machine].inRace = 0;
     if (s_inRace)
-        NR_Log("[red] la maquina %d deja la carrera (desde el frame %u)\n", machine, s_leftFrom[machine]);
+        Net_Log("[red] la maquina %d deja la carrera (desde el frame %u)\n", machine, s_leftFrom[machine]);
 }
 
 /* anfitrion: decide el frame desde el que la maquina va sin mando y lo dice a los demas (por el canal de las
@@ -336,7 +384,7 @@ static void Sums_Store(uint32_t frame, int machine, const uint32_t* sum)
         if (s_sums[slot].have[m] && memcmp(s_sums[slot].sum[m], s_sums[slot].sum[0], 3 * sizeof(uint32_t)))
         {
             s_desync = (int)frame;
-            NR_Log("[red] DESINCRONIZACION en el frame %u: maquina %d (coches %08x/%08x actores %08x/%08x aleatorios "
+            Net_Log("[red] DESINCRONIZACION en el frame %u: maquina %d (coches %08x/%08x actores %08x/%08x aleatorios "
                    "%08x/%08x)\n", frame, m, s_sums[slot].sum[0][0], s_sums[slot].sum[m][0], s_sums[slot].sum[0][1],
                    s_sums[slot].sum[m][1], s_sums[slot].sum[0][2], s_sums[slot].sum[m][2]);
             Msg msg;
@@ -376,7 +424,7 @@ static void Host_Hello(ENetPeer* peer, Rd* r)
         Msg_Bytes(&m, why, (int)strlen(why) + 1);
         Send(peer, &m, 0);
         enet_peer_disconnect_later(peer, 0);
-        NR_Log("[red] rechazado: %s\n", why);
+        Net_Log("[red] rechazado: %s\n", why);
         return;
     }
     s_players[id] = p;
@@ -385,7 +433,7 @@ static void Host_Hello(ENetPeer* peer, Rd* r)
     Msg_Begin(&m, MSG_WELCOME);
     Msg_U8(&m, id);
     Send(peer, &m, 0);
-    NR_Log("[red] entra %s (maquina %d)\n", p.name, id);
+    Net_Log("[red] entra %s (maquina %d)\n", p.name, id);
     Host_SendLobby();
 }
 
@@ -394,7 +442,7 @@ static void Host_Drop(ENetPeer* peer)
     int id = (int)(intptr_t)peer->data;
     if (id <= 0 || id >= NET_MAX_MACHINES || s_peers[id] != peer)
         return;
-    NR_Log("[red] sale %s (maquina %d)\n", s_players[id].name, id);
+    Net_Log("[red] sale %s (maquina %d)\n", s_players[id].name, id);
     if (s_inRace && s_players[id].inRace)
         Host_MachineLeaves(id);
     s_peers[id] = NULL;
@@ -486,7 +534,7 @@ static void Client_Receive(const uint8_t* data, int len)
     {
     case MSG_WELCOME:
         s_machine = Rd_U8(&r);
-        NR_Log("[red] conectado: maquina %d\n", s_machine);
+        Net_Log("[red] conectado: maquina %d\n", s_machine);
         SetStatus("Connected");
         break;
     case MSG_REJECT:
@@ -510,7 +558,7 @@ static void Client_Receive(const uint8_t* data, int len)
             if (!r.bad)
                 s_players[i] = p;
         }
-        NR_Log("[red] sala: %d jugadores\n", Net_NumPlayers());
+        Net_Log("[red] sala: %d jugadores\n", Net_NumPlayers());
         break;
     case MSG_START:
         if (s_inRace)
@@ -522,7 +570,7 @@ static void Client_Receive(const uint8_t* data, int len)
         s_inRace = 1;
         Race_Reset();
         s_startPending = 1;
-        NR_Log("[red] salida: %d humanos, soy el %d, semilla %u\n", s_setup.numHumans, s_myHuman, s_setup.seed);
+        Net_Log("[red] salida: %d humanos, soy el %d, semilla %u\n", s_setup.numHumans, s_myHuman, s_setup.seed);
         break;
     case MSG_INPUT:
         Rd_Input(&r);
@@ -541,7 +589,7 @@ static void Client_Receive(const uint8_t* data, int len)
         if (!s_desync)
         {
             s_desync = (int)frame;
-            NR_Log("[red] DESINCRONIZACION en el frame %u (aviso del anfitrion)\n", frame);
+            Net_Log("[red] DESINCRONIZACION en el frame %u (aviso del anfitrion)\n", frame);
         }
         break;
     }
@@ -568,6 +616,9 @@ void Net_Shutdown(void)
     if (s_init)
         enet_deinitialize();
     s_init = 0;
+    if (s_logFile)
+        fclose(s_logFile);
+    s_logFile = NULL;
 }
 
 static void Net_Reset(void)
@@ -995,6 +1046,8 @@ void Net_HostStartRace(void)
     s->teamRace = gs->teamRace;
     s->gameMode = gs->gameMode;
     s->gridCount = g_RaceGrid.count;
+    static_assert(sizeof(s->gameInfo) == sizeof(GameInfo), "NetRaceSetup.gameInfo = GameInfo");
+    memcpy(s->gameInfo, g_GameInfo, sizeof(s->gameInfo));
     memcpy(s->grid, g_RaceGrid.car, sizeof(s->grid));
     /* GridCar.player es el numero de humano: el 0 es el anfitrion; los demas, sus maquinas (Fe_StartRace las ha
      * puesto en ese orden con Net_HostRacers) */
@@ -1020,7 +1073,7 @@ void Net_HostStartRace(void)
     s_inRace = 1;
     Race_Reset();
     Host_SendLobby();
-    NR_Log("[red] salida: %d humanos, semilla %u\n", s->numHumans, s->seed);
+    Net_Log("[red] salida: %d humanos, semilla %u\n", s->numHumans, s->seed);
 }
 
 int Net_TakeStart(void)
@@ -1044,6 +1097,13 @@ void Net_RaceFrame(void)
         in.ax = me->ctrl[0xc];
         in.ay = me->ctrl[0xd];
         in.kind = me->ctrl[0xe];
+        if (Pause_MenuOpen())
+        {
+            /* con el menu abierto, los botones son del menu: el coche va sin mando */
+            in.bits = 0;
+            in.ax = in.ay = 0x80;
+            in.kind = 4;
+        }
         uint32_t when = f + NET_INPUT_DELAY;
         StoreInput(s_myHuman, when, in.bits, in.ax, in.ay, in.kind);
         Msg m;
@@ -1072,7 +1132,7 @@ void Net_RaceFrame(void)
                 if (!HaveInput(h, f))
                 {
                     int m = MachineOfHuman(h);
-                    NR_Log("[red] la maquina %d no manda nada desde hace %d s\n", m, NET_WAIT_MS / 1000);
+                    Net_Log("[red] la maquina %d no manda nada desde hace %d s\n", m, NET_WAIT_MS / 1000);
                     if (s_isHost)
                         Host_MachineLeaves(m);
                     else if (m == 0 || !s_enet)
@@ -1092,6 +1152,8 @@ void Net_RaceStep(void)
         return;
     uint32_t sum[3];
     Race_StateChecksum(sum);
+    Net_LogFile("[red] sumas frame %d: coches %08x actores y guiones %08x aleatorios %08x\n", s_frame, sum[0], sum[1],
+                sum[2]);
     if (s_isHost)
         Sums_Store((uint32_t)s_frame, 0, sum);
     else if (s_server)
@@ -1122,7 +1184,7 @@ void Net_RaceEnd(void)
     }
     s_players[s_machine >= 0 ? s_machine : 0].inRace = 0;
     s_inRace = 0;
-    NR_Log("[red] fin de la carrera en red (frame %d%s)\n", s_frame, s_desync ? ", desincronizada" : "");
+    Net_Log("[red] fin de la carrera en red (frame %d%s)\n", s_frame, s_desync ? ", desincronizada" : "");
 }
 
 int Net_DesyncFrame(void)

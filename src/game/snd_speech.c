@@ -27,6 +27,9 @@
 #include "carphys_int.h"
 #include "pause.h"
 #include "actor.h"
+#include "net.h"
+
+static int Speech_OtherMachine(const void* entity);
 
 #define NUM_CATS 0x37
 
@@ -120,6 +123,8 @@ int Speech_Queue(int section, const void* entity, int onlyIfIdle)
         return 0;
     if (onlyIfIdle && (s_qCount > 0 || s_playing))
         return 0;
+    if (Speech_OtherMachine(entity))
+        return 0;
     if (g_GameState >= 5 || Snd_SpeechVolume() == 0 || s_qCount > 7)
         return 0;
     SpeechReq* r = &s_queue[(s_qHead + s_qCount) & 7];
@@ -183,8 +188,22 @@ static int Speech_AttachedPan(SndPan* o)
     return 1;
 }
 
+/* Solo en el port: en red cada maquina simula a todos los humanos; lo que el comentarista dice de un jugador de otra
+ * maquina (su choque, su vuelta, su puesto...) no suena aqui */
+static int Speech_OtherMachine(const void* entity)
+{
+    if (!entity || !Net_InRace())
+        return 0;
+    const RaceCar* c = (const RaceCar*)entity;
+    if (c < g_Cars || c >= g_Cars + RACE_MAX_CARS)
+        return 0;
+    return c->type == 1 && c->ctrl && c->ctrl[0x59] >= 2;
+}
+
 void Speech_Say(int cat, int wait, const void* entity, int onlyIfIdle)
 {
+    if (Speech_OtherMachine(entity))
+        return;
     int s = Speech_Pick(cat, wait);
     if (s >= 0)
         Speech_Queue(s, entity, onlyIfIdle);

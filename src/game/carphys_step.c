@@ -29,6 +29,7 @@ void Car_HandleContacts(uint8_t* c, int dt, uint8_t* self, int fromStep);
 void Physics_Init(void)
 {
     Rand_Init();
+    Human_ResetStatics();
 }
 
 /* Promedio de un registro de contacto (+0: n s16, +4 punto, +0x10 normal) */

@@ -33,9 +33,12 @@ static int Power_LogOn(void)
 
 int g_TornadoCount;   /* DAT_800af7bc: tornados en la pista (Race_ResetGlobals 8002cfb0 lo pone a 0) */
 
+static uint8_t s_strikeTimer;   /* DAT_800af224: tics hasta el siguiente rayo de una tormenta suelta */
+
 void Pickup_Reset(void)
 {
     g_TornadoCount = 0;
+    s_strikeTimer = 0;   /* port: el original lo deja de la carrera anterior */
     s_projModel[0] = s_projModel[1] = NULL;
     s_twisterModel = NULL;
 }
@@ -607,8 +610,6 @@ static int Weather_Create(Actor* a, const ActorDef* d)
     WX_STORM(a) = WX_KIND(a) == 0 ? Storm_Create() : NULL;   /* 80070e58: la nube de la tormenta */
     return 0;
 }
-
-static uint8_t s_strikeTimer;   /* DAT_800af224: tics hasta el siguiente rayo de una tormenta suelta */
 
 /* 8005b1ac: el coche mas cercano a p a menos de lim (longitud aproximada 800194a0) */
 static RaceCar* Weather_NearestCar(const int* p, int lim)

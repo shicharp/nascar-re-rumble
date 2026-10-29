@@ -155,7 +155,7 @@ static void Pause_UpdateTexts(RaceCar* h)
 static void Pause_SetQuitItem(int a, int b)
 {
     int i = 4;
-    if (!g_Settings.champType)
+    if (!g_Settings.champType && !Net_InRace())   /* (port: en red no se puede volver a empezar) */
     {
         s_items[0][4] = 4;
         i = 5;
@@ -205,8 +205,13 @@ void Pause_Init(void)
 
 static void Pause_Begin(int player)
 {
-    g_RacePaused = 1;
-    Snd_Pause(0);                 /* 8003fec4 */
+    /* port: en red el menu sale sin parar la carrera (las demas maquinas siguen); el coche va sin mando mientras
+     * (Net_RaceFrame) */
+    if (!Net_InRace())
+    {
+        g_RacePaused = 1;
+        Snd_Pause(0);             /* 8003fec4 */
+    }
     s_pausePlayer = player;
     s_resume = 0;
     s_sel = 0;
@@ -287,8 +292,8 @@ void Race_UpdateState(int dt)
         uint32_t b = g_PadButtons[p];
         if (g_GameState != GAMESTATE_RESULTS && !g_RacePaused)
         {
-            /* port: en red no hay pausa (las demas maquinas no pueden parar) */
-            if (Edge(p, B_START, b) == 0 && !Net_InRace())
+            /* port: en red el menu no para la carrera (Pause_Begin) */
+            if (Edge(p, B_START, b) == 0 && s_pausePlayer < 0)
                 Pause_Begin(p);
         }
     }
@@ -322,7 +327,7 @@ void Pause_Menu(void)
     Hud_Rect15(0x422, x2 - 2, 0x86, w + 4, count * 0x1c + 0x2a, 1);
     Hud_Rect15(0x422, x2 - 2, 0x86, w + 4, count * 0x1c + 0x2a, 1);
     Hud_Rect15(0x35ae, x2, 0xa4, w, count * 0x1c + 10, 1);
-    const char* title = replay ? "Replay Paused" : "Game Paused";
+    const char* title = replay ? "Replay Paused" : Net_InRace() ? "Race Menu" : "Game Paused";
     int tw, th;
     Font_Measure(title, &tw, &th);
     Font_DrawString(title, 0xa0 - tw / 2, 0x44, 9);
@@ -482,8 +487,9 @@ void Pause_Menu(void)
         s_resume = 0;
         s_sel = -1;
         s_pausePlayer = -1;
+        if (g_RacePaused)
+            Snd_Pause(1);         /* 8003fe7c(1) */
         g_RacePaused = 0;
-        Snd_Pause(1);             /* 8003fe7c(1) */
     }
 }
 
@@ -518,6 +524,12 @@ static const char* Car_Name(RaceCar* e)
     if (e->type == 1 && Net_HumanName(g->player))
         return Net_HumanName(g->player);   /* port: en red, el nombre de su maquina */
     return e->type == 1 ? g_Settings.playerName[g->player & 1] : g_Drivers[g->driver].name;
+}
+
+/* solo en el port: el menu de la pausa esta abierto (en red, sin parar la carrera) */
+int Pause_MenuOpen(void)
+{
+    return s_pausePlayer >= 0;
 }
 
 int Pause_ResultsTime(void)

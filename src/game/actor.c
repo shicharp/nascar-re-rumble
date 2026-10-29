@@ -904,6 +904,7 @@ void Actors_Free(void)
     Actors_Reap();
     g_Actors = s_tail = NULL;
     s_nextHandle = 0;
+    s_nextNear = 0;                 /* port: el original lo deja de la carrera anterior */
     s_numCsac = 0;                  /* 800605a4 / 800605cc */
     s_retryMask = 0;                /* 80048d28 */
     Pickup_Reset();

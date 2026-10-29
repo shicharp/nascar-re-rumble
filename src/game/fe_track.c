@@ -1364,6 +1364,8 @@ void Fe_NetStartRace(void)
     g_RaceGrid.count = s->gridCount;
     memcpy(g_RaceGrid.car, s->grid, sizeof(g_RaceGrid.car));
     memset(g_CarRecords, 0, sizeof(g_CarRecords));
+    memcpy(g_GameInfo, s->gameInfo, sizeof(GameInfo));   /* (los guiones pueden guardar cosas de una carrera a otra) */
+    g_GameInfo->isReplay = 0;
     g_GameInfo->unk5c = 0;
     g_GameInfo->numPlayers = s->numHumans;
     g_GameInfo->racingClass = 1;

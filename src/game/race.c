@@ -52,7 +52,6 @@ void Race_Load(const char* path)
     Track_Free();
     Cnet_Reset();                  /* FUN_8002cf7c */
     g_GameInfo->racingClass = g_Settings.racingClass;   /* 8002cf7c: la clase de la carrera (+0x08) */
-    Script_ResetRace();            /* 80067680 */
     {
         /* solo en el port (depuracion): NR_POWERUPS / NR_CLASS fuerzan los poderes (0..3) y la clase (0..3) */
         const char* pu = getenv("NR_POWERUPS");
@@ -67,6 +66,11 @@ void Race_Load(const char* path)
     const char* fseed = getenv("NR_SEED");   /* solo en el port (pruebas): la semilla de la carrera */
     int seed = Replay_Begin(Net_InRace() ? Net_RaceSeed() : fseed ? atoi(fseed) : g_FrontendFrames);
     Physics_Init();
+    /* 80067680. Port: el original la llama antes de la semilla, con los aleatorios que hayan quedado de antes (de la
+     * carrera anterior, distinta en cada maquina en red); aqui salen de la semilla, que se vuelve a poner despues
+     * para que la carrera gaste los mismos que antes */
+    Rand_SetSeed(seed);
+    Script_ResetRace();
     Rand_SetSeed(seed);
     g_HaveStart = 0;
     strcpy(g_LevelPath, path);
@@ -419,7 +423,7 @@ void Race_StateChecksum(uint32_t out[3])
         acts = acts * 31 + (uint32_t)a->hp;
     }
     out[0] = cars;
-    out[1] = acts;
+    out[1] = acts * 31 + Script_StateSum();
     out[2] = Rand_StateSum();
 }
 
@@ -584,8 +588,8 @@ void Race_MainLoop(void)
         }
         if (g_GameState == GAMESTATE_RESULTS)
             Race_Results(dt);          /* 8002896c */
-        else if (g_RacePaused)
-            Pause_Menu();              /* 80025ad4 */
+        else if (g_RacePaused || Pause_MenuOpen())
+            Pause_Menu();              /* 80025ad4 (port: en red, abierto sin parar la carrera) */
         else if (Net_InRace() && g_ViewHumans[0] && g_ViewHumans[0]->phys && I32(g_ViewHumans[0]->phys, 0x330) != 0)
             Race_SpectatorResults(dt);   /* port: en red, el que ya ha llegado mientras corren los demas */
 

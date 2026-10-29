@@ -26,6 +26,7 @@
 #include "snd.h"
 #include "pause.h"
 #include "cnet.h"
+#include "net.h"
 #include "script.h"
 
 #define STACK_MAX 64
@@ -156,7 +157,11 @@ int Script_Run(const uint8_t* code, int arg, int init, void* ent)
         case 0xc: Speech_Queue(a, NULL, 0); push = 0; break;   /* 8002b0f4 */
         case 0xd: Speech_Queue(a, NULL, 0); push = 0; break;   /* 8002b1d0 (en el original, delante de la cola) */
         case 0xe:
-        case 0xf: v = Speech_QueueOnEntity(a, self, op == 0xf); break;   /* 8002b2d8 (frase que sigue a la entidad) */
+        case 0xf:
+            v = Speech_QueueOnEntity(a, self, op == 0xf);   /* 8002b2d8 (frase que sigue a la entidad) */
+            if (Net_InRace())
+                v = 1;   /* port: si entra en la cola depende del audio de cada maquina; en red, siempre el mismo */
+            break;
         case 0x10: v = *GI(a); break;
         case 0x11: v = *GameVar(a); break;
         case 0x12: v = *Timer(a) / 5; break;
@@ -258,6 +263,21 @@ void Script_PlayRequestedSound(void)
 }
 
 /* 80067680 (Race_Load / Frontend_Load) */
+/* Solo en el port: suma del estado de los guiones que usa la logica (aleatorios, contadores, temporizadores,
+ * GameInfo), para las sumas de la carrera */
+uint32_t Script_StateSum(void)
+{
+    uint32_t s = (uint32_t)s_unknown1 * 31 + (uint32_t)s_disabled;
+    for (int k = 0; k < 32; k++)
+        s = s * 31 + (uint32_t)s_rand[k] + (uint32_t)s_timers[k] * 7;
+    for (int k = 0; k < 100; k++)
+        s = s * 31 + (uint32_t)s_counters[k];
+    for (int k = 0; k < (int)(sizeof(GameInfo) / 4); k++)
+        if (k != 0x60 / 4)   /* (isReplay: la carrera y su repeticion se comparan) */
+            s = s * 31 + (uint32_t)*GI(k);
+    return s;
+}
+
 void Script_ResetRace(void)
 {
     if (g_GameInfo)
@@ -267,6 +287,7 @@ void Script_ResetRace(void)
         s_rand[k] = (int)((unsigned)Rand_A() % 1000);
     memset(s_counters, 0, sizeof(s_counters));
     g_ScriptSound = 0;   /* (Font_Init 800446b8 al cargar) */
+    s_unknown1 = 0;      /* port: el original la deja de la carrera anterior */
     for (int k = 0; k < 32; k++)
         s_timers[k] = -10;
     s_disabled = 0;

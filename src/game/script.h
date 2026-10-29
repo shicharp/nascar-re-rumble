@@ -6,7 +6,8 @@
 
 /* Ejecuta el bytecode; 'init' >= 0 se mete en la pila al empezar; 'ent' = entidad (Actor*) o NULL */
 int  Script_Run(const uint8_t* code, int arg, int init, void* ent);   /* 80067890 */
-void Script_ResetRace(void);                                         /* 80067680 */
+void Script_ResetRace(void);
+uint32_t Script_StateSum(void);   /* solo en el port: estado de los guiones (sumas de la carrera) */                                         /* 80067680 */
 void Script_Tick(int dt);                                            /* 80067834 */
 void Script_Disable(void);                                           /* 80067880 */
 int  Script_LogOn(void);

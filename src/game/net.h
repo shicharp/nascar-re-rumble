@@ -78,6 +78,7 @@ typedef struct
     uint8_t  transmission[NET_MAX_HUMANS];     /* cambio de cada humano (< 3 automatico) */
     uint8_t  gridCount;
     uint8_t  grid[8][8];                       /* g_RaceGrid.car, ya en el orden de salida */
+    int32_t  gameInfo[43];                     /* g_GameInfo entero (los guiones leen y guardan cosas en el) */
 } NetRaceSetup;
 
 int  Net_InRace(void);                         /* esta maquina corre una carrera en red */

@@ -43,6 +43,7 @@ int  Rand_B(void);                                       /* 80018208 */
 int  Rand_Fx(void);                                      /* solo en el port: el de la presentacion */
 uint32_t Rand_StateSum(void);                            /* solo en el port: suma de A y B */
 void Rand_Init(void);
+void Human_ResetStatics(void);                           /* solo en el port (carphys_ctrl.c) */
 void Rand_SetSeed(int seed);                                /* 800182ec */
 void Mat_MulT(const int* m, const int* v, int* out);     /* 800198a8: m^T v (columnas) */
 void Mat_MulTAdd(const int* m, const int* v, int* out);  /* 800199fc: m^T v + m[9..11] */
