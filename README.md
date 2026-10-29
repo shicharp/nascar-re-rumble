@@ -17,6 +17,13 @@ Requisitos: Visual Studio 2022 (MSVC 14.38), CMake 3.31 y Ninja
 
 Los binarios no se versionan (ver `.gitignore`).
 
+**Para compartirlo** (p. ej. jugar en LAN con amigos): compilar con `build.bat RelWithDebInfo` (runtime de C
+estatico: no hace falta el Visual C++ Redistributable) y pasar `nascar.exe`, `nascar.pdb` (nombres de funcion en
+`crash.txt`), `SDL2.dll`, `OpenAL32.dll`, las licencias de `third_party` y un LEEME. Sin los datos del juego: cada
+uno pone la imagen `.bin` de su disco junto a `nascar.exe` y la primera vez el port la extrae a `disc` (tambien
+`--extract-disc imagen.bin`). En red todos tienen que llevar el mismo `nascar.exe`: el anfitrion compara una huella
+del ejecutable y rechaza los distintos.
+
 ```bat
 build.bat Debug
 ```

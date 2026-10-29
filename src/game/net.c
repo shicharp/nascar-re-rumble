@@ -14,7 +14,7 @@
 #include "pause.h"
 #include "net.h"
 
-#define NET_VERSION   5
+#define NET_VERSION   6
 #define NET_CHANNELS  2           /* 0 sala y ordenes; 1 pulsaciones y salidas de la carrera (fiables y en orden) */
 #define NET_RING      128         /* frames de pulsaciones guardados por humano */
 #define NET_SUM_EVERY 30          /* frames entre sumas de control (medio segundo) */
@@ -397,9 +397,36 @@ static void Sums_Store(uint32_t frame, int machine, const uint32_t* sum)
 
 /* ---------------------------------------------------------------- anfitrion */
 
+/* huella del ejecutable (FNV-1a de nascar.exe): en lockstep todos tienen que llevar el mismo (otra compilacion puede
+ * calcular distinto aunque el protocolo sea el mismo) */
+static uint32_t Net_BuildHash(void)
+{
+    static uint32_t s_hash;
+    if (s_hash)
+        return s_hash;
+    char path[MAX_PATH];
+    uint32_t h = 2166136261u;
+    if (GetModuleFileNameA(NULL, path, sizeof(path)))
+    {
+        FILE* f = fopen(path, "rb");
+        if (f)
+        {
+            static uint8_t buf[65536];
+            size_t n;
+            while ((n = fread(buf, 1, sizeof(buf), f)) > 0)
+                for (size_t i = 0; i < n; i++)
+                    h = (h ^ buf[i]) * 16777619u;
+            fclose(f);
+        }
+    }
+    s_hash = h ? h : 1;
+    return s_hash;
+}
+
 static void Host_Hello(ENetPeer* peer, Rd* r)
 {
     int ver = Rd_U8(r);
+    uint32_t build = Rd_U32(r);
     NetPlayer p;
     memset(&p, 0, sizeof(p));
     Rd_Player(r, &p);
@@ -407,8 +434,8 @@ static void Host_Hello(ENetPeer* peer, Rd* r)
     p.inRace = 0;
     const char* why = NULL;
     int id = -1;
-    if (r->bad || ver != NET_VERSION)
-        why = "Different game version";
+    if (r->bad || ver != NET_VERSION || build != Net_BuildHash())
+        why = "Different game version (use the same nascar.exe)";
     else
     {
         for (int i = 1; i < NET_MAX_MACHINES && id < 0; i++)
@@ -733,6 +760,7 @@ static void Net_HandleEvent(ENetEvent* ev)
             LocalPlayer(&me);
             Msg_Begin(&m, MSG_HELLO);
             Msg_U8(&m, NET_VERSION);
+            Msg_U32(&m, Net_BuildHash());
             Msg_Player(&m, &me);
             Send(s_server, &m, 0);
         }

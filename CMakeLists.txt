@@ -7,6 +7,9 @@ if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
     message(FATAL_ERROR "Compila en x86 (32 bits): usa build.bat, que carga vcvars32")
 endif()
 
+# Runtime de C estatico: el ejecutable no necesita el Visual C++ Redistributable instalado (para compartirlo)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
 set(TP ${CMAKE_SOURCE_DIR}/third_party)
 set(SDL2_DIR_ROOT   ${TP}/SDL2-2.32.8)
 set(OPENAL_DIR_ROOT ${TP}/openal-soft-1.25.2-bin)

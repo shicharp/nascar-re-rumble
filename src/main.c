@@ -8,11 +8,13 @@
  *                 [--display N]                            abre la ventana en el monitor N de SDL
  *                 [--fixed-step]                           carrera a paso fijo de 5 tics (red por entradas)
  *                 [--net-host | --net-join ip]             partida en LAN (anfitrion o cliente; ver net.h)
+ *                 [--extract-disc imagen.bin]              saca la imagen del disco a la carpeta 'disc' y sale
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <io.h>
 
 #include "PsyX/PsyX_public.h"
 #define SDL_MAIN_HANDLED   /* main propio (PsyCross ya inicializa SDL) */
@@ -27,6 +29,7 @@
 #include "game/game.h"
 #include "debug_viewer.h"
 #include "crash_log.h"
+#include "disc_extract.h"
 
 /* Solo en el port: lleva la ventana al centro del monitor 'display' (indices de SDL; se apuntan en el log). PsyCross
  * la crea donde quiere el sistema; es la ventana del contexto de OpenGL actual. */
@@ -75,6 +78,7 @@ int main(int argc, char** argv)
     int display = -1;
     int netHost = 0;
     const char* netJoin = NULL;
+    const char* extract = NULL;
 
     for (int i = 1; i < argc; i++)
     {
@@ -91,6 +95,37 @@ int main(int argc, char** argv)
         else if (!strcmp(argv[i], "--fixed-step")) g_Options.fixedStep = 1;
         else if (!strcmp(argv[i], "--net-host")) netHost = 1;
         else if (!strcmp(argv[i], "--net-join") && i + 1 < argc) netJoin = argv[++i];
+        else if (!strcmp(argv[i], "--extract-disc") && i + 1 < argc) extract = argv[++i];
+    }
+
+    /* solo en el port: --extract-disc imagen.bin la saca a "disc" y sale; sin la carpeta del disco y con una imagen
+     * .bin al lado, la saca la primera vez */
+    if (extract)
+        return Disc_Extract(extract, "disc") ? 0 : 1;
+    if (!disc)
+        disc = FindDiscRoot();
+    if (!disc)
+    {
+        struct _finddata_t fd;
+        intptr_t h = _findfirst("*.bin", &fd);
+        if (h != -1)
+        {
+            _findclose(h);
+            NR_Log("Extrayendo %s a la carpeta disc (solo la primera vez, tarda un poco)...\n", fd.name);
+            if (Disc_Extract(fd.name, "disc"))
+                disc = FindDiscRoot();
+        }
+    }
+    if (!disc)
+    {
+        NR_Log("No encuentro el disco extraido; usa --disc <carpeta>\n");
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "NASCAR Rumble",
+                                 "No encuentro los datos del disco.\n\n"
+                                 "Pon la imagen de tu disco de NASCAR Rumble (USA) en formato .bin (MODE2/2352) junto a "
+                                 "nascar.exe y vuelve a abrir el juego: la primera vez la extrae a la carpeta 'disc'.\n\n"
+                                 "Si ya la tienes extraida, deja esa carpeta junto a nascar.exe con el nombre 'disc'.",
+                                 NULL);
+        return 1;
     }
 
     PsyX_Initialise((char*)"NASCAR Rumble", 960, 720, 0);
@@ -98,15 +133,6 @@ int main(int argc, char** argv)
     PadMap_Init();        /* solo en el port: las teclas y botones de controls.cfg */
     if (display >= 0)
         MoveToDisplay(display);
-
-    if (!disc)
-        disc = FindDiscRoot();
-    if (!disc)
-    {
-        NR_Log("No encuentro el disco extraido; usa --disc <carpeta>\n");
-        PsyX_Shutdown();
-        return 1;
-    }
     File_SetRoot(disc);
     NR_Log("Disco: %s\n", disc);
 
