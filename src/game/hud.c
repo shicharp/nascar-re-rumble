@@ -500,7 +500,13 @@ void Hud_Draw(int view)
         ahead = NULL;
     if (!ahead && !behind)
         return;
-    uint8_t* other = ahead ? ahead : behind;
+    /* port: con el retrovisor (R1: bit 0x800000 de las acciones, como Race_DrawMirror) el de detras; el original
+     * siempre el de delante si lo hay */
+    const RaceCar* vh = g_ViewHumans[view];
+    int mirror = vh && vh->phys == c && vh->ctrl && (U32(vh->ctrl, 8) & 0x800000) && behind && !g_SplitScreen;
+    uint8_t* other = mirror ? behind : ahead ? ahead : behind;
+    if (other == behind)
+        ahead = NULL;   /* (el signo y el color de abajo) */
     RaceCar* oe = (RaceCar*)ENT(other);
     int gap = Hud_GapTime(c, other);
     const GridCar* g = &g_RaceGrid.car[oe->id - 1000];

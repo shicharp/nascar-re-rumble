@@ -14,12 +14,14 @@
 #include "pause.h"
 #include "net.h"
 
-#define NET_VERSION   6
+#define NET_VERSION   7
 #define NET_CHANNELS  2           /* 0 sala y ordenes; 1 pulsaciones y salidas de la carrera (fiables y en orden) */
 #define NET_RING      128         /* frames de pulsaciones guardados por humano */
 #define NET_SUM_EVERY 30          /* frames entre sumas de control (medio segundo) */
 #define NET_SUM_RING  16
 #define NET_WAIT_MS   15000       /* sin pulsaciones de una maquina tanto tiempo: el anfitrion la da por salida */
+#define NET_RESEND_MS 30          /* esperando, se repite el ultimo paquete de pulsaciones cada tanto */
+#define NET_TAIL      32          /* pulsaciones que manda el anfitrion con la salida de una maquina */
 
 enum
 {
@@ -28,8 +30,8 @@ enum
     MSG_REJECT,       /* anfitrion -> cliente: motivo (texto) */
     MSG_LOBBY,        /* anfitrion -> todos: la lista de jugadores */
     MSG_START,        /* anfitrion -> los de la carrera: NetRaceSetup */
-    MSG_INPUT,        /* pulsaciones de un humano para un frame (el anfitrion las reenvia) */
-    MSG_LEAVE,        /* maquina que deja la carrera y frame desde el que su humano va sin mando */
+    MSG_INPUT,        /* pulsaciones de un humano: las de un frame y las anteriores (sin garantia; se reenvian) */
+    MSG_LEAVE,        /* maquina que deja la carrera, frame desde el que su humano va sin mando y sus ultimas */
     MSG_SUM,          /* cliente -> anfitrion: sumas de la carrera en un frame */
     MSG_DESYNC,       /* anfitrion -> todos: frame desincronizado */
     MSG_UPDATE,       /* cliente -> anfitrion: su piloto o su nombre han cambiado */
@@ -62,6 +64,10 @@ typedef struct
 
 static int          s_inRace, s_startPending, s_myHuman = -1, s_frame, s_desync;
 static int          s_waiting;                      /* Net_RaceFrame espera las pulsaciones del frame s_frame */
+static int          s_delay = NET_INPUT_DELAY;      /* retardo de esta carrera (NetRaceSetup.inputDelay) */
+static uint32_t     s_contig[NET_MAX_MACHINES];     /* anfitrion: ultimo frame recibido sin huecos de cada maquina */
+static uint8_t      s_lastPacket[256];              /* el ultimo paquete de pulsaciones propio (para repetirlo) */
+static int          s_lastPacketLen;
 static NetRaceSetup s_setup;
 static NetInput     s_inputs[NET_MAX_HUMANS][NET_RING];
 static uint32_t     s_leftFrom[NET_MAX_MACHINES];   /* frame desde el que la maquina ya no manda (0 sigue) */
@@ -196,6 +202,27 @@ static void Send(ENetPeer* p, const Msg* m, int channel)
     SendRaw(p, m->buf, m->len, channel);
 }
 
+/* sin garantia ni orden (las pulsaciones: cada paquete repite las anteriores) */
+static void SendQuick(ENetPeer* p, const uint8_t* data, int len)
+{
+    if (!p)
+        return;
+    /* pruebas: NR_NETLOSS=n pierde el n % de estos paquetes al mandarlos */
+    static int s_loss = -1;
+    static uint32_t s_lossSeed = 12345;
+    if (s_loss < 0)
+        s_loss = getenv("NR_NETLOSS") ? atoi(getenv("NR_NETLOSS")) : 0;
+    if (s_loss > 0)
+    {
+        s_lossSeed = s_lossSeed * 1103515245u + 12345u;
+        if ((int)((s_lossSeed >> 16) % 100) < s_loss)
+            return;
+    }
+    ENetPacket* pk = enet_packet_create(data, (size_t)len, ENET_PACKET_FLAG_UNSEQUENCED);
+    if (enet_peer_send(p, 1, pk) < 0)
+        enet_packet_destroy(pk);
+}
+
 /* anfitrion: a todos los clientes salvo 'except' */
 static void BroadcastRaw(const uint8_t* data, int len, int channel, int except)
 {
@@ -282,27 +309,57 @@ static void StoreInput(int h, uint32_t frame, uint32_t bits, int ax, int ay, int
     in->kind = (uint8_t)kind;
 }
 
-static void Msg_Input(Msg* m, int h, uint32_t frame, const NetInput* in)
+/* pulsaciones del humano h de los frames (last - count, last]: numero de humano, ultimo frame, cuantas, y cada una */
+static void Msg_Inputs(Msg* m, int type, int h, uint32_t last, int count)
 {
-    Msg_Begin(m, MSG_INPUT);
+    if ((uint32_t)count > last)
+        count = (int)last;
     Msg_U8(m, h);
-    Msg_U32(m, frame);
-    Msg_U32(m, in->bits);
-    Msg_U8(m, in->ax);
-    Msg_U8(m, in->ay);
-    Msg_U8(m, in->kind);
+    Msg_U32(m, last);
+    int pos = m->len;
+    Msg_U8(m, 0);
+    int n = 0;
+    for (uint32_t f = last - (uint32_t)count + 1; f <= last && count > 0; f++)
+    {
+        const NetInput* in = &s_inputs[h][f % NET_RING];
+        if (in->frame != f)
+            continue;   /* (no deberia faltar ninguna) */
+        Msg_U32(m, f);
+        Msg_U32(m, in->bits);
+        Msg_U8(m, in->ax);
+        Msg_U8(m, in->ay);
+        Msg_U8(m, in->kind);
+        n++;
+    }
+    m->buf[pos] = (uint8_t)n;
+    (void)type;
 }
 
-static void Rd_Input(Rd* r)
+/* anfitrion: el ultimo frame recibido sin huecos de la maquina (lo que pueden tener los demas) */
+static void Host_AdvanceContig(int machine, int h)
+{
+    while (s_inputs[h][(s_contig[machine] + 1) % NET_RING].frame == s_contig[machine] + 1)
+        s_contig[machine]++;
+}
+
+static void Rd_Inputs(Rd* r)
 {
     int h = Rd_U8(r);
-    uint32_t frame = Rd_U32(r), bits = Rd_U32(r);
-    int ax = Rd_U8(r), ay = Rd_U8(r), kind = Rd_U8(r);
-    if (!r->bad && s_inRace)
-        StoreInput(h, frame, bits, ax, ay, kind);
+    Rd_U32(r);
+    int n = Rd_U8(r);
+    for (int i = 0; i < n && !r->bad; i++)
+    {
+        uint32_t frame = Rd_U32(r), bits = Rd_U32(r);
+        int ax = Rd_U8(r), ay = Rd_U8(r), kind = Rd_U8(r);
+        if (!r->bad && s_inRace && s_inputs[h & 7][frame % NET_RING].frame != frame)
+            StoreInput(h, frame, bits, ax, ay, kind);
+    }
     int m = MachineOfHuman(h);
-    if (s_isHost && m > 0 && frame > s_lastInput[m])
-        s_lastInput[m] = frame;
+    if (s_isHost && m > 0 && s_inRace)
+    {
+        Host_AdvanceContig(m, h);
+        s_lastInput[m] = s_contig[m];
+    }
 }
 
 /* la maquina deja de mandar: su humano va sin mando desde 'from' (los frames anteriores ya estan en camino). Si ya
@@ -325,13 +382,22 @@ static void Host_MachineLeaves(int machine)
 {
     if (s_leftFrom[machine] || !s_setup.numHumans)
         return;
-    uint32_t from = (machine == 0 ? (uint32_t)s_frame + NET_INPUT_DELAY : s_lastInput[machine]) + 1;
+    /* desde el primer frame que le falta al anfitrion (los demas solo tienen lo que el ha reenviado); con la salida
+     * van sus ultimas pulsaciones, por si a alguno se le perdio alguna */
+    uint32_t from = (machine == 0 ? (uint32_t)s_frame + (uint32_t)s_delay : s_contig[machine]) + 1;
+    int h = -1;
+    for (int k = 0; k < s_setup.numHumans; k++)
+        if (s_setup.humanMachine[k] == machine)
+            h = k;
     MarkLeft(machine, from);
     Msg m;
     Msg_Begin(&m, MSG_LEAVE);
     Msg_U8(&m, machine);
     Msg_U32(&m, from);
-    Broadcast(&m, 1, machine);
+    Msg_U8(&m, h >= 0);
+    if (h >= 0)
+        Msg_Inputs(&m, MSG_LEAVE, h, from - 1, NET_TAIL);
+    Broadcast(&m, 0, machine);
     Host_SendLobby();
 }
 
@@ -501,9 +567,12 @@ static void Host_Receive(ENetPeer* peer, const uint8_t* data, int len, int chann
         }
         break;
     case MSG_INPUT:
-        Rd_Input(&r);
+        Rd_Inputs(&r);
         if (!r.bad)
-            BroadcastRaw(data, len, channel, from);   /* a los demas clientes */
+            for (int i = 1; i < NET_MAX_MACHINES; i++)   /* a los demas clientes, tambien sin garantia */
+                if (s_peers[i] && i != from)
+                    SendQuick(s_peers[i], data, len);
+        (void)channel;
         break;
     case MSG_LEAVE:
         if (from > 0 && from < NET_MAX_MACHINES)
@@ -530,6 +599,10 @@ static void Race_Reset(void)
     memset(s_inputs, 0, sizeof(s_inputs));
     memset(s_leftFrom, 0, sizeof(s_leftFrom));
     memset(s_lastInput, 0, sizeof(s_lastInput));
+    memset(s_contig, 0, sizeof(s_contig));
+    s_lastPacketLen = 0;
+    s_delay = s_setup.inputDelay >= NET_INPUT_DELAY && s_setup.inputDelay <= NET_MAX_DELAY ? s_setup.inputDelay
+                                                                                             : NET_INPUT_DELAY;
     memset(s_sums, 0, sizeof(s_sums));
     s_frame = 0;
     s_desync = 0;
@@ -539,9 +612,11 @@ static void Race_Reset(void)
         if (s_setup.humanMachine[h] == s_machine)
             s_myHuman = h;
         /* los primeros frames no tienen mando: nadie los ha leido todavia */
-        for (uint32_t f = 1; f <= NET_INPUT_DELAY; f++)
+        for (uint32_t f = 1; f <= (uint32_t)s_delay; f++)
             StoreInput(h, f, 0, 0x80, 0x80, 4);
     }
+    for (int m = 0; m < NET_MAX_MACHINES; m++)
+        s_contig[m] = (uint32_t)s_delay;
     /* las maquinas que no corren no mandan nada */
     for (int m = 0; m < NET_MAX_MACHINES; m++)
     {
@@ -600,12 +675,14 @@ static void Client_Receive(const uint8_t* data, int len)
         Net_Log("[red] salida: %d humanos, soy el %d, semilla %u\n", s_setup.numHumans, s_myHuman, s_setup.seed);
         break;
     case MSG_INPUT:
-        Rd_Input(&r);
+        Rd_Inputs(&r);
         break;
     case MSG_LEAVE:
     {
         int m = Rd_U8(&r);
         uint32_t from = Rd_U32(&r);
+        if (Rd_U8(&r))
+            Rd_Inputs(&r);   /* sus ultimas pulsaciones */
         if (!r.bad)
             MarkLeft(m, from);
         break;
@@ -1089,6 +1166,24 @@ void Net_HostStartRace(void)
         s->humanMachine[i + 1] = (uint8_t)machines[i];
         s->transmission[i + 1] = s_players[machines[i]].transmission;
     }
+    /* retardo: el camino mas lento entre dos maquinas pasa por el anfitrion (ida del ping de un cliente mas la del
+     * otro), mas 2 frames de margen; entre NET_INPUT_DELAY y NET_MAX_DELAY */
+    uint32_t r1 = 0, r2 = 0;
+    for (int i = 0; i < n; i++)
+    {
+        uint32_t rtt = s_peers[machines[i]] ? s_peers[machines[i]]->roundTripTime : 0;
+        if (rtt > r1)
+        {
+            r2 = r1;
+            r1 = rtt;
+        }
+        else if (rtt > r2)
+            r2 = rtt;
+    }
+    int oneWay = (int)(r1 + r2) / 2;
+    int delay = (oneWay * 60 + 999) / 1000 + 2;
+    s->inputDelay = (uint8_t)(delay < NET_INPUT_DELAY ? NET_INPUT_DELAY : delay > NET_MAX_DELAY ? NET_MAX_DELAY : delay);
+    Net_Log("[red] ping de los clientes: %u y %u ms -> retardo de %d frames\n", r1, r2, s->inputDelay);
     Msg m;
     Msg_Begin(&m, MSG_START);
     Msg_Bytes(&m, s, (int)sizeof(*s));
@@ -1111,12 +1206,27 @@ int Net_TakeStart(void)
     return v;
 }
 
+/* el ultimo paquete de pulsaciones propio, a todos (anfitrion) o al anfitrion (cliente) */
+static void Net_SendOwnInputs(void)
+{
+    if (!s_lastPacketLen)
+        return;
+    if (s_isHost)
+    {
+        for (int i = 1; i < NET_MAX_MACHINES; i++)
+            if (s_peers[i])
+                SendQuick(s_peers[i], s_lastPacket, s_lastPacketLen);
+    }
+    else
+        SendQuick(s_server, s_lastPacket, s_lastPacketLen);
+}
+
 void Net_RaceFrame(void)
 {
     if (!s_inRace)
         return;
     uint32_t f = (uint32_t)++s_frame;
-    /* lo que se acaba de leer del mando local vale para dentro de NET_INPUT_DELAY frames */
+    /* lo que se acaba de leer del mando local vale para dentro de s_delay frames */
     RaceCar* me = s_myHuman >= 0 ? g_Humans[s_myHuman] : NULL;
     if (me && me->ctrl && !s_leftFrom[s_machine])
     {
@@ -1132,28 +1242,38 @@ void Net_RaceFrame(void)
             in.ax = in.ay = 0x80;
             in.kind = 4;
         }
-        uint32_t when = f + NET_INPUT_DELAY;
+        uint32_t when = f + (uint32_t)s_delay;
         StoreInput(s_myHuman, when, in.bits, in.ax, in.ay, in.kind);
         Msg m;
-        Msg_Input(&m, s_myHuman, when, &in);
-        if (s_isHost)
-            Broadcast(&m, 1, -1);
-        else
-            Send(s_server, &m, 1);
+        Msg_Begin(&m, MSG_INPUT);
+        Msg_Inputs(&m, MSG_INPUT, s_myHuman, when, NET_REDUNDANT);
+        memcpy(s_lastPacket, m.buf, (size_t)m.len);
+        s_lastPacketLen = m.len;
+        Net_SendOwnInputs();
     }
     /* espera las de todos para este frame */
     s_waiting = 1;
-    enet_uint32 start = enet_time_get();
+    enet_uint32 start = enet_time_get(), waitStart = start, lastSend = start;
+    int missing = -1;
     for (;;)
     {
         int all = 1;
         for (int h = 0; h < s_setup.numHumans; h++)
             if (!HaveInput(h, f))
+            {
                 all = 0;
+                missing = MachineOfHuman(h);
+            }
         if (all)
             break;
         Net_Service(1);
         PsyX_UpdateInput();   /* (la ventana sigue respondiendo) */
+        /* si el que falta tambien espera (por las nuestras), que no se queden los dos esperando un paquete perdido */
+        if (enet_time_get() - lastSend >= NET_RESEND_MS)
+        {
+            lastSend = enet_time_get();
+            Net_SendOwnInputs();
+        }
         if (enet_time_get() - start > NET_WAIT_MS)
         {
             for (int h = 0; h < s_setup.numHumans; h++)
@@ -1170,6 +1290,15 @@ void Net_RaceFrame(void)
         }
     }
     s_waiting = 0;
+    enet_uint32 waited = enet_time_get() - waitStart;
+    if (waited >= 100)
+    {
+        /* (las esperas largas: quien las causa) */
+        if (waited >= 1000)
+            Net_Log("[red] espera de %u ms en el frame %u por la maquina %d\n", waited, f, missing);
+        else
+            Net_LogFile("[red] espera de %u ms en el frame %u por la maquina %d\n", waited, f, missing);
+    }
     for (int h = 0; h < s_setup.numHumans; h++)
         ApplyInput(h, f);
 }
@@ -1191,7 +1320,7 @@ void Net_RaceStep(void)
         Msg_U32(&m, (uint32_t)s_frame);
         for (int i = 0; i < 3; i++)
             Msg_U32(&m, sum[i]);
-        Send(s_server, &m, 1);
+        Send(s_server, &m, 0);
     }
 }
 
@@ -1207,7 +1336,7 @@ void Net_RaceEnd(void)
         Msg_Begin(&m, MSG_LEAVE);
         Msg_U8(&m, s_machine);
         Msg_U32(&m, 0);
-        Send(s_server, &m, 1);
+        Send(s_server, &m, 0);
         g_Settings = s_savedSettings;   /* sus ajustes, que la salida habia cambiado */
     }
     s_players[s_machine >= 0 ? s_machine : 0].inRace = 0;

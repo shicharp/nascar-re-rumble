@@ -6,7 +6,9 @@
  *    y manda la lista de jugadores (LOBBY) cada vez que cambia.
  *  - Carrera: el anfitrion elige pista y parrilla y manda START (ajustes, parrilla, semilla, que humano es de que
  *    maquina); todos cargan y corren a paso fijo, y cada frame mandan las pulsaciones de su humano para el frame
- *    actual + NET_INPUT_DELAY. Ningun frame se simula sin las pulsaciones de todos.
+ *    actual + el retardo de la carrera (NetRaceSetup.inputDelay: lo elige el anfitrion segun el ping). Ningun
+ *    frame se simula sin las pulsaciones de todos. Las pulsaciones van sin garantia de entrega y cada paquete
+ *    lleva tambien las NET_REDUNDANT anteriores: perder uno no para a nadie.
  *  - Sumas de la carrera (Race_StateChecksum) cada 30 frames para detectar desincronizaciones. */
 #ifndef NR_NET_H
 #define NR_NET_H
@@ -66,7 +68,9 @@ const NetFound* Net_Found(int i);
 /* ---- carrera ---- */
 
 #define NET_MAX_HUMANS   8
-#define NET_INPUT_DELAY  3        /* frames entre leer el mando y usarlo (60 Hz: 50 ms) */
+#define NET_INPUT_DELAY  3        /* frames minimos entre leer el mando y usarlo (60 Hz: 50 ms) */
+#define NET_MAX_DELAY    12       /* y maximos (200 ms) */
+#define NET_REDUNDANT    10       /* pulsaciones anteriores que repite cada paquete */
 
 /* Lo que manda el anfitrion al empezar (MSG_START): basta para que cada maquina cargue la misma carrera */
 typedef struct
@@ -79,6 +83,7 @@ typedef struct
     uint8_t  gridCount;
     uint8_t  grid[8][8];                       /* g_RaceGrid.car, ya en el orden de salida */
     int32_t  gameInfo[43];                     /* g_GameInfo entero (los guiones leen y guardan cosas en el) */
+    uint8_t  inputDelay;                       /* frames de retardo de las pulsaciones (segun el ping) */
 } NetRaceSetup;
 
 int  Net_InRace(void);                         /* esta maquina corre una carrera en red */
