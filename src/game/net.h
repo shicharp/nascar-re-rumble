@@ -84,7 +84,15 @@ typedef struct
     uint8_t  grid[8][8];                       /* g_RaceGrid.car, ya en el orden de salida */
     int32_t  gameInfo[43];                     /* g_GameInfo entero (los guiones leen y guardan cosas en el) */
     uint8_t  inputDelay;                       /* frames de retardo de las pulsaciones (segun el ping) */
+    uint8_t  assists;                          /* NET_ASSIST_*: las ayudas que ha puesto el anfitrion */
 } NetRaceSetup;
+
+/* ayudas para los humanos que elige el anfitrion en la sala (racecar.c, Race_Assists) */
+#define NET_ASSIST_DRAFT    1      /* rebufo: detras de otro coche, mas potencia */
+#define NET_ASSIST_CATCHUP  2      /* rezagado: lejos del primer humano, mas potencia */
+int  Net_Assists(void);                        /* las de la carrera en curso (0 sin red) */
+int  Net_LobbyAssists(void);                   /* las de la sala */
+void Net_SetAssists(int assists);              /* anfitrion: cambiarlas (se mandan con la sala) */
 
 int  Net_InRace(void);                         /* esta maquina corre una carrera en red */
 int  Net_HumanView(int human);                 /* vista de esta maquina (0 / 1) del humano o -1 (remoto, IA); sin

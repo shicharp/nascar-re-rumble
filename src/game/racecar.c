@@ -237,6 +237,7 @@ void Race_FreeCars(void)
     }
     memset(g_Humans, 0, sizeof(g_Humans));
     memset(g_ViewHumans, 0, sizeof(g_ViewHumans));
+    memset(g_HumanDraft, 0, sizeof(g_HumanDraft));
     g_NumHumans = 0;
     g_NumCars = 0;
     Ai_Reset();
@@ -248,6 +249,88 @@ void Race_ReadPads(void)
     for (int i = 0; i < RACE_MAX_HUMANS; i++)
         if (g_Humans[i] && g_Humans[i]->ctrl && g_Humans[i]->ctrl[0x59] < 2)
             Human_ReadPad(g_Humans[i], g_Humans[i]->ctrl[0x59]);
+}
+
+/* ---------------------------------------------------------------- solo en el port: ayudas de las partidas en red */
+
+/* Opciones del anfitrion (NET_ASSIST_*), solo para los humanos. Suben el factor de potencia +0x431 (0xCC normal;
+ * escala el par y la velocidad punta como (1 + v / 0xCC) / 2: 0xFF = +12,5 %), el mismo que usa la goma elastica
+ * de la IA (Ai_Drive). Salen del estado de la carrera, asi que dan lo mismo en todas las maquinas. */
+#define DRAFT_MIN    0x800     /* rebufo: de 0x800 a 0x5000 por delante (unos 3 coches; la parrilla los pone */
+#define DRAFT_DIST   0x5000    /* a 0x1A00 uno de otro), con mas fuerza cuanto mas cerca, */
+#define DRAFT_WIDTH  0x700     /* y a menos de 0x700 de lado (las columnas de la parrilla van a 0x1400) */
+#define DRAFT_BOOST  0x20      /* hasta +7,8 % */
+#define CATCH_START  40        /* rezagado: a partir de 40 puntos de TCRV (unos 3 s a fondo) del primer humano */
+#define CATCH_RANGE  160       /* hasta el maximo 160 puntos despues (unos 15 s) */
+#define CATCH_BOOST  0x24      /* +8,8 % */
+
+uint8_t g_HumanDraft[RACE_MAX_HUMANS];   /* fuerza del rebufo de cada humano (0..255; el marcador lo avisa) */
+
+/* fuerza del rebufo (0..256): el coche mas cercano por delante en la trazada, si los dos van deprisa */
+static int Assist_Draft(const RaceCar* e)
+{
+    if (e->speed < 0x40)
+        return 0;
+    int s, c;
+    Math_SinCos(I16(e->phys, 0x432), &s, &c);   /* rumbo: adelante = (sin, cos) en x, z (16.16) */
+    int best = 0;
+    for (int i = 0; i < g_NumCars; i++)
+    {
+        const RaceCar* o = &g_Cars[i];
+        if (o == e || !o->phys || o->speed < 0x40)
+            continue;
+        int dx = o->obj.pos[0] - e->obj.pos[0], dz = o->obj.pos[2] - e->obj.pos[2];
+        if (Abs_(dx) > DRAFT_DIST || Abs_(dz) > DRAFT_DIST)
+            continue;
+        int along = (int)(((int64_t)dx * s + (int64_t)dz * c) >> 16);
+        int side = (int)(((int64_t)dx * c - (int64_t)dz * s) >> 16);
+        if (along <= DRAFT_MIN || along >= DRAFT_DIST || Abs_(side) >= DRAFT_WIDTH)
+            continue;
+        int k = (DRAFT_DIST - along) * 256 / (DRAFT_DIST - DRAFT_MIN);
+        if (k > best)
+            best = k;
+    }
+    return best;
+}
+
+static void Race_Assists(void)
+{
+    int opt = Net_Assists();
+    if (!opt)
+        return;
+    /* el primer humano que sigue corriendo (el de mejor puesto) */
+    RaceCar* lead = NULL;
+    for (int h = 0; h < RACE_MAX_HUMANS; h++)
+    {
+        RaceCar* e = g_Humans[h];
+        if (e && e->phys && I32(e->phys, 0x330) == 0 && (!lead || U8(e->phys, 0x31a) < U8(lead->phys, 0x31a)))
+            lead = e;
+    }
+    for (int h = 0; h < RACE_MAX_HUMANS; h++)
+    {
+        RaceCar* e = g_Humans[h];
+        g_HumanDraft[h] = 0;
+        if (!e || !e->phys)
+            continue;
+        uint8_t* c = e->phys;
+        int v = 0xcc;
+        if (I32(c, 0x330) == 0)
+        {
+            if ((opt & NET_ASSIST_CATCHUP) && lead && lead != e)
+            {
+                int gap = Car_TrackDeltaPublic(lead->phys, c) - CATCH_START;
+                if (gap > 0)
+                    v += (gap < CATCH_RANGE ? gap : CATCH_RANGE) * CATCH_BOOST / CATCH_RANGE;
+            }
+            if (opt & NET_ASSIST_DRAFT)
+            {
+                int k = Assist_Draft(e);
+                g_HumanDraft[h] = (uint8_t)(k > 255 ? 255 : k);
+                v += k * DRAFT_BOOST / 256;
+            }
+        }
+        U8(c, 0x431) = (uint8_t)(v > 0xff ? 0xff : v);
+    }
 }
 
 /* Race_UpdateSim 80030cac: posiciones (8002fc9c), mando de los humanos (8005ffbc -> 8004cae8), vueltas
@@ -276,6 +359,7 @@ void Race_UpdateCars(int dt)
         Car_UpdatePowerUps(c->phys, dt, use);
     }
     Ai_UpdateAll(dt);
+    Race_Assists();                /* solo en el port: rebufo y ayuda al rezagado en red */
     Physics_StepAll(dt);
     Race_CollideCars();            /* 800268c0 (tras dibujar en el original) */
     Actors_CollideCars();

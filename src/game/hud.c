@@ -379,6 +379,13 @@ static void Hud_Messages(int view, int y, int level)
         Font_Measure(s, &w, &hh);
         Font_DrawString(s, 0xa0 - w / 2, y + off + mir, blink ? 9 : 1);
     }
+    /* port: en red, con el rebufo de las ayudas del anfitrion */
+    if (I32(c, 0x330) == 0 && h->player >= 0 && h->player < RACE_MAX_HUMANS && g_HumanDraft[h->player] > 0x20)
+    {
+        int w, hh;
+        Font_Measure("SLIPSTREAM", &w, &hh);
+        Font_DrawString("SLIPSTREAM", 0xa0 - w / 2, y + off + mir + 0x1a, 6);
+    }
     if (I32(c, 0x330) == 0 && I32(ctrl, 4) > 299)   /* (el contador lo lleva Hud_UpdateWrongWay) */
     {
         int w, hh;

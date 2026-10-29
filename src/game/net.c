@@ -14,7 +14,7 @@
 #include "pause.h"
 #include "net.h"
 
-#define NET_VERSION   7
+#define NET_VERSION   8
 #define NET_CHANNELS  2           /* 0 sala y ordenes; 1 pulsaciones y salidas de la carrera (fiables y en orden) */
 #define NET_RING      128         /* frames de pulsaciones guardados por humano */
 #define NET_SUM_EVERY 30          /* frames entre sumas de control (medio segundo) */
@@ -45,6 +45,7 @@ static ENetHost* s_enet;
 static ENetPeer* s_server;                      /* cliente: la conexion con el anfitrion */
 static ENetPeer* s_peers[NET_MAX_MACHINES];     /* anfitrion: la de cada maquina */
 static int       s_isHost, s_active, s_machine = -1;
+static int       s_assists;                     /* NET_ASSIST_* de la sala (las elige el anfitrion) */
 static NetPlayer s_players[NET_MAX_MACHINES];
 static char      s_status[64];
 static int       s_init;
@@ -285,6 +286,7 @@ static void Host_SendLobby(void)
         if (s_players[i].used)
             Msg_Player(&m, &s_players[i]);
     }
+    Msg_U8(&m, s_assists);
     Broadcast(&m, 0, -1);
     int n = Net_NumPlayers();
     Net_Log("[red] sala: %d jugador%s\n", n, n == 1 ? "" : "es");
@@ -660,6 +662,11 @@ static void Client_Receive(const uint8_t* data, int len)
             if (!r.bad)
                 s_players[i] = p;
         }
+        {
+            int a = Rd_U8(&r);
+            if (!r.bad)
+                s_assists = a;
+        }
         Net_Log("[red] sala: %d jugadores\n", Net_NumPlayers());
         break;
     case MSG_START:
@@ -754,6 +761,8 @@ int Net_Host(int port)
     s_isHost = s_active = 1;
     s_machine = 0;
     LocalPlayer(&s_players[0]);
+    if (getenv("NR_ASSISTS"))   /* pruebas: las ayudas sin pasar por la sala */
+        s_assists = atoi(getenv("NR_ASSISTS")) & (NET_ASSIST_DRAFT | NET_ASSIST_CATCHUP);
     s_findHostSock = enet_socket_create(ENET_SOCKET_TYPE_DATAGRAM);
     if (s_findHostSock != ENET_SOCKET_NULL)
     {
@@ -1089,6 +1098,24 @@ const char* Net_Status(void)
 
 /* ---------------------------------------------------------------- API de la carrera */
 
+int Net_Assists(void)
+{
+    return s_inRace ? s_setup.assists : 0;
+}
+
+int Net_LobbyAssists(void)
+{
+    return s_assists;
+}
+
+void Net_SetAssists(int assists)
+{
+    if (!s_isHost)
+        return;
+    s_assists = assists;
+    Host_SendLobby();
+}
+
 int Net_InRace(void)
 {
     return s_inRace;
@@ -1151,6 +1178,7 @@ void Net_HostStartRace(void)
     s->teamRace = gs->teamRace;
     s->gameMode = gs->gameMode;
     s->gridCount = g_RaceGrid.count;
+    s->assists = (uint8_t)s_assists;
     static_assert(sizeof(s->gameInfo) == sizeof(GameInfo), "NetRaceSetup.gameInfo = GameInfo");
     memcpy(s->gameInfo, g_GameInfo, sizeof(s->gameInfo));
     memcpy(s->grid, g_RaceGrid.car, sizeof(s->grid));

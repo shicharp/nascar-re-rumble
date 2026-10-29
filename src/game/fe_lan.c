@@ -22,6 +22,7 @@ static int  s_mode;           /* sin partida: LAN_MENU / LAN_FIND / LAN_ADDR */
 static int  s_sel;
 static char s_addr[48];       /* direccion escrita */
 static int  s_typing;         /* el teclado escribe en s_addr (g_cfg_gameOnTextInput) */
+static int  s_optSel;         /* sala, anfitrion: la ayuda elegida (0 rebufo, 1 rezagado) */
 
 static void Lan_OnText(const char* text)
 {
@@ -152,12 +153,41 @@ static void Lan_Lobby(void)
         Lan_Text(0x12, 0x12, 0x12, tag, 0x120, y, 2);
         row++;
     }
+    /* ayudas para los humanos (solo las cambia el anfitrion: arriba / abajo eligen, izquierda / derecha cambian) */
+    static const char* const assistName[2] = { "Slipstream", "Catch-up" };
+    static const char* const assistHelp[2] = { "(right behind another car: more power)",
+                                               "(far behind the first player: more power)" };
+    int assists = Net_LobbyAssists();
+    for (int k = 0; k < 2; k++)
+    {
+        int y = 0x9c + k * 0xc, on = (assists >> k) & 1;
+        if (host && s_optSel == k)
+            Fe_DrawBox(0x50, 0x0a, 0x0a, 0x1a, y - 1, 0x123, y + 9, 0);
+        snprintf(line, sizeof(line), "%s: %s", assistName[k], on ? "On" : "Off");
+        int v = host ? 0x1f : 0x17;
+        Lan_Text(v, host && s_optSel == k ? 0x1c : v, host && s_optSel == k ? 0 : v, line, 0x22, y, 0);
+        Lan_Text(0x12, 0x12, 0x12, assistHelp[k], 0x80, y, 0);
+    }
     if (Net_DesyncFrame())
         Lan_Text(0x1f, 0x08, 0x08, "The last race went out of sync", 0x9e, 0xb6, 1);
     Lan_Text(0x14, 0x14, 0x14, host ? "Up to 8 players. Press X to choose the race." :
                                       "Waiting for the host to start the race...", 0x9e, 0xc2, 1);
-    Lan_Help(host ? "\x1b*\x13 Choose Race   \x1b~\x13 Leave   (your car: in the driver screen)" :
+    Lan_Help(host ? "\x1b*\x13 Choose Race   \x1b^\x13 Option   \x1b$\x13 Change   \x1b~\x13 Leave" :
                     "\x1b$\x13 Driver   \x1b^\x13 Car   \x1b~\x13 Leave");
+
+    if (host)
+    {
+        if (Fe_PadPressed(PADB_UP, -1, 1) || Fe_PadPressed(PADB_DOWN, -1, 1))
+        {
+            s_optSel ^= 1;
+            Snd_PlayUi(0x46, NULL);
+        }
+        else if (Fe_PadPressed(PADB_LEFT, -1, 1) || Fe_PadPressed(PADB_RIGHT, -1, 1))
+        {
+            Net_SetAssists(assists ^ (1 << s_optSel));
+            Snd_PlayUi(0x47, NULL);
+        }
+    }
 
     /* el anfitrion elige el suyo en la pantalla 1200, como siempre */
     int d = host ? 0 : Fe_PadPressed(PADB_LEFT, -1, 1) ? -1 : Fe_PadPressed(PADB_RIGHT, -1, 1) ? 1 : 0;
