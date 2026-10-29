@@ -10,6 +10,7 @@
 #include "lsc.h"
 #include "globals.h"
 #include "frontend.h"
+#include "net.h"
 #include "fe_internal.h"
 #include "savegame.h"
 #include "snd.h"
@@ -241,7 +242,7 @@ void Frontend_InitScreens(void)
         /* vuelta de una carrera: nivel del marcador (DAT_800b715e + jugadores) y lo que sigue (80090fb4) */
         g_SaveExtra.hudPref[(g_Settings.numPlayers - 1) & 1] = (uint8_t)Hud_GetSetting(0);
         fe->screen = 2000;
-        fe->nextScreen = (short)Fe_AfterRace();
+        fe->nextScreen = Net_Active() ? 2100 : (short)Fe_AfterRace();   /* port: en red, a la sala */
     }
     else
     {
@@ -365,6 +366,7 @@ void Frontend_Update(void)
     case 1800: Fe_Screen1800(); break;
     case 1900: Fe_Screen1900(); break;
     case 2000: Fe_Screen2000(); break;
+    case 2100: Fe_ScreenLan(); break;   /* solo en el port */
     default: Fe_ScreenPending(); break;
     }
 

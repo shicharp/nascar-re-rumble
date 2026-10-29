@@ -1061,7 +1061,7 @@ void Fe_StartRace(int demo)
         default: grid->count = 6; gs->laps = 4; break;
         }
     }
-    if (!demo && !gs->champType && Net_IsHost())
+    if (!demo && !gs->champType && Net_IsHost() && npLocal == 1)   /* (en red, un jugador por maquina) */
         np = Fe_AddNetHumans(np, cls);
     {
         const char* nc = getenv("NR_CARS");   /* solo en el port (pruebas): numero de coches (hasta 8) */

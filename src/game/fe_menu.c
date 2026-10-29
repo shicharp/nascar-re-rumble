@@ -11,6 +11,7 @@
 #include "globals.h"
 #include "frontend.h"
 #include "fe_internal.h"
+#include "net.h"
 #include "snd.h"
 #include "snd_int.h"
 #include "savegame.h"
@@ -641,15 +642,26 @@ void Fe_Screen100(void)
         fe->slideX = 300;
         g_Settings.numPlayers = 2;
     }
+    /* port: SELECT lleva a las partidas en red local (pantalla 2100); se anade a la ayuda de cada opcion */
+    static char help[192];
+    const char* orig = items[fe->cursor].help;
+    snprintf(help, sizeof(help), "%s    \x1bSELECT\x13 LAN Game", orig ? orig : "");
+    items[fe->cursor].help = help;
     s_narrowR = 1;
     Fe_DrawMenuScreen(items, 7, MainMenuValue, 0);
     s_narrowR = 0;
+    items[fe->cursor].help = orig;
     Fe_ReadPads();
 
     if (fe->popup == 1 || fe->popup == 2)
     {
         if (Fe_MsgBox(0, 100, Fe_GetString(fe->popup == 1 ? 0xaf0 : 0xaf1), NULL, -1) != -1)
             fe->popup = 0;
+    }
+    else if (Fe_PadPressed(PADB_SELECT, 0, 1))
+    {
+        fe->nextScreen = 2100;
+        Snd_PlayUi(0x48, NULL);
     }
     else if (Fe_MenuNavigate(items, 7) == 0)
     {
@@ -751,6 +763,11 @@ void Fe_Screen200(void)
         if (g_Settings.racingClass == 0 && fe->cursor == 1)
         {
             fe->popup = 1;
+            fe->nextScreen = -1;
+        }
+        else if (Net_IsHost() && Net_NumPlayers() > 1 && fe->cursor != 0)
+        {
+            Snd_PlayUi(0x4c, NULL);   /* port: en red solo carrera suelta */
             fe->nextScreen = -1;
         }
         else

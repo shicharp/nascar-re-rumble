@@ -50,7 +50,8 @@ void        Fe_DrawCarModel(int p, int x, int y, int dist, int reflection);     
 void        Fe_DrawSpinningModel(int x, int y, int dist, int model, int speed);   /* 8008de60 */
 void        Fe_DrawCallout(int x, int y, int w, int h, int down, int left, int down2, int right); /* 8008dc1c */
 int         Fe_DrawTextRgb(int r, int g, int b, const char* text, int x, int y, int align);    /* 8008efec */
-const char* HelpText(int i);                                                      /* DAT_800b6e78[i] */
+const char* HelpText(int i);
+void        Fe_ScreenLan(void);    /* solo en el port: 2100, partidas en red local (fe_lan.c) */                                                      /* DAT_800b6e78[i] */
 
 /* Sonidos del front-end (FUN_8003f6fc(id, 0)) */
 static inline void Fe_PlaySound(int id) { Snd_PlayUi(id, NULL); }

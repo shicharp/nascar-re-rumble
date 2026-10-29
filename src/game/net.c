@@ -12,7 +12,7 @@
 #include "carphys_int.h"
 #include "net.h"
 
-#define NET_VERSION   2
+#define NET_VERSION   3
 #define NET_CHANNELS  2           /* 0 sala y ordenes; 1 pulsaciones y salidas de la carrera (fiables y en orden) */
 #define NET_RING      128         /* frames de pulsaciones guardados por humano */
 #define NET_SUM_EVERY 30          /* frames entre sumas de control (medio segundo) */
@@ -30,7 +30,12 @@ enum
     MSG_LEAVE,        /* maquina que deja la carrera y frame desde el que su humano va sin mando */
     MSG_SUM,          /* cliente -> anfitrion: sumas de la carrera en un frame */
     MSG_DESYNC,       /* anfitrion -> todos: frame desincronizado */
+    MSG_UPDATE,       /* cliente -> anfitrion: su piloto o su nombre han cambiado */
 };
+
+/* busqueda: la pregunta y la respuesta (con la version, los jugadores y el nombre del anfitrion) */
+static const char s_findAsk[8] = { 'N', 'R', 'U', 'M', 'B', 'L', 'E', '?' };
+static const char s_findAnswer[8] = { 'N', 'R', 'U', 'M', 'B', 'L', 'E', '!' };
 
 static ENetHost* s_enet;
 static ENetPeer* s_server;                      /* cliente: la conexion con el anfitrion */
@@ -39,6 +44,11 @@ static int       s_isHost, s_active, s_machine = -1;
 static NetPlayer s_players[NET_MAX_MACHINES];
 static char      s_status[64];
 static int       s_init;
+static ENetSocket s_findHostSock = ENET_SOCKET_NULL;   /* anfitrion: contesta a las busquedas */
+static ENetSocket s_findSock = ENET_SOCKET_NULL;       /* cliente: pregunta por difusion */
+static NetFound   s_found[NET_FIND_MAX];
+static int        s_numFound;
+static uint32_t   s_findLastAsk;
 
 /* carrera */
 typedef struct
@@ -399,6 +409,19 @@ static void Host_Receive(ENetPeer* peer, const uint8_t* data, int len, int chann
     case MSG_HELLO:
         Host_Hello(peer, &r);
         break;
+    case MSG_UPDATE:
+        if (from > 0 && from < NET_MAX_MACHINES && s_players[from].used)
+        {
+            NetPlayer p = s_players[from];
+            Rd_Player(&r, &p);
+            if (!r.bad)
+            {
+                p.inRace = s_players[from].inRace;
+                s_players[from] = p;
+                Host_SendLobby();
+            }
+        }
+        break;
     case MSG_INPUT:
         Rd_Input(&r);
         if (!r.bad)
@@ -537,6 +560,7 @@ void Net_Init(void)
 
 void Net_Shutdown(void)
 {
+    Net_FindStop();
     Net_Leave();
     if (s_init)
         enet_deinitialize();
@@ -545,6 +569,9 @@ void Net_Shutdown(void)
 
 static void Net_Reset(void)
 {
+    if (s_findHostSock != ENET_SOCKET_NULL)
+        enet_socket_destroy(s_findHostSock);
+    s_findHostSock = ENET_SOCKET_NULL;
     s_server = NULL;
     memset(s_peers, 0, sizeof(s_peers));
     memset(s_players, 0, sizeof(s_players));
@@ -569,6 +596,20 @@ int Net_Host(int port)
     s_isHost = s_active = 1;
     s_machine = 0;
     LocalPlayer(&s_players[0]);
+    s_findHostSock = enet_socket_create(ENET_SOCKET_TYPE_DATAGRAM);
+    if (s_findHostSock != ENET_SOCKET_NULL)
+    {
+        ENetAddress fa;
+        fa.host = ENET_HOST_ANY;
+        fa.port = NET_FIND_PORT;
+        enet_socket_set_option(s_findHostSock, ENET_SOCKOPT_NONBLOCK, 1);
+        enet_socket_set_option(s_findHostSock, ENET_SOCKOPT_REUSEADDR, 1);
+        if (enet_socket_bind(s_findHostSock, &fa) < 0)
+        {
+            enet_socket_destroy(s_findHostSock);
+            s_findHostSock = ENET_SOCKET_NULL;
+        }
+    }
     char st[64];
     snprintf(st, sizeof(st), "Hosting on port %d", a.port);
     SetStatus(st);
@@ -693,9 +734,160 @@ static void Net_Service(int timeoutMs)
     }
 }
 
+/* anfitrion: contesta a las preguntas de la busqueda */
+static void Find_Answer(void)
+{
+    if (s_findHostSock == ENET_SOCKET_NULL)
+        return;
+    uint8_t data[64];
+    for (;;)
+    {
+        ENetAddress from;
+        ENetBuffer b;
+        b.data = data;
+        b.dataLength = sizeof(data);
+        int n = enet_socket_receive(s_findHostSock, &from, &b, 1);
+        if (n <= 0)
+            break;
+        if (n < 9 || memcmp(data, s_findAsk, 8) || data[8] != NET_VERSION)
+            continue;
+        uint8_t out[8 + 2 + NET_NAME_LEN + 1];
+        memcpy(out, s_findAnswer, 8);
+        out[8] = NET_VERSION;
+        out[9] = (uint8_t)Net_NumPlayers();
+        memcpy(out + 10, s_players[0].name, NET_NAME_LEN + 1);
+        ENetBuffer ob;
+        ob.data = out;
+        ob.dataLength = sizeof(out);
+        enet_socket_send(s_findHostSock, &from, &ob, 1);
+    }
+}
+
+/* cliente: pregunta cada segundo (difusion y, para probar en el mismo PC, 127.0.0.1) y apunta las respuestas */
+static void Find_Poll(void)
+{
+    if (s_findSock == ENET_SOCKET_NULL)
+        return;
+    uint32_t now = enet_time_get();
+    if (now - s_findLastAsk > 1000)
+    {
+        s_findLastAsk = now;
+        uint8_t ask[9];
+        memcpy(ask, s_findAsk, 8);
+        ask[8] = NET_VERSION;
+        ENetBuffer b;
+        b.data = ask;
+        b.dataLength = sizeof(ask);
+        ENetAddress to;
+        to.port = NET_FIND_PORT;
+        to.host = ENET_HOST_BROADCAST;
+        enet_socket_send(s_findSock, &to, &b, 1);
+        enet_address_set_host_ip(&to, "127.0.0.1");
+        enet_socket_send(s_findSock, &to, &b, 1);
+        /* las que no contestan en 3 s se quitan */
+        for (int i = 0; i < s_numFound;)
+            if (now - s_found[i].seen > 3000)
+                s_found[i] = s_found[--s_numFound];
+            else
+                i++;
+    }
+    uint8_t data[64];
+    for (;;)
+    {
+        ENetAddress from;
+        ENetBuffer b;
+        b.data = data;
+        b.dataLength = sizeof(data);
+        int n = enet_socket_receive(s_findSock, &from, &b, 1);
+        if (n <= 0)
+            break;
+        if (n < 10 + NET_NAME_LEN + 1 || memcmp(data, s_findAnswer, 8) || data[8] != NET_VERSION)
+            continue;
+        char ip[32];
+        if (enet_address_get_host_ip(&from, ip, sizeof(ip)) < 0)
+            continue;
+        /* el mismo anfitrion contesta por la difusion y por 127.0.0.1: si ya esta como local, no se repite */
+        int k = 0;
+        while (k < s_numFound && strcmp(s_found[k].addr, ip) &&
+               !(strcmp(ip, "127.0.0.1") && !strcmp(s_found[k].addr, "127.0.0.1") &&
+                 !memcmp(s_found[k].name, data + 10, NET_NAME_LEN)))
+            k++;
+        if (k == s_numFound)
+        {
+            if (s_numFound >= NET_FIND_MAX)
+                continue;
+            s_numFound++;
+            snprintf(s_found[k].addr, sizeof(s_found[k].addr), "%s", ip);
+        }
+        memcpy(s_found[k].name, data + 10, NET_NAME_LEN + 1);
+        s_found[k].name[NET_NAME_LEN] = 0;
+        s_found[k].players = data[9];
+        s_found[k].seen = now;
+    }
+}
+
 void Net_Poll(void)
 {
     Net_Service(0);
+    Find_Answer();
+    Find_Poll();
+}
+
+void Net_FindStart(void)
+{
+    Net_Init();
+    if (s_findSock != ENET_SOCKET_NULL)
+        return;
+    s_numFound = 0;
+    s_findLastAsk = 0;
+    s_findSock = enet_socket_create(ENET_SOCKET_TYPE_DATAGRAM);
+    if (s_findSock == ENET_SOCKET_NULL)
+        return;
+    enet_socket_set_option(s_findSock, ENET_SOCKOPT_NONBLOCK, 1);
+    enet_socket_set_option(s_findSock, ENET_SOCKOPT_BROADCAST, 1);
+    ENetAddress a;
+    a.host = ENET_HOST_ANY;
+    a.port = 0;
+    enet_socket_bind(s_findSock, &a);
+}
+
+void Net_FindStop(void)
+{
+    if (s_findSock != ENET_SOCKET_NULL)
+        enet_socket_destroy(s_findSock);
+    s_findSock = ENET_SOCKET_NULL;
+    s_numFound = 0;
+}
+
+int Net_FindCount(void)
+{
+    return s_numFound;
+}
+
+const NetFound* Net_Found(int i)
+{
+    return i >= 0 && i < s_numFound ? &s_found[i] : NULL;
+}
+
+void Net_UpdateLocalPlayer(void)
+{
+    if (!s_active || s_machine < 0)
+        return;
+    NetPlayer me;
+    LocalPlayer(&me);
+    if (s_isHost)
+    {
+        me.inRace = s_players[0].inRace;
+        s_players[0] = me;
+        Host_SendLobby();
+    }
+    else if (s_server)
+    {
+        Msg m;
+        Msg_Begin(&m, MSG_UPDATE);
+        Msg_Player(&m, &me);
+        Send(s_server, &m, 0);
+    }
 }
 
 int Net_Active(void)

@@ -42,6 +42,26 @@ const NetPlayer* Net_Player(int machine);      /* NULL si el hueco esta libre */
 int  Net_NumPlayers(void);
 const char* Net_Status(void);                  /* texto del ultimo suceso (conectando, rechazado...) */
 
+void Net_UpdateLocalPlayer(void);              /* el piloto o el nombre de esta maquina han cambiado: a la sala */
+
+/* ---- busqueda de partidas en la red local (difusion UDP en NET_FIND_PORT; el anfitrion contesta) ---- */
+
+#define NET_FIND_PORT 37121
+#define NET_FIND_MAX  8
+
+typedef struct
+{
+    char    addr[32];             /* IP del anfitrion */
+    char    name[NET_NAME_LEN + 1];
+    uint8_t players;
+    uint32_t seen;                /* enet_time_get de la ultima respuesta */
+} NetFound;
+
+void Net_FindStart(void);
+void Net_FindStop(void);
+int  Net_FindCount(void);
+const NetFound* Net_Found(int i);
+
 /* ---- carrera ---- */
 
 #define NET_MAX_HUMANS   8
