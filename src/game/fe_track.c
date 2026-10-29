@@ -1145,7 +1145,12 @@ void Fe_StartRace(int demo)
                 best = i;
                 bestSkill = g_Drivers[grid->car[i].driver].stat7;
             }
-        for (int k = 0; k < grid->count / 3; k++)
+        /* port: en red puede haber pocos coches de la IA (o ninguno): como mucho uno por coche de la IA, y sin
+         * dividir por cero (el original siempre tenia al menos 4) */
+        int lower = grid->count / 3;
+        if (lower > grid->count - np)
+            lower = grid->count - np;
+        for (int k = 0; k < lower; k++)
         {
             int u;
             int guard = 0;
@@ -1153,7 +1158,8 @@ void Fe_StartRace(int demo)
                 u = np + rand() % (grid->count - np);
             while (((DriverGroup(grid->car[u].driver) == 0x2e && gs->gameMode == 4) ||
                     (gs->gameMode != 4 && u == best) || grid->car[u].cls != gs->racingClass) && ++guard < 1000);
-            grid->car[u].cls--;
+            if (guard < 1000)   /* (port: sin candidato no baja a nadie; con la IA del original nunca pasa) */
+                grid->car[u].cls--;
         }
     }
 
