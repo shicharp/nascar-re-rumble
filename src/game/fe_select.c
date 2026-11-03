@@ -19,6 +19,7 @@
 #include "model.h"
 #include "render.h"
 #include "texslot.h"
+#include "net.h"
 
 /* 800aa5ec: nombre, dorsal, equipo (coche), y dos valores de pilotaje */
 const DriverInfo g_Drivers[NUM_DRIVERS] = {
@@ -1195,7 +1196,14 @@ static void Confirm(int p)
         }
     }
     if (fe->stage[0] == 100 && fe->stage[1] == 100)
+    {
         fe->nextScreen = 1300;
+        if (g_FeNetSelect)
+        {
+            fe->nextScreen = 2100;   /* port: cliente de la red, de vuelta a la sala con este coche */
+            g_FeNetSelect = 2;
+        }
+    }
 }
 
 /* triangulo: deshace el ultimo paso */
@@ -1206,7 +1214,7 @@ static void Back(int p)
     Fe_PlaySound(st == 0 ? 0x48 : 0x5c);
     if (st == 0)
     {
-        fe->nextScreen = 200;
+        fe->nextScreen = g_FeNetSelect ? 2100 : 200;   /* port: el cliente de la red vuelve a la sala */
         return;
     }
     if (st == -1 || (st == 100 && !fe->teamMode))
@@ -1421,6 +1429,12 @@ void Fe_Screen1200(void)
         DrawPanel1P(r, g, b);
     else
         DrawPanels2P(r, g, b);
+    /* port: el cliente de la red solo elige mientras el anfitrion esta en la sala (si no, no entraria en su carrera) */
+    if (g_FeNetSelect == 1 && !Net_HostInLobby() && fe->nextScreen == -1)
+    {
+        fe->nextScreen = 2100;
+        Fe_PlaySound(0x4c);
+    }
     for (int p = 0; p < fe->numPanels; p++)
         HandleInput(p);
 

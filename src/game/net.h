@@ -55,7 +55,11 @@ void Net_UpdateLocalPlayer(void);              /* el piloto o el nombre de esta 
 #define NET_P_RACING     1
 #define NET_P_STANDINGS  2        /* campeonato: en la clasificacion, lista para la siguiente carrera */
 #define NET_P_BUSY       3        /* despues de una carrera: resultados, records, podio, guardar... */
-void Net_SetStage(int stage);                  /* cliente: se manda al anfitrion si cambia */
+#define NET_P_CHOOSING   4        /* cliente en la pantalla de seleccion de coche (desde la sala) */
+void Net_SetStage(int stage);                  /* cliente: se manda al anfitrion si cambia; el anfitrion lo apunta en
+                                                  el suyo y los clientes ven si esta en la sala */
+int  Net_HostInLobby(void);                    /* cliente: el anfitrion esta en la sala (puede elegir coche) */
+const char* Net_ChoosingName(void);            /* anfitrion: un cliente que esta eligiendo coche (NULL ninguno) */
 
 /* ---- busqueda de partidas en la red local (difusion UDP en NET_FIND_PORT; el anfitrion contesta) ---- */
 

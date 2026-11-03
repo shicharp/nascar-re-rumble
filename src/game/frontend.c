@@ -303,9 +303,10 @@ void Frontend_Update(void)
 {
     FrontendState* fe = g_Frontend;
 
-    /* port: un cliente de la red dice al anfitrion si esta en la sala, esperando la siguiente carrera de un
-     * campeonato o en otra pantalla (no entra en la carrera que empiece) */
-    Net_SetStage(fe->screen == 2100 ? NET_P_LOBBY :
+    /* port: un cliente de la red dice al anfitrion si esta en la sala, eligiendo coche desde ella, esperando la
+     * siguiente carrera de un campeonato o en otra pantalla (no entra en la carrera que empiece); el anfitrion apunta
+     * si esta en la sala (los clientes solo eligen coche entonces) */
+    Net_SetStage(fe->screen == 2100 ? NET_P_LOBBY : fe->screen == 1200 && g_FeNetSelect ? NET_P_CHOOSING :
                  fe->screen == 1500 && g_Settings.champType && g_Settings.raceIndex < g_Settings.cupRaces &&
                  Net_CupActive() ? NET_P_STANDINGS : NET_P_BUSY);
 

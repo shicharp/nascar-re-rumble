@@ -14,7 +14,7 @@
 #include "pause.h"
 #include "net.h"
 
-#define NET_VERSION   10
+#define NET_VERSION   11
 #define NET_CHANNELS  2           /* 0 sala y ordenes (fiables y en orden); 1 pulsaciones y frames (sin garantia) */
 #define NET_RING      2048        /* frames de pulsaciones guardados por humano (34 s: lo que puede atrasarse un cliente) */
 #define NET_SUM_EVERY 30          /* frames entre sumas de control (medio segundo) */
@@ -801,7 +801,7 @@ static void Host_Receive(ENetPeer* peer, const uint8_t* data, int len, int chann
         int st = Rd_U8(&r);
         /* (mientras corre manda la carrera: la deja con MSG_LEAVE, que llega antes) */
         if (!r.bad && from > 0 && from < NET_MAX_MACHINES && s_players[from].used &&
-            s_players[from].inRace != NET_P_RACING && st != NET_P_RACING && st <= NET_P_BUSY)
+            s_players[from].inRace != NET_P_RACING && st != NET_P_RACING && st <= NET_P_CHOOSING)
         {
             s_players[from].inRace = (uint8_t)st;
             Host_SendLobby();
@@ -1813,13 +1813,37 @@ int Net_DesyncFrame(void)
 
 void Net_SetStage(int stage)
 {
-    if (s_isHost || !s_server || s_machine < 0 || s_inRace || stage == s_stage)
+    if (s_isHost)
+    {
+        /* el del anfitrion solo lo miran los clientes (si puede elegir coche); en la sala o fuera */
+        stage = stage == NET_P_LOBBY ? NET_P_LOBBY : NET_P_BUSY;
+        if (s_active && !s_inRace && s_players[0].inRace != stage)
+        {
+            s_players[0].inRace = (uint8_t)stage;
+            Host_SendLobby();
+        }
+        return;
+    }
+    if (!s_server || s_machine < 0 || s_inRace || stage == s_stage)
         return;
     s_stage = stage;
     Msg m;
     Msg_Begin(&m, MSG_STAGE);
     Msg_U8(&m, stage);
     Send(s_server, &m, 0);
+}
+
+int Net_HostInLobby(void)
+{
+    return s_active && !s_isHost && s_machine >= 0 && s_players[0].used && s_players[0].inRace == NET_P_LOBBY;
+}
+
+const char* Net_ChoosingName(void)
+{
+    for (int m = 1; m < NET_MAX_MACHINES; m++)
+        if (s_isHost && s_players[m].used && s_peers[m] && s_players[m].inRace == NET_P_CHOOSING)
+            return s_players[m].name;
+    return NULL;
 }
 
 int Net_CupActive(void)
