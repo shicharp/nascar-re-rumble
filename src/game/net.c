@@ -14,14 +14,18 @@
 #include "pause.h"
 #include "net.h"
 
-#define NET_VERSION   9
-#define NET_CHANNELS  2           /* 0 sala y ordenes; 1 pulsaciones y salidas de la carrera (fiables y en orden) */
-#define NET_RING      128         /* frames de pulsaciones guardados por humano */
+#define NET_VERSION   10
+#define NET_CHANNELS  2           /* 0 sala y ordenes (fiables y en orden); 1 pulsaciones y frames (sin garantia) */
+#define NET_RING      2048        /* frames de pulsaciones guardados por humano (34 s: lo que puede atrasarse un cliente) */
 #define NET_SUM_EVERY 30          /* frames entre sumas de control (medio segundo) */
 #define NET_SUM_RING  16
-#define NET_WAIT_MS   15000       /* sin pulsaciones de una maquina tanto tiempo: el anfitrion la da por salida */
-#define NET_RESEND_MS 30          /* esperando, se repite el ultimo paquete de pulsaciones cada tanto */
-#define NET_TAIL      32          /* pulsaciones que manda el anfitrion con la salida de una maquina */
+#define NET_WAIT_MS   15000       /* sin noticias de una maquina tanto tiempo: el anfitrion la da por salida */
+#define NET_RESEND_MS 30          /* sin nada nuevo, se repite el ultimo paquete cada tanto */
+#define NET_GRACE_MS  35          /* lo que espera el anfitrion las pulsaciones de un cliente que iba a tiempo */
+#define NET_HOLD      30          /* frames seguidos que se repite el ultimo mando de quien no llega; luego, sin mando */
+#define NET_FRAME_MAX 32          /* frames decididos por paquete (y que quepan en ~1100 bytes) */
+#define NET_AHEAD     64          /* lo mas adelantado que se acepta un frame respecto al ultimo decidido */
+#define NET_CATCHUP   2           /* cliente: frames por detras del anfitrion a partir de los que corre sin esperar */
 
 enum
 {
@@ -30,14 +34,17 @@ enum
     MSG_REJECT,       /* anfitrion -> cliente: motivo (texto) */
     MSG_LOBBY,        /* anfitrion -> todos: la lista de jugadores */
     MSG_START,        /* anfitrion -> los de la carrera: NetRaceSetup */
-    MSG_INPUT,        /* pulsaciones de un humano: las de un frame y las anteriores (sin garantia; se reenvian) */
-    MSG_LEAVE,        /* maquina que deja la carrera, frame desde el que su humano va sin mando y sus ultimas */
+    MSG_INPUT,        /* cliente -> anfitrion: ultimo frame decidido que tiene y las pulsaciones de su humano (las de
+                         un frame y las anteriores; sin garantia) */
+    MSG_LEAVE,        /* cliente -> anfitrion: deja la carrera */
     MSG_SUM,          /* cliente -> anfitrion: sumas de la carrera en un frame */
     MSG_DESYNC,       /* anfitrion -> todos: frame desincronizado */
     MSG_UPDATE,       /* cliente -> anfitrion: su piloto o su nombre han cambiado */
     MSG_STAGE,        /* cliente -> anfitrion: donde esta (NET_P_*) */
     MSG_CUPQUIT,      /* cliente -> anfitrion: deja el campeonato */
     MSG_CUPEND,       /* anfitrion -> todos: el campeonato se acaba antes de la ultima carrera */
+    MSG_FRAME,        /* anfitrion -> cliente: frames decididos (pulsaciones de todos y quien ya no manda; sin
+                         garantia, desde el ultimo que el cliente dice tener) */
 };
 
 /* busqueda: la pregunta y la respuesta (con la version, los jugadores y el nombre del anfitrion) */
@@ -72,13 +79,31 @@ typedef struct
 static int          s_inRace, s_startPending, s_myHuman = -1, s_frame, s_desync;
 static int          s_waiting;                      /* Net_RaceFrame espera las pulsaciones del frame s_frame */
 static int          s_delay = NET_INPUT_DELAY;      /* retardo de esta carrera (NetRaceSetup.inputDelay) */
-static uint32_t     s_contig[NET_MAX_MACHINES];     /* anfitrion: ultimo frame recibido sin huecos de cada maquina */
-static uint8_t      s_lastPacket[256];              /* el ultimo paquete de pulsaciones propio (para repetirlo) */
-static int          s_lastPacketLen;
 static NetRaceSetup s_setup;
-static NetInput     s_inputs[NET_MAX_HUMANS][NET_RING];
+static NetInput     s_inputs[NET_MAX_HUMANS][NET_RING];   /* las decididas (anfitrion: tambien las recibidas) */
 static uint32_t     s_leftFrom[NET_MAX_MACHINES];   /* frame desde el que la maquina ya no manda (0 sigue) */
-static uint32_t     s_lastInput[NET_MAX_MACHINES];  /* anfitrion: ultimo frame recibido de cada maquina */
+/* frames decididos: hasta s_confirmed todos (el cliente, sin huecos); de cada uno, las maquinas que ya no mandan */
+static uint32_t     s_confirmed;
+static uint32_t     s_maskFrame[NET_RING];          /* frame decidido del hueco (0 ninguno) */
+static uint8_t      s_frameMask[NET_RING];
+/* anfitrion */
+static int          s_hostRace;                     /* hay carrera en red (aunque el anfitrion ya haya salido) */
+static uint32_t     s_clockFrame, s_clockTime;      /* su ultimo frame y cuando (el reloj de la carrera si ha salido) */
+static uint32_t     s_ack[NET_MAX_MACHINES];        /* ultimo frame decidido que tiene cada cliente */
+static uint32_t     s_sentTo[NET_MAX_MACHINES], s_sentTime[NET_MAX_MACHINES];   /* ultimo paquete FRAME */
+static uint32_t     s_lastRecv[NET_MAX_MACHINES];   /* enet_time del ultimo paquete de pulsaciones */
+static uint8_t      s_peerRacing[NET_MAX_MACHINES]; /* el cliente sigue en la carrera (aunque ya no mande) */
+static uint8_t      s_started[NET_MAX_MACHINES];    /* ya ha mandado algo (hasta entonces se le espera: carga) */
+static uint8_t      s_late[NET_MAX_MACHINES];       /* su ultimo frame se decidio sin sus pulsaciones */
+static int          s_subRun[NET_MAX_HUMANS];       /* frames seguidos decididos sin las pulsaciones del humano */
+static uint32_t     s_subFrom[NET_MAX_HUMANS];
+/* cliente */
+static NetInput     s_own[NET_RING];                /* las pulsaciones propias, para mandarlas */
+static uint32_t     s_ownLast;                      /* el ultimo frame de s_own */
+static uint32_t     s_hostSeen;                     /* el frame mas alto del anfitrion que ha llegado */
+static int          s_hostLate;                     /* y si entonces sus pulsaciones le llegaban tarde */
+static int          s_alone;                        /* sin anfitrion: la carrera sigue solo en esta maquina */
+static int          s_catchUp;                      /* va atrasado: el siguiente frame no espera al reloj */
 static char         s_humanNames[NET_MAX_HUMANS][NET_NAME_LEN + 1];   /* los de la ultima carrera */
 static struct
 {
@@ -305,11 +330,11 @@ static int MachineOfHuman(int h)
     return h >= 0 && h < s_setup.numHumans ? s_setup.humanMachine[h] : -1;
 }
 
-static void StoreInput(int h, uint32_t frame, uint32_t bits, int ax, int ay, int kind)
+static void StoreInput(NetInput* ring, uint32_t frame, uint32_t bits, int ax, int ay, int kind)
 {
-    if (h < 0 || h >= NET_MAX_HUMANS || frame == 0)
+    if (frame == 0)
         return;
-    NetInput* in = &s_inputs[h][frame % NET_RING];
+    NetInput* in = &ring[frame % NET_RING];
     in->frame = frame;
     in->bits = bits;
     in->ax = (uint8_t)ax;
@@ -317,8 +342,15 @@ static void StoreInput(int h, uint32_t frame, uint32_t bits, int ax, int ay, int
     in->kind = (uint8_t)kind;
 }
 
-/* pulsaciones del humano h de los frames (last - count, last]: numero de humano, ultimo frame, cuantas, y cada una */
-static void Msg_Inputs(Msg* m, int type, int h, uint32_t last, int count)
+/* sin mando: lo que lleva el coche de quien se ha ido */
+static void StoreNone(NetInput* ring, uint32_t frame)
+{
+    StoreInput(ring, frame, 0, 0x80, 0x80, 4);
+}
+
+/* pulsaciones del humano h de los frames (last - count, last] de 'ring': numero de humano, ultimo frame, cuantas, y
+ * cada una */
+static void Msg_Inputs(Msg* m, const NetInput* ring, int h, uint32_t last, int count)
 {
     if ((uint32_t)count > last)
         count = (int)last;
@@ -329,9 +361,9 @@ static void Msg_Inputs(Msg* m, int type, int h, uint32_t last, int count)
     int n = 0;
     for (uint32_t f = last - (uint32_t)count + 1; f <= last && count > 0; f++)
     {
-        const NetInput* in = &s_inputs[h][f % NET_RING];
+        const NetInput* in = &ring[f % NET_RING];
         if (in->frame != f)
-            continue;   /* (no deberia faltar ninguna) */
+            continue;
         Msg_U32(m, f);
         Msg_U32(m, in->bits);
         Msg_U8(m, in->ax);
@@ -340,17 +372,17 @@ static void Msg_Inputs(Msg* m, int type, int h, uint32_t last, int count)
         n++;
     }
     m->buf[pos] = (uint8_t)n;
-    (void)type;
 }
 
-/* anfitrion: el ultimo frame recibido sin huecos de la maquina (lo que pueden tener los demas) */
-static void Host_AdvanceContig(int machine, int h)
+/* la maquina ya no manda en el frame g */
+static int LeftAt(int machine, uint32_t g)
 {
-    while (s_inputs[h][(s_contig[machine] + 1) % NET_RING].frame == s_contig[machine] + 1)
-        s_contig[machine]++;
+    return machine < 0 || (s_leftFrom[machine] && g >= s_leftFrom[machine]);
 }
 
-static void Rd_Inputs(Rd* r)
+/* anfitrion: las pulsaciones de un cliente (solo las de su humano y de frames sin decidir; las que llegan tarde
+ * ya no cuentan) */
+static void Host_RdInputs(Rd* r, int from)
 {
     int h = Rd_U8(r);
     Rd_U32(r);
@@ -359,14 +391,9 @@ static void Rd_Inputs(Rd* r)
     {
         uint32_t frame = Rd_U32(r), bits = Rd_U32(r);
         int ax = Rd_U8(r), ay = Rd_U8(r), kind = Rd_U8(r);
-        if (!r->bad && s_inRace && s_inputs[h & 7][frame % NET_RING].frame != frame)
-            StoreInput(h, frame, bits, ax, ay, kind);
-    }
-    int m = MachineOfHuman(h);
-    if (s_isHost && m > 0 && s_inRace)
-    {
-        Host_AdvanceContig(m, h);
-        s_lastInput[m] = s_contig[m];
+        if (!r->bad && h < s_setup.numHumans && MachineOfHuman(h) == from && frame > s_confirmed &&
+            frame <= s_confirmed + NET_AHEAD && !LeftAt(from, frame) && s_inputs[h][frame % NET_RING].frame != frame)
+            StoreInput(s_inputs[h], frame, bits, ax, ay, kind);
     }
 }
 
@@ -384,37 +411,14 @@ static void MarkLeft(int machine, uint32_t from)
         Net_Log("[red] la maquina %d deja la carrera (desde el frame %u)\n", machine, s_leftFrom[machine]);
 }
 
-/* anfitrion: decide el frame desde el que la maquina va sin mando y lo dice a los demas (por el canal de las
- * pulsaciones, detras de las suyas) */
+/* anfitrion: la maquina va sin mando desde el primer frame sin decidir (los decididos ya llevan sus pulsaciones).
+ * Los clientes se enteran con los frames: cada uno dice que maquinas ya no mandan */
 static void Host_MachineLeaves(int machine)
 {
-    if (s_leftFrom[machine] || !s_setup.numHumans)
+    if (s_leftFrom[machine] || !s_hostRace)
         return;
-    /* desde el primer frame que le falta al anfitrion (los demas solo tienen lo que el ha reenviado); con la salida
-     * van sus ultimas pulsaciones, por si a alguno se le perdio alguna */
-    uint32_t from = (machine == 0 ? (uint32_t)s_frame + (uint32_t)s_delay : s_contig[machine]) + 1;
-    int h = -1;
-    for (int k = 0; k < s_setup.numHumans; k++)
-        if (s_setup.humanMachine[k] == machine)
-            h = k;
-    MarkLeft(machine, from);
-    Msg m;
-    Msg_Begin(&m, MSG_LEAVE);
-    Msg_U8(&m, machine);
-    Msg_U32(&m, from);
-    Msg_U8(&m, h >= 0);
-    if (h >= 0)
-        Msg_Inputs(&m, MSG_LEAVE, h, from - 1, NET_TAIL);
-    Broadcast(&m, 0, machine);
+    MarkLeft(machine, s_confirmed + 1);
     Host_SendLobby();
-}
-
-static int HaveInput(int h, uint32_t frame)
-{
-    int m = MachineOfHuman(h);
-    if (m < 0 || (s_leftFrom[m] && frame >= s_leftFrom[m]))
-        return 1;
-    return s_inputs[h][frame % NET_RING].frame == frame;
 }
 
 static void ApplyInput(int h, uint32_t frame)
@@ -438,6 +442,202 @@ static void ApplyInput(int h, uint32_t frame)
         ctrl[0xc] = ctrl[0xd] = 0x80;
         ctrl[0xe] = 4;
     }
+}
+
+/* ---------------------------------------------------------------- carrera: el anfitrion decide los frames */
+
+/* el humano vuelve a llegar a tiempo */
+static void Host_OnTime(int h)
+{
+    int m = MachineOfHuman(h);
+    if (s_subRun[h])
+    {
+        if (s_subRun[h] >= 60)
+            Net_Log("[red] la maquina %d no ha llegado a %d frames (desde el %u)\n", m, s_subRun[h], s_subFrom[h]);
+        else
+            Net_LogFile("[red] la maquina %d no ha llegado a %d frames (desde el %u)\n", m, s_subRun[h], s_subFrom[h]);
+    }
+    s_subRun[h] = 0;
+    if (m >= 0)
+        s_late[m] = 0;
+}
+
+/* el frame g queda decidido: los que ya no mandan, sin mando (aunque hubiera llegado algo suyo) */
+static void Host_Seal(uint32_t g)
+{
+    uint8_t mask = 0;
+    for (int m = 0; m < NET_MAX_MACHINES; m++)
+        if (LeftAt(m, g))
+            mask |= (uint8_t)(1u << m);
+    for (int h = 0; h < s_setup.numHumans; h++)
+        if (LeftAt(MachineOfHuman(h), g))
+            StoreNone(s_inputs[h], g);
+    s_frameMask[g % NET_RING] = mask;
+    s_maskFrame[g % NET_RING] = g;
+    s_confirmed = g;
+}
+
+/* decide los frames que ya tienen las pulsaciones de todos (pueden ir por delante del suyo; si ya no manda nadie,
+ * solo los decide el reloj, Host_ForceTo) */
+static void Host_ConfirmReady(void)
+{
+    for (;;)
+    {
+        uint32_t g = s_confirmed + 1;
+        int active = 0;
+        for (int h = 0; h < s_setup.numHumans; h++)
+        {
+            if (LeftAt(MachineOfHuman(h), g))
+                continue;
+            if (s_inputs[h][g % NET_RING].frame != g)
+                return;
+            active++;
+        }
+        if (!active)
+            return;
+        for (int h = 0; h < s_setup.numHumans; h++)
+            if (!LeftAt(MachineOfHuman(h), g))
+                Host_OnTime(h);
+        Host_Seal(g);
+    }
+}
+
+/* decide hasta el frame f aunque falten pulsaciones: al que no llega se le repite su ultimo mando NET_HOLD frames
+ * (medio segundo de wifi malo apenas se nota) y despues va sin mando hasta que vuelva */
+static void Host_ForceTo(uint32_t f)
+{
+    for (uint32_t g = s_confirmed + 1; g <= f; g++)
+    {
+        for (int h = 0; h < s_setup.numHumans; h++)
+        {
+            int m = MachineOfHuman(h);
+            NetInput* in = &s_inputs[h][g % NET_RING];
+            if (LeftAt(m, g))
+                continue;
+            if (in->frame == g)
+            {
+                Host_OnTime(h);
+                continue;
+            }
+            const NetInput* prev = &s_inputs[h][(g - 1) % NET_RING];
+            if (!s_subRun[h])
+                s_subFrom[h] = g;
+            s_subRun[h]++;
+            if (s_subRun[h] <= NET_HOLD && prev->frame == g - 1)
+            {
+                *in = *prev;
+                in->frame = g;
+            }
+            else
+                StoreNone(s_inputs[h], g);
+            s_late[m] = 1;
+        }
+        Host_Seal(g);
+    }
+}
+
+/* el frame del anfitrion: el suyo o, si ya ha salido de la carrera, el que le tocaria (60 Hz desde el ultimo) */
+static uint32_t Host_ClockFrame(void)
+{
+    if (s_inRace || !s_clockFrame)
+        return (uint32_t)s_frame;
+    return s_clockFrame + (enet_time_get() - s_clockTime) * 60 / 1000;
+}
+
+/* a cada cliente que corre, los frames decididos desde el ultimo que dice tener: cuando hay alguno nuevo que
+ * mandarle o, si no, cada NET_RESEND_MS (su respuesta pudo perderse) */
+static void Host_SendFrames(void)
+{
+    int per = 1 + 7 * s_setup.numHumans;
+    int maxN = 1100 / per < NET_FRAME_MAX ? 1100 / per : NET_FRAME_MAX;
+    enet_uint32 now = enet_time_get();
+    uint32_t hostFrame = Host_ClockFrame();
+    for (int m = 1; m < NET_MAX_MACHINES; m++)
+    {
+        if (!s_peers[m] || !s_peerRacing[m] || s_ack[m] >= s_confirmed)
+            continue;
+        if (s_confirmed - s_ack[m] > NET_RING - 2 * NET_AHEAD)
+        {
+            /* tan atrasado que ya no se guarda lo que le falta */
+            Net_Log("[red] la maquina %d va %u frames por detras: fuera de la carrera\n", m, s_confirmed - s_ack[m]);
+            s_peerRacing[m] = 0;
+            Host_MachineLeaves(m);
+            continue;
+        }
+        uint32_t from = s_ack[m] + 1, to = s_confirmed;
+        if (to - from + 1 > (uint32_t)maxN)
+            to = from + (uint32_t)maxN - 1;
+        if (to <= s_sentTo[m] && now - s_sentTime[m] < NET_RESEND_MS)
+            continue;
+        Msg msg;
+        Msg_Begin(&msg, MSG_FRAME);
+        Msg_U32(&msg, hostFrame);
+        Msg_U8(&msg, s_late[m]);
+        Msg_U32(&msg, from);
+        Msg_U8(&msg, (int)(to - from + 1));
+        for (uint32_t g = from; g <= to; g++)
+        {
+            Msg_U8(&msg, s_frameMask[g % NET_RING]);
+            for (int h = 0; h < s_setup.numHumans; h++)
+            {
+                const NetInput* in = &s_inputs[h][g % NET_RING];
+                Msg_U32(&msg, in->bits);
+                Msg_U8(&msg, in->ax);
+                Msg_U8(&msg, in->ay);
+                Msg_U8(&msg, in->kind);
+            }
+        }
+        SendQuick(s_peers[m], msg.buf, msg.len);
+        s_sentTo[m] = to;
+        s_sentTime[m] = now;
+    }
+}
+
+/* la maquina que lleva NET_WAIT_MS sin mandar nada deja la carrera (se le cuenta como llegada; si vuelve, mira) */
+static void Host_CheckTimeouts(void)
+{
+    if (!s_clockFrame)
+        return;   /* (hasta el primer frame del anfitrion: todos cargando) */
+    enet_uint32 now = enet_time_get();
+    for (int m = 1; m < NET_MAX_MACHINES; m++)
+        if (!s_leftFrom[m] && now - s_lastRecv[m] > NET_WAIT_MS)
+        {
+            Net_Log("[red] la maquina %d no manda nada desde hace %d s\n", m, NET_WAIT_MS / 1000);
+            Host_MachineLeaves(m);
+        }
+}
+
+/* fuera de Net_RaceFrame (Net_Poll): lo que ya se puede decidir y mandar; si el anfitrion ya ha salido, el reloj
+ * de la carrera sigue para los que corren, hasta que todos se van y lo tienen */
+static void Host_Pump(void)
+{
+    if (!s_hostRace)
+        return;
+    Host_CheckTimeouts();
+    Host_ConfirmReady();
+    if (!s_inRace && s_clockFrame)
+    {
+        /* cuando ya no manda nadie (y esta decidido), los que quedan mirando siguen solos: solo falta que tengan
+         * hasta ahi */
+        int allLeft = 1, acked = 1;
+        for (int m = 0; m < NET_MAX_MACHINES; m++)
+        {
+            if (!s_leftFrom[m] || s_confirmed < s_leftFrom[m])
+                allLeft = 0;
+            if (s_peers[m] && s_peerRacing[m] && s_ack[m] < s_confirmed)
+                acked = 0;
+        }
+        uint32_t vf = Host_ClockFrame();
+        if (!allLeft && vf > s_confirmed + 2)
+            Host_ForceTo(vf - 2);   /* (dos frames de margen, como su espera de NET_GRACE_MS) */
+        if (allLeft && acked)
+        {
+            s_hostRace = 0;
+            Net_Log("[red] todos han dejado la carrera\n");
+            return;
+        }
+    }
+    Host_SendFrames();
 }
 
 /* ---------------------------------------------------------------- carrera: sumas de control */
@@ -544,8 +744,9 @@ static void Host_Drop(ENetPeer* peer)
     if (id <= 0 || id >= NET_MAX_MACHINES || s_peers[id] != peer)
         return;
     Net_Log("[red] sale %s (maquina %d)\n", s_players[id].name, id);
-    if (s_inRace && s_players[id].inRace == NET_P_RACING)
+    if (s_hostRace)
         Host_MachineLeaves(id);
+    s_peerRacing[id] = 0;
     s_cupMask &= ~(1u << id);
     s_peers[id] = NULL;
     memset(&s_players[id], 0, sizeof(s_players[id]));
@@ -576,16 +777,24 @@ static void Host_Receive(ENetPeer* peer, const uint8_t* data, int len, int chann
         }
         break;
     case MSG_INPUT:
-        Rd_Inputs(&r);
-        if (!r.bad)
-            for (int i = 1; i < NET_MAX_MACHINES; i++)   /* a los demas clientes, tambien sin garantia */
-                if (s_peers[i] && i != from)
-                    SendQuick(s_peers[i], data, len);
+    {
+        uint32_t ack = Rd_U32(&r);
+        if (r.bad || !s_hostRace || from <= 0 || from >= NET_MAX_MACHINES)
+            break;
+        if (ack > s_ack[from] && ack <= s_confirmed)
+            s_ack[from] = ack;
+        s_lastRecv[from] = enet_time_get();
+        s_started[from] = 1;
+        Host_RdInputs(&r, from);
         (void)channel;
         break;
+    }
     case MSG_LEAVE:
         if (from > 0 && from < NET_MAX_MACHINES)
+        {
             Host_MachineLeaves(from);
+            s_peerRacing[from] = 0;
+        }
         break;
     case MSG_STAGE:
     {
@@ -626,9 +835,22 @@ static void Race_Reset(void)
 {
     memset(s_inputs, 0, sizeof(s_inputs));
     memset(s_leftFrom, 0, sizeof(s_leftFrom));
-    memset(s_lastInput, 0, sizeof(s_lastInput));
-    memset(s_contig, 0, sizeof(s_contig));
-    s_lastPacketLen = 0;
+    memset(s_maskFrame, 0, sizeof(s_maskFrame));
+    memset(s_frameMask, 0, sizeof(s_frameMask));
+    memset(s_own, 0, sizeof(s_own));
+    memset(s_sentTo, 0, sizeof(s_sentTo));
+    memset(s_sentTime, 0, sizeof(s_sentTime));
+    memset(s_lastRecv, 0, sizeof(s_lastRecv));
+    memset(s_peerRacing, 0, sizeof(s_peerRacing));
+    memset(s_started, 0, sizeof(s_started));
+    memset(s_late, 0, sizeof(s_late));
+    memset(s_subRun, 0, sizeof(s_subRun));
+    s_ownLast = 0;
+    s_hostSeen = 0;
+    s_hostLate = 0;
+    s_alone = s_catchUp = 0;
+    s_clockFrame = s_clockTime = 0;
+    s_hostRace = s_isHost;
     s_delay = s_setup.inputDelay >= NET_INPUT_DELAY && s_setup.inputDelay <= NET_MAX_DELAY ? s_setup.inputDelay
                                                                                              : NET_INPUT_DELAY;
     memset(s_sums, 0, sizeof(s_sums));
@@ -636,19 +858,6 @@ static void Race_Reset(void)
     s_desync = 0;
     s_myHuman = -1;
     memset(s_humanNames, 0, sizeof(s_humanNames));
-    for (int h = 0; h < s_setup.numHumans; h++)
-    {
-        if (s_setup.humanMachine[h] == s_machine)
-            s_myHuman = h;
-        int m = s_setup.humanMachine[h];
-        snprintf(s_humanNames[h], sizeof(s_humanNames[h]), "%s",
-                 m < NET_MAX_MACHINES && s_players[m].used ? s_players[m].name : "Player");
-        /* los primeros frames no tienen mando: nadie los ha leido todavia */
-        for (uint32_t f = 1; f <= (uint32_t)s_delay; f++)
-            StoreInput(h, f, 0, 0x80, 0x80, 4);
-    }
-    for (int m = 0; m < NET_MAX_MACHINES; m++)
-        s_contig[m] = (uint32_t)s_delay;
     /* las maquinas que no corren no mandan nada */
     for (int m = 0; m < NET_MAX_MACHINES; m++)
     {
@@ -657,7 +866,33 @@ static void Race_Reset(void)
             racing |= s_setup.humanMachine[h] == m;
         if (!racing)
             s_leftFrom[m] = 1;
+        else if (s_isHost && m > 0)
+            s_peerRacing[m] = 1;
     }
+    for (int h = 0; h < s_setup.numHumans; h++)
+    {
+        if (s_setup.humanMachine[h] == s_machine)
+            s_myHuman = h;
+        int m = s_setup.humanMachine[h];
+        snprintf(s_humanNames[h], sizeof(s_humanNames[h]), "%s",
+                 m < NET_MAX_MACHINES && s_players[m].used ? s_players[m].name : "Player");
+    }
+    /* los primeros frames no tienen mando (nadie los ha leido todavia): decididos en todas las maquinas */
+    s_confirmed = 0;
+    for (uint32_t f = 1; f <= (uint32_t)s_delay; f++)
+    {
+        for (int h = 0; h < s_setup.numHumans; h++)
+            StoreNone(s_inputs[h], f);
+        uint8_t mask = 0;
+        for (int m = 0; m < NET_MAX_MACHINES; m++)
+            if (s_leftFrom[m])
+                mask |= (uint8_t)(1u << m);
+        s_frameMask[f] = mask;
+        s_maskFrame[f] = f;
+        s_confirmed = f;
+    }
+    for (int m = 0; m < NET_MAX_MACHINES; m++)
+        s_ack[m] = s_confirmed;
 }
 
 static void Client_Receive(const uint8_t* data, int len)
@@ -712,17 +947,43 @@ static void Client_Receive(const uint8_t* data, int len)
         s_startPending = 1;
         Net_Log("[red] salida: %d humanos, soy el %d, semilla %u\n", s_setup.numHumans, s_myHuman, s_setup.seed);
         break;
-    case MSG_INPUT:
-        Rd_Inputs(&r);
-        break;
-    case MSG_LEAVE:
+    case MSG_FRAME:
     {
-        int m = Rd_U8(&r);
-        uint32_t from = Rd_U32(&r);
-        if (Rd_U8(&r))
-            Rd_Inputs(&r);   /* sus ultimas pulsaciones */
-        if (!r.bad)
-            MarkLeft(m, from);
+        /* frames decididos por el anfitrion (pueden llegar repetidos o desordenados) */
+        uint32_t hostFrame = Rd_U32(&r);
+        int late = Rd_U8(&r);
+        uint32_t first = Rd_U32(&r);
+        int n = Rd_U8(&r);
+        if (r.bad || !s_inRace || s_alone)
+            break;
+        if (hostFrame >= s_hostSeen)
+        {
+            s_hostSeen = hostFrame;
+            s_hostLate = late;
+        }
+        for (int i = 0; i < n; i++)
+        {
+            uint32_t g = first + (uint32_t)i;
+            int mask = Rd_U8(&r);
+            NetInput in[NET_MAX_HUMANS];
+            for (int h = 0; h < s_setup.numHumans; h++)
+            {
+                in[h].bits = Rd_U32(&r);
+                in[h].ax = (uint8_t)Rd_U8(&r);
+                in[h].ay = (uint8_t)Rd_U8(&r);
+                in[h].kind = (uint8_t)Rd_U8(&r);
+            }
+            if (r.bad)
+                break;
+            if (g <= s_confirmed || g > s_confirmed + NET_AHEAD || s_maskFrame[g % NET_RING] == g)
+                continue;
+            for (int h = 0; h < s_setup.numHumans; h++)
+                StoreInput(s_inputs[h], g, in[h].bits, in[h].ax, in[h].ay, in[h].kind);
+            s_frameMask[g % NET_RING] = (uint8_t)mask;
+            s_maskFrame[g % NET_RING] = g;
+        }
+        while (s_maskFrame[(s_confirmed + 1) % NET_RING] == s_confirmed + 1)
+            s_confirmed++;
         break;
     }
     case MSG_CUPEND:
@@ -873,11 +1134,41 @@ void Net_Leave(void)
     Net_Reset();
 }
 
+/* cliente: se ha perdido el anfitrion (desconexion, o nada en NET_WAIT_MS). En la carrera no llega nada mas: sigue
+ * solo en esta maquina hasta que salga, los demas sin mando desde el primer frame sin decidir */
+static void Client_HostGone(const char* status)
+{
+    SetStatus(status);
+    int racing = s_inRace;
+    if (racing)
+        for (int m = 0; m < NET_MAX_MACHINES; m++)
+            if (m != s_machine)
+                MarkLeft(m, s_confirmed + 1);
+    NetRaceSetup setup = s_setup;
+    int myHuman = s_myHuman, frame = s_frame, machine = s_machine;
+    if (s_enet)
+        enet_host_destroy(s_enet);
+    s_enet = NULL;
+    Net_Reset();
+    if (racing)
+    {
+        s_inRace = 1;
+        s_alone = 1;
+        s_setup = setup;
+        s_myHuman = myHuman;
+        s_frame = frame;
+        s_machine = machine;   /* (para seguir con su mando) */
+    }
+}
+
 static void Net_HandleEvent(ENetEvent* ev)
 {
     switch (ev->type)
     {
     case ENET_EVENT_TYPE_CONNECT:
+        /* un PC que se queda unos segundos colgado no se desconecta: en la carrera, el anfitrion lo da por salido a
+         * los NET_WAIT_MS sin noticias y, si vuelve antes, se pone al dia */
+        enet_peer_timeout(ev->peer, 0, NET_WAIT_MS, NET_WAIT_MS + 5000);
         if (!s_isHost)
         {
             Msg m;
@@ -903,28 +1194,7 @@ static void Net_HandleEvent(ENetEvent* ev)
         if (s_isHost)
             Host_Drop(ev->peer);
         else
-        {
-            SetStatus(s_machine < 0 ? "Cannot connect" : "Disconnected from the host");
-            /* sin anfitrion no llega nada mas: en la carrera, los demas van sin mando desde el frame que falta */
-            if (s_inRace)
-                for (int m = 0; m < NET_MAX_MACHINES; m++)
-                    if (m != s_machine)
-                        MarkLeft(m, (uint32_t)s_frame + (s_waiting ? 0 : 1));
-            int racing = s_inRace;
-            NetRaceSetup setup = s_setup;
-            int myHuman = s_myHuman, frame = s_frame;
-            enet_host_destroy(s_enet);
-            s_enet = NULL;
-            Net_Reset();
-            if (racing)
-            {
-                /* la carrera sigue en esta maquina hasta que salga */
-                s_inRace = 1;
-                s_setup = setup;
-                s_myHuman = myHuman;
-                s_frame = frame;
-            }
-        }
+            Client_HostGone(s_machine < 0 ? "Cannot connect" : "Disconnected from the host");
         break;
     default:
         break;
@@ -1036,6 +1306,8 @@ static void Find_Poll(void)
 void Net_Poll(void)
 {
     Net_Service(0);
+    if (s_isHost)
+        Host_Pump();
     Find_Answer();
     Find_Poll();
 }
@@ -1253,8 +1525,9 @@ void Net_HostStartRace(void)
         s->humanMachine[i + 1] = (uint8_t)machines[i];
         s->transmission[i + 1] = s_players[machines[i]].transmission;
     }
-    /* retardo: el camino mas lento entre dos maquinas pasa por el anfitrion (ida del ping de un cliente mas la del
-     * otro), mas 2 frames de margen; entre NET_INPUT_DELAY y NET_MAX_DELAY */
+    /* retardo: el cliente va por detras del anfitrion lo que tarda en llegarle un frame decidido, y su pulsacion
+     * tarda otro tanto en volver: el ping del que mas tiene, mas 2 frames de margen; entre NET_INPUT_DELAY y
+     * NET_MAX_DELAY */
     uint32_t r1 = 0, r2 = 0;
     for (int i = 0; i < n; i++)
     {
@@ -1267,8 +1540,7 @@ void Net_HostStartRace(void)
         else if (rtt > r2)
             r2 = rtt;
     }
-    int oneWay = (int)(r1 + r2) / 2;
-    int delay = (oneWay * 60 + 999) / 1000 + 2;
+    int delay = ((int)r1 * 60 + 999) / 1000 + 2;
     s->inputDelay = (uint8_t)(delay < NET_INPUT_DELAY ? NET_INPUT_DELAY : delay > NET_MAX_DELAY ? NET_MAX_DELAY : delay);
     Net_Log("[red] ping de los clientes: %u y %u ms -> retardo de %d frames\n", r1, r2, s->inputDelay);
     Msg m;
@@ -1294,19 +1566,67 @@ int Net_TakeStart(void)
     return v;
 }
 
-/* el ultimo paquete de pulsaciones propio, a todos (anfitrion) o al anfitrion (cliente) */
-static void Net_SendOwnInputs(void)
+/* cliente: al anfitrion, el ultimo frame decidido que tiene y sus ultimas pulsaciones (aunque ya no mande: el
+ * anfitrion sigue mandandole frames mientras mira) */
+static void Client_SendInputs(void)
 {
-    if (!s_lastPacketLen)
+    if (!s_server)
         return;
-    if (s_isHost)
+    Msg m;
+    Msg_Begin(&m, MSG_INPUT);
+    Msg_U32(&m, s_confirmed);
+    Msg_Inputs(&m, s_own, s_myHuman >= 0 ? s_myHuman : 0, s_ownLast, s_ownLast ? NET_REDUNDANT : 0);
+    SendQuick(s_server, m.buf, m.len);
+}
+
+/* cliente sin anfitrion: el frame lo decide el solo (su mando; los demas ya no mandan) */
+static void Client_AloneFrame(uint32_t f)
+{
+    for (int h = 0; h < s_setup.numHumans; h++)
     {
-        for (int i = 1; i < NET_MAX_MACHINES; i++)
-            if (s_peers[i])
-                SendQuick(s_peers[i], s_lastPacket, s_lastPacketLen);
+        const NetInput* own = &s_own[f % NET_RING];
+        if (h == s_myHuman && own->frame == f && !LeftAt(s_machine, f))
+            s_inputs[h][f % NET_RING] = *own;
+        else
+            StoreNone(s_inputs[h], f);
     }
-    else
-        SendQuick(s_server, s_lastPacket, s_lastPacketLen);
+    uint8_t mask = 0;
+    for (int m = 0; m < NET_MAX_MACHINES; m++)
+        if (LeftAt(m, f))
+            mask |= (uint8_t)(1u << m);
+    s_frameMask[f % NET_RING] = mask;
+    s_maskFrame[f % NET_RING] = f;
+    if (f > s_confirmed)
+        s_confirmed = f;
+}
+
+/* cliente: el frame f ya se puede simular (decidido o, si ya no manda nadie, sin mando para todos) */
+static int Client_HaveFrame(uint32_t f)
+{
+    if (s_maskFrame[f % NET_RING] == f)
+        return 1;
+    for (int m = 0; m < NET_MAX_MACHINES; m++)
+        if (!LeftAt(m, f))
+            return 0;
+    return 1;
+}
+
+/* pruebas: NR_NETSTALL=frame:ms[,frame:ms...] para esta maquina en esos frames de la carrera (un PC que se cuelga) */
+static void Net_DebugStall(uint32_t f)
+{
+    const char* p = getenv("NR_NETSTALL");
+    while (p && *p)
+    {
+        unsigned frame = 0, ms = 0;
+        if (sscanf(p, "%u:%u", &frame, &ms) == 2 && frame == f)
+        {
+            Net_Log("[red] prueba: parado %u ms en el frame %u\n", ms, f);
+            Sleep(ms);
+        }
+        p = strchr(p, ',');
+        if (p)
+            p++;
+    }
 }
 
 void Net_RaceFrame(void)
@@ -1314,9 +1634,11 @@ void Net_RaceFrame(void)
     if (!s_inRace)
         return;
     uint32_t f = (uint32_t)++s_frame;
+    Net_DebugStall(f);
     /* lo que se acaba de leer del mando local vale para dentro de s_delay frames */
     RaceCar* me = s_myHuman >= 0 ? g_Humans[s_myHuman] : NULL;
-    if (me && me->ctrl && !s_leftFrom[s_machine])
+    uint32_t when = f + (uint32_t)s_delay;
+    if (me && me->ctrl && s_machine >= 0 && !LeftAt(s_machine, when))
     {
         NetInput in;
         in.bits = *(uint32_t*)(me->ctrl + 8);
@@ -1330,65 +1652,111 @@ void Net_RaceFrame(void)
             in.ax = in.ay = 0x80;
             in.kind = 4;
         }
-        uint32_t when = f + (uint32_t)s_delay;
-        StoreInput(s_myHuman, when, in.bits, in.ax, in.ay, in.kind);
-        Msg m;
-        Msg_Begin(&m, MSG_INPUT);
-        Msg_Inputs(&m, MSG_INPUT, s_myHuman, when, NET_REDUNDANT);
-        memcpy(s_lastPacket, m.buf, (size_t)m.len);
-        s_lastPacketLen = m.len;
-        Net_SendOwnInputs();
+        if (s_isHost)
+        {
+            if (when > s_confirmed)
+                StoreInput(s_inputs[s_myHuman], when, in.bits, in.ax, in.ay, in.kind);
+        }
+        else
+        {
+            StoreInput(s_own, when, in.bits, in.ax, in.ay, in.kind);
+            s_ownLast = when;
+        }
     }
-    /* espera las de todos para este frame */
+    enet_uint32 start = enet_time_get(), lastSend = start;
     s_waiting = 1;
-    enet_uint32 start = enet_time_get(), waitStart = start, lastSend = start;
-    int missing = -1;
-    for (;;)
+    if (s_isHost)
     {
-        int all = 1;
-        for (int h = 0; h < s_setup.numHumans; h++)
-            if (!HaveInput(h, f))
-            {
-                all = 0;
-                missing = MachineOfHuman(h);
-            }
-        if (all)
-            break;
-        Net_Service(1);
-        PsyX_UpdateInput();   /* (la ventana sigue respondiendo) */
-        /* si el que falta tambien espera (por las nuestras), que no se queden los dos esperando un paquete perdido */
-        if (enet_time_get() - lastSend >= NET_RESEND_MS)
+        /* decide el frame: espera un poco (NET_GRACE_MS) al que iba a tiempo y, mientras cargan, al que aun no ha
+         * mandado nada; al que ya llegaba tarde no se le espera */
+        s_clockFrame = f;
+        s_clockTime = start;
+        if (f == 1)
+            for (int m = 1; m < NET_MAX_MACHINES; m++)
+                s_lastRecv[m] = start;   /* (el plazo de NET_WAIT_MS cuenta desde aqui) */
+        int missing = -1;
+        for (;;)
         {
-            lastSend = enet_time_get();
-            Net_SendOwnInputs();
-        }
-        if (enet_time_get() - start > NET_WAIT_MS)
-        {
+            Host_ConfirmReady();
+            if (s_confirmed >= f)
+                break;
+            int wait = 0;
+            enet_uint32 now = enet_time_get();
             for (int h = 0; h < s_setup.numHumans; h++)
-                if (!HaveInput(h, f))
-                {
-                    int m = MachineOfHuman(h);
-                    Net_Log("[red] la maquina %d no manda nada desde hace %d s\n", m, NET_WAIT_MS / 1000);
-                    if (s_isHost)
-                        Host_MachineLeaves(m);
-                    else if (m == 0 || !s_enet)
-                        MarkLeft(m, f);   /* sin anfitrion */
-                }
-            start = enet_time_get();
+            {
+                int m = MachineOfHuman(h);
+                for (uint32_t g = s_confirmed + 1; g <= f; g++)
+                    if (!LeftAt(m, g) && s_inputs[h][g % NET_RING].frame != g)
+                    {
+                        missing = m;
+                        if (m > 0 && (!s_started[m] || (!s_late[m] && now - start < NET_GRACE_MS)))
+                            wait = 1;
+                        break;
+                    }
+            }
+            if (!wait)
+            {
+                Host_ForceTo(f);
+                break;
+            }
+            Host_CheckTimeouts();
+            Host_SendFrames();
+            Net_Service(1);
+            PsyX_UpdateInput();   /* (la ventana sigue respondiendo) */
         }
+        Host_SendFrames();
+        enet_uint32 waited = enet_time_get() - start;
+        if (waited >= 100)   /* (solo al empezar: esperando a que carguen) */
+            Net_Log("[red] espera de %u ms en el frame %u por la maquina %d\n", waited, f, missing);
+    }
+    else
+    {
+        /* solo frames decididos por el anfitrion: se le espera a el (a nadie mas) */
+        Client_SendInputs();
+        while (!Client_HaveFrame(f))
+        {
+            if (s_alone)
+            {
+                Client_AloneFrame(f);
+                break;
+            }
+            Net_Service(1);
+            PsyX_UpdateInput();
+            if (enet_time_get() - lastSend >= NET_RESEND_MS)
+            {
+                /* (por si se ha perdido el ultimo: que no se queden los dos esperando) */
+                lastSend = enet_time_get();
+                Client_SendInputs();
+            }
+            if (!s_alone && enet_time_get() - start > NET_WAIT_MS)
+            {
+                Net_Log("[red] el anfitrion no manda nada desde hace %d s\n", NET_WAIT_MS / 1000);
+                Client_HostGone("Disconnected from the host");
+            }
+        }
+        enet_uint32 waited = enet_time_get() - start;
+        if (waited >= 1000)
+            Net_Log("[red] espera de %u ms en el frame %u por el anfitrion\n", waited, f);
+        else if (waited >= 100)
+            Net_LogFile("[red] espera de %u ms en el frame %u por el anfitrion\n", waited, f);
+        /* quien ya no manda desde este frame (lo decide el anfitrion: el primer frame que lo dice) */
+        if (s_maskFrame[f % NET_RING] == f)
+            for (int m = 0; m < NET_MAX_MACHINES; m++)
+                if ((s_frameMask[f % NET_RING] & (1u << m)) && !s_leftFrom[m])
+                    MarkLeft(m, f);
+        /* atrasado respecto al anfitrion (se colgo, cargo mas tarde o su reloj va mas lento): corre sin esperar al
+         * reloj mientras tenga frames decididos. Si el anfitrion dice que sus pulsaciones le llegan tarde, hasta el
+         * ultimo decidido (con solo NET_CATCHUP de margen se quedaria en el limite, llegando tarde siempre) */
+        s_catchUp = !s_alone && (s_hostLate || s_hostSeen > f + NET_CATCHUP) && Client_HaveFrame(f + 1);
     }
     s_waiting = 0;
-    enet_uint32 waited = enet_time_get() - waitStart;
-    if (waited >= 100)
-    {
-        /* (las esperas largas: quien las causa) */
-        if (waited >= 1000)
-            Net_Log("[red] espera de %u ms en el frame %u por la maquina %d\n", waited, f, missing);
-        else
-            Net_LogFile("[red] espera de %u ms en el frame %u por la maquina %d\n", waited, f, missing);
-    }
     for (int h = 0; h < s_setup.numHumans; h++)
         ApplyInput(h, f);
+}
+
+int Net_CatchingUp(void)
+{
+    return s_inRace && s_catchUp;
 }
 
 void Net_RaceStep(void)
@@ -1429,7 +1797,11 @@ void Net_RaceEnd(void)
     s_players[s_machine >= 0 ? s_machine : 0].inRace = NET_P_BUSY;
     s_stage = NET_P_BUSY;   /* (como lo apunta el anfitrion al recibir la salida) */
     s_inRace = 0;
+    s_catchUp = 0;
     Net_Log("[red] fin de la carrera en red (frame %d%s)\n", s_frame, s_desync ? ", desincronizada" : "");
+    if (s_alone)
+        s_machine = -1;   /* (la seguia solo, ya sin partida) */
+    s_alone = 0;
 }
 
 int Net_DesyncFrame(void)

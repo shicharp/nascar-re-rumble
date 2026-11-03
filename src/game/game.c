@@ -82,6 +82,16 @@ void Frame_Wait(void)
 {
     int delta;
     int step = (g_Options.fixedStep || Net_InRace()) && !g_IsFrontend ? FIXED_STEP : 1;
+    if (step > 1 && Net_CatchingUp())
+    {
+        /* en red, atrasado respecto al anfitrion: el frame no espera (y el reloj se queda en el de ahora) */
+        Pad_ReadAll();
+        Timer_Update();
+        g_FrameTime = g_GameTime;
+        g_FrameDelta = step;
+        s_lastFrameTime = g_GameTime;
+        return;
+    }
     do
     {
         Pad_ReadAll();

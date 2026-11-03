@@ -5,10 +5,13 @@
  *  - Sala: el cliente se presenta (HELLO: nombre, piloto, cambio); el anfitrion contesta con su numero de maquina
  *    y manda la lista de jugadores (LOBBY) cada vez que cambia.
  *  - Carrera: el anfitrion elige pista y parrilla y manda START (ajustes, parrilla, semilla, que humano es de que
- *    maquina); todos cargan y corren a paso fijo, y cada frame mandan las pulsaciones de su humano para el frame
- *    actual + el retardo de la carrera (NetRaceSetup.inputDelay: lo elige el anfitrion segun el ping). Ningun
- *    frame se simula sin las pulsaciones de todos. Las pulsaciones van sin garantia de entrega y cada paquete
- *    lleva tambien las NET_REDUNDANT anteriores: perder uno no para a nadie.
+ *    maquina); todos cargan y corren a paso fijo, y cada frame los clientes mandan al anfitrion las pulsaciones de
+ *    su humano para el frame actual + el retardo de la carrera (NetRaceSetup.inputDelay: lo elige el anfitrion
+ *    segun el ping). El anfitrion decide las de cada frame (FRAME, a cada cliente) y no espera a nadie: si las de
+ *    un cliente no llegan a tiempo, repite su ultimo mando un momento y despues lo deja sin mando. Los clientes
+ *    simulan solo frames decididos (esperan al anfitrion, a nadie mas) y el que se queda atras corre sin esperar
+ *    al reloj hasta alcanzarle. Todo va sin garantia de entrega: cada paquete repite lo que el otro aun no ha
+ *    confirmado.
  *  - Sumas de la carrera (Race_StateChecksum) cada 30 frames para detectar desincronizaciones. */
 #ifndef NR_NET_H
 #define NR_NET_H
@@ -121,6 +124,7 @@ void Net_HostStartRace(void);
 int  Net_TakeStart(void);
 
 void Net_RaceFrame(void);                      /* Race_UpdateTime, tras leer el mando: pulsaciones en lockstep */
+int  Net_CatchingUp(void);                     /* cliente atrasado: el frame no espera al reloj (Frame_Wait, Gfx_Flip) */
 void Net_RaceStep(void);                       /* tras simular el frame: sumas de control */
 void Net_RaceEnd(void);                        /* al acabar la carrera en esta maquina */
 int  Net_DesyncFrame(void);                    /* primer frame desincronizado (0 ninguno) */

@@ -11,6 +11,7 @@
 #include "mem.h"
 #include "gfx.h"
 #include "render.h"
+#include "net.h"
 
 typedef struct
 {
@@ -325,7 +326,8 @@ void Gfx_Flip(int mode)
     GfxBuffer* buf = &s_buf[s_cur];
 
     DrawSync(0);
-    VSync(0);
+    if (!Net_CatchingUp())   /* port: en red, el atrasado no espera al vblank */
+        VSync(0);
     PutDispEnv(&buf->disp);
     PutDrawEnv(&buf->draw);
     LinkPendingPrims(buf);

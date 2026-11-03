@@ -1,0 +1,39 @@
+diff --git a/src/PsyX_main.cpp b/src/PsyX_main.cpp
+index a996636..423c908 100644
+--- a/src/PsyX_main.cpp
++++ b/src/PsyX_main.cpp
+@@ -164,15 +164,23 @@ int intrThreadMain(void* data)
+ {
+ 	Util_InitHPCTimer(&g_vblTimer);
+ 
++	// nascar: the next vblank is scheduled one exact step after the previous one. Restarting the timer at each
++	// vblank dropped the overshoot, so the clock ran slow (more so on a loaded CPU) and differed between machines.
++	double nextVbl = 0.0;
++
+ 	while (!g_stopIntrThread)
+ 	{
+ 		// step counters
+ 		{
+ 			const double timestep = g_vmode == MODE_NTSC ? FIXED_TIME_STEP_NTSC : FIXED_TIME_STEP_PAL;
+-			const double vblDelta = Util_GetHPCTime(&g_vblTimer, 0);
++			const double now = Util_GetHPCTime(&g_vblTimer, 0);
+ 
+-			if (vblDelta > timestep)
++			if (now > nextVbl + timestep)
+ 			{
++				nextVbl += timestep;
++				if (now - nextVbl > timestep * 8)
++					nextVbl = now;	// thread stalled for long: don't burst vblanks to catch up
++
+ 				SDL_LockMutex(g_intrMutex);
+ 				
+ 				if (vsync_callback)
+@@ -182,8 +190,6 @@ int intrThreadMain(void* data)
+ 				
+ 				// do vblank events
+ 				g_psxSysCounters[PsxCounter_VBLANK]++;
+-			
+-				Util_GetHPCTime(&g_vblTimer, 1);
+ 			}
+ 			
+ 		}
