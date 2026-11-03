@@ -41,6 +41,7 @@ const uint8_t* Font_GetGlyph(int c);
 void Font_AdjustAdvance(int c, int delta);
 int  Font_DrawChar(int c, int x, int y, unsigned color);
 void Font_DrawString(const char* s, int x, int y, unsigned color);
+void Font_DrawStringDepth(const char* s, int x, int y, unsigned color, int depth);   /* port */
 void Font_DrawClipped(const char* s, int x, int y, int clipX0, int clipX1, unsigned color);
 int  Font_DrawWrapped(int x0, int y0, int x1, int y1, const char* s, unsigned color);
 void Font_Measure(const char* s, int* w, int* h);

@@ -221,6 +221,46 @@ static void Race_DrawTeamMarkers(int view, const RaceCar* h)
     (void)view;
 }
 
+/* Solo en el port: en red, el nombre de cada jugador sobre su coche (menos el que sigue la camara), en un color por
+ * jugador (el mismo en todas las maquinas: va por su numero en la parrilla). Se ancla donde el triangulo del companero
+ * y queda justo encima de el; se ordena por profundidad con la escena y no sale de lejos. */
+#define RACE_NAME_FAR 0x1000  /* profundidad (sz) maxima: unos 12 coches (un coche mide unas 0x140) */
+static void Race_DrawNames(int view)
+{
+    static const uint16_t col[NET_MAX_HUMANS] = {   /* RGB555 con el rojo arriba */
+        0x7fe0, 0x03ff, 0x23e8, 0x7e40, 0x7d5f, 0x2a5f, 0x7cc6, 0x7fff };
+    const RaceCar* t = RaceCam_GetTarget(view);
+    const RenderProj* pr = Render_GetProjection();
+    Render_LoadCameraRotation();
+    Font_Select(0);
+    for (int i = 0; i < g_NumCars; i++)
+    {
+        const RaceCar* c = &g_Cars[i];
+        if (c == t || !c->phys || c->type != 1)
+            continue;
+        const GridCar* g = &g_RaceGrid.car[c->id - 1000];
+        const char* name = Net_HumanName(g->player);
+        if (!name)
+            break;   /* sin red */
+        Gte_SetV0((c->obj.pos[0] - g_Camera.pos[0]) >> 4, ((c->obj.pos[1] - g_Camera.pos[1]) >> 4) + 0x56,
+                  (c->obj.pos[2] - g_Camera.pos[2]) >> 4);
+        doCOP2(GTE_OP_RTPS);
+        if (CFC2(31) & 0x1c66000)
+            continue;
+        uint32_t sxy = MFC2(14);
+        int sz = (int)MFC2(19);
+        int x = (int16_t)sxy, y = (int16_t)(sxy >> 16);
+        if (sz < 0x20 || sz > RACE_NAME_FAR || !Wide_OnScreenX(x))
+            continue;
+        int w, h;
+        Font_Measure(name, &w, &h);
+        /* la base del texto, 2 pixeles por encima de la punta de arriba del triangulo (y - medio ancho) */
+        Font_DrawStringDepth(name, x - w / 2, y - (pr->h * 0x12 / sz + 2) - 2 - h,
+                             0x8000 | col[g->player & (NET_MAX_HUMANS - 1)], sz);
+    }
+    Font_Select(1);
+}
+
 /* Race_DrawView 8006422c + Fx_Draw + Sprite_DrawAll de una vista con la camara en g_Camera; el retrovisor (mirror) es
  * la misma escena con la camara mirando atras (sin el destello del sol y, en el port, sin el coche del jugador) */
 static void Race_DrawScene(int view, int mirror, int seg)
@@ -238,6 +278,8 @@ static void Race_DrawScene(int view, int mirror, int seg)
     Race_RestoreCarModels();
     if (g_ViewHumans[view])
         Race_DrawTeamMarkers(view, g_ViewHumans[view]);   /* 80033724 */
+    if (!mirror)
+        Race_DrawNames(view);
     Fx_Draw(view, mirror);             /* 80038ccc */
     Sprite_DrawAll();                  /* 80045268 */
 }

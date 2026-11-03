@@ -112,6 +112,7 @@ Usa los puertos UDP 37120 (partida) y 37121 (busqueda): la primera vez Windows p
 Cada PC simula la carrera entera y solo viajan las pulsaciones (ver NOTAS, *Multijugador*). El anfitrion decide las de
 cada frame y no espera a nadie: al que le llegan tarde se le repite su ultimo mando un momento y despues va sin mando,
 y su PC corre sin esperar hasta alcanzar a los demas. Solo un parón del anfitrion para a todos.
+Sobre el coche de cada jugador sale su nombre, en un color por jugador (el mismo en todos los PCs).
 
 Pantalla completa con **Alt derecho + Intro**. La imagen se ensancha al aspecto de la ventana (16:9, etc.)
 mostrando mas escenario a los lados; el marcador se ancla a los bordes.

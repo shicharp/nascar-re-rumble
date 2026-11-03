@@ -23,6 +23,7 @@ static int       s_nextV;             /* DAT_800af846 */
 static int       s_deferUpload;       /* solo en el port: subir los bitmaps al terminar la carga */
 static int       s_numUploaded;
 static uint16_t  s_palettes[2][16];   /* DAT_800b54c0 / DAT_800b54e0 */
+static int       s_depth;             /* solo en el port: profundidad en la OT del texto (0 = encima de todo) */
 
 /* 800aa570: colores para los codigos 10..31 (RGB555 con R en los bits altos) */
 static const uint16_t s_colors[22] = {
@@ -219,7 +220,7 @@ static void AddTextTPage(void)
     if (!tp)
         return;
     setDrawTPage(tp, 1, 1, s_tpage[s_curIndex] & 0x9ff);
-    Gfx_AddPrimDepth(0, tp);
+    Gfx_AddPrimDepth(s_depth, tp);
 }
 
 /* 800447b8: devuelve el avance */
@@ -236,7 +237,7 @@ int Font_DrawChar(int c, int x, int y, unsigned color)
         setWH(s, g[2], g[3]);
         setXY0(s, x + (int8_t)g[9], y + (int8_t)g[10]);
         s->clut = s_clut;
-        Gfx_AddPrimDepth(0, s);
+        Gfx_AddPrimDepth(s_depth, s);
     }
     return (int8_t)g[8];
 }
@@ -254,6 +255,15 @@ void Font_DrawString(const char* str, int x, int y, unsigned color)
         else
             x += Font_DrawChar(*p, x, y, color & 0xffff);
     }
+}
+
+/* Solo en el port: Font_DrawString ordenado por profundidad con la escena (la pagina va en el mismo indice de la OT
+ * justo antes de las letras: en un indice se dibuja en el orden en que se anade) */
+void Font_DrawStringDepth(const char* str, int x, int y, unsigned color, int depth)
+{
+    s_depth = depth;
+    Font_DrawString(str, x, y, color);
+    s_depth = 0;
 }
 
 /* 80044a44: como Font_DrawString pero recortando a [clipX0, clipX1] */
