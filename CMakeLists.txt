@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(NascarRumble VERSION 1.0.1 LANGUAGES C CXX)   # version: datos del exe (res/nascar.rc)
+project(NascarRumble VERSION 1.0.2 LANGUAGES C CXX)   # version: datos del exe (res/nascar.rc)
 
 # Port nativo de NASCAR Rumble (PS1, SLUS_010.68) sobre PsyCross.
 # De momento solo Win32 (x86): el codigo descompilado guarda punteros en enteros de 32 bits.

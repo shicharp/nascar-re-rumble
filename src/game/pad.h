@@ -36,6 +36,7 @@ void     Pad_ResetBinds(int player);            /* 8001cedc */
 int      Pad_HasVibration(int port);            /* 8001d448: el mando tiene motores (analogico) */
 void     Pad_SetVibration(int port, int on);    /* 8001d520 */
 void     Pad_TestVibration(int port);           /* 8001d2c8: el motor pequeño un momento */
+void     Pad_Rumble(int port, int small, int big);   /* 8001d308 / 8001d3b8: motores en carrera (cada frame) */
 
 /* Pruebas: "frame:boton,frame:boton..." (up, down, left, right, cross, triangle, start...).
  * Cada pulsacion simulada dura 3 frames en el mando 1 ("boton*n": n frames; "2boton": el mando 2). "lx=v" / "ly=v"

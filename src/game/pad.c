@@ -3,6 +3,7 @@
 #include "PsyX/PsyX_public.h"
 #include <stdlib.h>
 #include <string.h>
+#include <SDL.h>
 #include "gfx.h"
 #include "globals.h"
 #include "pause.h"
@@ -225,6 +226,26 @@ void Pad_TestVibration(int port)
     if (!s_vibration[port])
         return;
     unsigned char act[2] = { 1, 0 };
+    PadSetAct(port << 4, act, 2);
+}
+
+/* 8001d308 (pequeño, si / no) y 8001d3b8 (grande, 0-255), desde Humans_Update cada frame de carrera. El original
+ * deja el valor en el buffer del mando y lo apaga si no se renueva en 300 tics; SDL apaga solo a los 200 ms, asi que
+ * aqui se manda al cambiar y se renueva cada 100 ms mientras siga encendido (en pausa o en los menus se apaga solo) */
+void Pad_Rumble(int port, int small, int big)
+{
+    static uint8_t s_last[2][2];
+    static uint32_t s_sent[2];
+    port = port < 0 ? 0 : port > 1 ? 1 : port;
+    if (!s_vibration[port])
+        small = big = 0;
+    uint8_t act[2] = { (uint8_t)(small != 0), (uint8_t)(big < 0 ? 0 : big > 0xff ? 0xff : big) };
+    uint32_t now = SDL_GetTicks();
+    if (act[0] == s_last[port][0] && act[1] == s_last[port][1] && (!(act[0] | act[1]) || now - s_sent[port] < 100))
+        return;
+    s_last[port][0] = act[0];
+    s_last[port][1] = act[1];
+    s_sent[port] = now;
     PadSetAct(port << 4, act, 2);
 }
 

@@ -1,5 +1,6 @@
 #include "nr.h"
 #include "pad.h"
+#include "globals.h"
 #include "carphys.h"
 #include "carphys_int.h"
 #include "snd.h"
@@ -288,6 +289,21 @@ void Human_UpdateButtons(RaceCar* e, int dt)
     Pad_Edge(U32(ctrl, 8), B_(ctrl) + 0x4c);
     if (I32(ctrl, 0x50) == 0 && I32(PTR(ctrl, 0), 0x330) == 0)
         Car_PlaySfx(5, e);   /* 80041be8: bocina */
+
+    /* vibracion: +0x28 es la fuerza del ultimo golpe (Car_Shake, hasta 0x200) y baja 2 por tic; en juego el motor
+     * grande va a fuerza + 0x28 (8001d37c) y el pequeño mientras le arrastra un tornado (+0x33A bit 7, 8001d28c).
+     * La cuenta va en todos los humanos (igual en todas las maquinas); el mando, solo los de esta (+0x59 < 2) */
+    int big = -1;
+    if (I16(ctrl, 0x28) < 1)
+        big = 0;
+    else
+    {
+        I16(ctrl, 0x28) = (int16_t)(I16(ctrl, 0x28) - dt * 2);
+        if (g_GameState == GAMESTATE_RUNNING)
+            big = I16(ctrl, 0x28) + 0x28;
+    }
+    if (ctrl[0x59] < 2 && big >= 0)
+        Pad_Rumble(ctrl[0x59], U16(PTR(ctrl, 0), 0x33a) & 0x80, big);
 }
 
 /* Lectura del mando (Race_UpdateTime: 8005fc54 + 8005f928 para cada humano): digital (tipo 4) o analogico (tipo 7:
