@@ -266,8 +266,8 @@ static void Camera_SetLodScale(int h, int mirror)
 }
 
 /* Solo en el port: NR_PSXLOD=1 usa los niveles de detalle de la PS1 (modelos simplificados, sin ruedas y menos
- * particulas de lejos); por defecto todo se dibuja con el detalle completo */
-static int Lod_PsxOn(void)
+ * particulas de lejos, texturas de la pista a menos resolucion); por defecto todo se dibuja con el detalle completo */
+int Lod_PsxOn(void)
 {
     static int s_on = -1;
     if (s_on < 0)

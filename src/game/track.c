@@ -490,11 +490,14 @@ static void Track_MarkVisible(int start, int count, uint8_t* flags, uint8_t mask
         if (!(mask & h->viewMask) || !Track_SegVisible(h, &dist))
             continue;
         uint8_t f = dist < 0x200 ? 0xc0 : 0x80;
-        uint8_t lod;
-        if (dist > s_lodDist[1])
-            lod = dist <= s_lodDist[2] ? 2 : 3;
-        else
-            lod = dist > s_lodDist[0];
+        uint8_t lod = 0;   /* port: texturas a resolucion completa a cualquier distancia (NR_PSXLOD=1: las de PS1) */
+        if (Lod_PsxOn())
+        {
+            if (dist > s_lodDist[1])
+                lod = dist <= s_lodDist[2] ? 2 : 3;
+            else
+                lod = dist > s_lodDist[0];
+        }
         flags[i] = f | lod;
     }
 }
