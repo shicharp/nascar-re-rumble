@@ -258,8 +258,9 @@ void Pad_ReadAll(void)
      * llama por si solo fuera de su modo de depuracion. Teclado por defecto: flechas, C = cruz, X = cuadrado,
      * V = circulo, Z = triangulo, Intro = START, espacio = SELECT, Mayus / Ctrl izq. = L1 / L2, der. = R1 / R2.
      * Las teclas y botones cambiados en la pantalla de mandos solo valen conduciendo (padmap.h). */
+    /* (en red el menu de START no para la carrera: con el abierto tambien van los botones de siempre) */
     PadMap_Apply(!g_IsFrontend && !g_RacePaused && g_GameState == GAMESTATE_RUNNING && g_GameInfo &&
-                 !g_GameInfo->isReplay);
+                 !g_GameInfo->isReplay && !Pause_MenuOpen());
     PsyX_UpdateInput();
     for (int i = 0; i < 2; i++)
         g_PadButtons[i] = Pad_GetButtons(i);

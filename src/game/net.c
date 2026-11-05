@@ -14,7 +14,7 @@
 #include "pause.h"
 #include "net.h"
 
-#define NET_VERSION   12
+#define NET_VERSION   13
 #define NET_CHANNELS  2           /* 0 sala y ordenes (fiables y en orden); 1 pulsaciones y frames (sin garantia) */
 #define NET_RING      2048        /* frames de pulsaciones guardados por humano (34 s: lo que puede atrasarse un cliente) */
 #define NET_SUM_EVERY 30          /* frames entre sumas de control (medio segundo) */
@@ -1095,7 +1095,7 @@ int Net_Host(int port)
     LocalPlayer(&s_players[0]);
     s_players[0].team = 0;
     if (getenv("NR_ASSISTS"))   /* pruebas: las ayudas sin pasar por la sala */
-        s_assists = atoi(getenv("NR_ASSISTS")) & (NET_ASSIST_DRAFT | NET_ASSIST_CATCHUP);
+        s_assists = atoi(getenv("NR_ASSISTS")) & (NET_ASSIST_DRAFT | NET_ASSIST_CATCHUP | NET_ASSIST_CLASSCAR);
     s_findHostSock = enet_socket_create(ENET_SOCKET_TYPE_DATAGRAM);
     if (s_findHostSock != ENET_SOCKET_NULL)
     {

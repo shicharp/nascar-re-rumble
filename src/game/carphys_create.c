@@ -80,11 +80,17 @@ static uint32_t Car_ParamsAddr(uint8_t* c)
     return 0x800ab1e4u + Exe_U8(0x800ab3e0u + g * 3 + k) * 0xc;
 }
 
-/* 8004d6fc: marchas, 10 bytes en 800ab05c por la tabla 800ab3b8 */
+/* 8004d6fc: marchas, 10 bytes en 800ab05c por la tabla 800ab3b8. Port: con NET_ASSIST_CLASSCAR (opcion de la sala),
+ * los humanos con un coche especial (camiones, leyendas de las sedes, los de los trucos) llevan el motor de un coche
+ * normal de su clase: velocidad punta, regimen y curva de par del grupo 0 (los especiales pasan de 180 a 182-183 en
+ * Elite y, sobre todo, aceleran mucho mas: el par lleva hasta +614). La masa, el agarre y la suspension (800ab1e4)
+ * siguen siendo los suyos. */
 static uint32_t Car_GearsAddr(uint8_t* c)
 {
     int g, k;
     Car_ParamIndex(c, &g, &k);
+    if (g && (Net_Assists() & NET_ASSIST_CLASSCAR) && ((RaceCar*)ENT(c))->type == 1)
+        g = 0;
     return 0x800ab05cu + Exe_U8(0x800ab3b8u + g * 3 + k) * 10;
 }
 

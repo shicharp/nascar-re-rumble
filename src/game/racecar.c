@@ -297,8 +297,8 @@ static int Assist_Draft(const RaceCar* e)
 static void Race_Assists(void)
 {
     int opt = Net_Assists();
-    if (!opt)
-        return;
+    if (!(opt & (NET_ASSIST_DRAFT | NET_ASSIST_CATCHUP)))
+        return;   /* (NET_ASSIST_CLASSCAR va en Car_GearsAddr, al crear el coche) */
     /* el primer humano que sigue corriendo (el de mejor puesto) */
     RaceCar* lead = NULL;
     for (int h = 0; h < RACE_MAX_HUMANS; h++)
