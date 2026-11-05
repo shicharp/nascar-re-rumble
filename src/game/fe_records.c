@@ -338,10 +338,10 @@ static void CupPodium(void)
                 who = s_teamPos[GridFind(-1)] < s_teamPos[GridFind(-2)] ? i != 0 : i == 0;
             }
             int slot = GridFind(who), mate = 0;
-            while (mate < 6 && !(mate != slot && g_RaceGrid.car[mate].team == g_RaceGrid.car[slot].team))
+            while (mate < g_RaceGrid.count && !(mate != slot && g_RaceGrid.car[mate].team == g_RaceGrid.car[slot].team))
                 mate++;
             const GridCar* c = &g_RaceGrid.car[slot];
-            const GridCar* m = &g_RaceGrid.car[mate < 6 ? mate : 0];
+            const GridCar* m = &g_RaceGrid.car[mate < g_RaceGrid.count ? mate : 0];
             w->team = 1;
             GridName(w->name, c);
             w->driver = c->driver;

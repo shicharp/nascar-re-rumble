@@ -944,7 +944,171 @@ static int Fe_AddNetHumans(int np, int cls)
         }
         e->driver = (uint8_t)d;
     }
+    /* detras, los rivales elegidos en la pantalla 1200 que sigan seguidos; el resto queda libre para la IA (la
+     * pantalla 1200 solo libera los 6 primeros huecos: con muchos humanos, los otros traerian la carrera anterior) */
+    if (n > 0)
+    {
+        int s = np;
+        while (s < 6 && g_RaceGrid.car[s].team != 100)
+            s++;
+        for (; s < 8; s++)
+            g_RaceGrid.car[s].team = 100;
+    }
     return np;
+}
+
+/* Solo en el port: equipos de una carrera por equipos en red (anfitrion), con lo elegido en la sala. Los humanos
+ * siguen en los huecos 0..np-1 (GridCar.player = numero de humano = hueco) y la IA detras, asi que el equipo no sale
+ * de la pareja de huecos como en el original sino de s_netGroup: primero el del anfitrion, despues los demas equipos
+ * de la sala con alguien; al que va solo le toca uno de la IA (al anfitrion, el compañero que ha elegido en la
+ * pantalla 1200, que se guarda en s_netMate) y el resto de la IA va por parejas. El numero de equipo es el de la
+ * sala (asi el triangulo del compañero sale del mismo color) salvo en el campeonato, que solo tiene 0..2. */
+static int8_t s_netGroup[4][2];   /* huecos de los humanos de cada equipo (-1 libre) */
+static int8_t s_netLabel[4];      /* su equipo en la sala (el numero de equipo en carrera si se puede: mismo color) */
+static int    s_netGroups;        /* 0: no hay equipos de la red en esta salida */
+static int    s_netMate = -1;     /* hueco del compañero de la IA del anfitrion */
+
+/* despues de Fe_AddNetHumans: agrupa a los humanos y asegura sitio en la parrilla (2 coches por equipo). mate es
+ * el compañero que ha elegido el anfitrion (el hueco 1 antes de meter a los de la red). */
+static void Fe_NetTeamsPrepare(int np, const GridCar* mate)
+{
+    GameSettings* gs = &g_Settings;
+    RaceGrid* grid = &g_RaceGrid;
+    int machines[NET_MAX_HUMANS], label[8];
+    int n = Net_HostRacers(machines);
+    for (int k = 0; k < np; k++)
+    {
+        const NetPlayer* p = Net_Player(k == 0 ? 0 : k - 1 < n ? machines[k - 1] : -1);
+        label[k] = p && p->team < NET_TEAMS ? p->team : 0;
+    }
+    /* el del anfitrion primero y despues los demas equipos de la sala con alguien, de 2 en 2 (el anfitrion no deja
+     * mas de 2 en un equipo; si llegaran mas, el tercero haria otro) */
+    s_netGroups = 0;
+    memset(s_netGroup, -1, sizeof(s_netGroup));
+    for (int pass = 0; pass <= NET_TEAMS; pass++)
+    {
+        int t = pass == 0 ? label[0] : pass - 1;
+        if (pass > 0 && t == label[0])
+            continue;
+        for (int k = 0; k < np && s_netGroups < 4; k++)
+        {
+            if (label[k] != t)
+                continue;
+            int8_t* g = s_netGroup[s_netGroups];
+            s_netLabel[s_netGroups] = (int8_t)t;
+            if (g[0] < 0)
+                g[0] = (int8_t)k;
+            else
+            {
+                g[1] = (int8_t)k;
+                s_netGroups++;
+            }
+        }
+        if (s_netGroups < 4 && s_netGroup[s_netGroups][0] >= 0)
+            s_netGroups++;
+    }
+    /* el campeonato es de 6 coches (3 equipos): si no caben, se juntan los que van solos (del ultimo hacia atras) */
+    int max = gs->champType ? 6 : 8;
+    while (s_netGroups * 2 > max)
+    {
+        int a = -1, b = -1;
+        for (int g = s_netGroups - 1; g >= 0 && b < 0; g--)
+            if (s_netGroup[g][1] < 0)
+            {
+                if (a < 0)
+                    a = g;
+                else
+                    b = g;
+            }
+        if (b < 0)
+            break;   /* (no pasa: como mucho 6 humanos en la copa) */
+        s_netGroup[b][1] = s_netGroup[a][0];
+        for (int g = a; g < 3; g++)
+        {
+            memcpy(s_netGroup[g], s_netGroup[g + 1], 2);
+            s_netLabel[g] = s_netLabel[g + 1];
+        }
+        s_netGroup[3][0] = s_netGroup[3][1] = -1;
+        s_netGroups--;
+    }
+    if (grid->count < s_netGroups * 2)
+        grid->count = (uint8_t)(s_netGroups * 2);
+
+    /* el compañero del anfitrion, si va solo: detras de los rivales que haya elegido (los huecos de la IA que no
+     * rellena Fe_StartRace son los de team != 100 seguidos desde np) */
+    s_netMate = -1;
+    if (s_netGroup[0][1] < 0 && mate && mate->player == 0xff)
+    {
+        int slot = np;
+        while (slot < grid->count && grid->car[slot].team != 100)
+            slot++;
+        int dup = 0;
+        for (int j = 0; j < slot; j++)
+            if (grid->car[j].driver == mate->driver)
+                dup = 1;
+        if (slot < grid->count && !dup)
+        {
+            grid->car[slot] = *mate;
+            grid->car[slot].cls = gs->racingClass;
+            grid->car[slot].team = 0;
+            s_netMate = slot;
+        }
+    }
+}
+
+/* despues del emparejado del original: los equipos de verdad */
+static void Fe_NetTeamsApply(int np)
+{
+    RaceGrid* grid = &g_RaceGrid;
+    uint8_t used[8] = { 0 }, taken[4] = { 0 };
+    int ids = g_Settings.champType ? 3 : 4;   /* (la clasificacion por equipos de la copa es de 3; la pausa, de 4) */
+    int8_t id[4];
+    for (int g = 0; g < s_netGroups; g++)
+    {
+        id[g] = s_netLabel[g] >= 0 && s_netLabel[g] < ids && !taken[(int)s_netLabel[g]] ? s_netLabel[g] : -1;
+        if (id[g] >= 0)
+            taken[(int)id[g]] = 1;
+    }
+    for (int g = 0; g < s_netGroups; g++)
+        for (int t = 0; t < ids && id[g] < 0; t++)
+            if (!taken[t])
+            {
+                id[g] = (int8_t)t;
+                taken[t] = 1;
+            }
+    for (int g = 0; g < s_netGroups; g++)
+        for (int k = 0; k < 2; k++)
+        {
+            int slot = s_netGroup[g][k];
+            if (slot < 0)
+            {
+                /* va solo: uno de la IA (al anfitrion, el suyo) */
+                slot = g == 0 && s_netMate >= 0 ? s_netMate : -1;
+                for (int j = np; j < grid->count && slot < 0; j++)
+                    if (!used[j] && j != s_netMate)
+                        slot = j;
+                if (slot < 0)
+                    continue;
+            }
+            used[slot] = 1;
+            grid->car[slot].team = (uint8_t)id[g];
+        }
+    /* el resto de la IA, de dos en dos con los numeros que quedan */
+    int k = 0, t = 0;
+    for (int j = np; j < grid->count; j++)
+        if (!used[j])
+        {
+            if (k++ % 2 == 0)
+            {
+                /* pareja nueva: el primer numero libre (con 8 coches como mucho siempre queda alguno) */
+                while (t < 4 && taken[t])
+                    t++;
+                if (t < 4)
+                    taken[t] = 1;
+            }
+            grid->car[j].team = (uint8_t)t;
+        }
+    s_netGroups = 0;
 }
 
 /* Solo en el port: siguiente carrera de un campeonato en red (anfitrion). La parrilla viene de la clasificacion con
@@ -1088,10 +1252,14 @@ void Fe_StartRace(int demo)
         default: grid->count = 6; gs->laps = 4; break;
         }
     }
+    s_netGroups = 0;
     if (!demo && Net_IsHost() && npLocal == 1)   /* (en red, un jugador por maquina) */
     {
         Net_CupFinished();   /* (carrera suelta o copa nueva: no sigue ninguna) */
+        GridCar mate = grid->car[1];   /* (compañero que ha elegido el anfitrion en la pantalla 1200) */
         np = Fe_AddNetHumans(np, cls);
+        if (gs->teamRace && np > 1 && gs->gameMode != 9 && gs->gameMode != 12)
+            Fe_NetTeamsPrepare(np, &mate);
     }
     {
         const char* nc = getenv("NR_CARS");   /* solo en el port (pruebas): numero de coches (hasta 8) */
@@ -1238,6 +1406,8 @@ void Fe_StartRace(int demo)
             if (gs->gameMode == 8 || gs->gameMode == 11)
                 teamMode = 2;
         }
+        if (s_netGroups)
+            Fe_NetTeamsApply(np);   /* port: los equipos de la sala */
     }
     for (int i = 0; i < grid->count; i++)
         grid->car[i].flag = 0;

@@ -106,8 +106,9 @@ valen conduciendo: en los menus, la pausa, los resultados, la carga y la repetic
 **Partidas en red local (LAN), hasta 8 jugadores, uno por PC:** SELECT en el menu principal abre *LAN Game*. Uno
 crea la partida (*Host a Game*) y los demas se unen (*Join a Game*: salen las partidas de la red local, o se escribe la
 direccion IP del anfitrion con el teclado e Intro). En la sala cada uno elige su piloto con izquierda / derecha (los
-clientes tambien con X en la pantalla de seleccion de coche, mientras el anfitrion esta en la sala) y el
-anfitrion pulsa X para elegir la carrera (carrera suelta, o campeonato con hasta 6 jugadores); la parrilla se completa
+clientes tambien con X en la pantalla de seleccion de coche, mientras el anfitrion esta en la sala) y su equipo con
+cuadrado (4 equipos de hasta 2; en las carreras por equipos van juntos los del mismo equipo y al que va solo le toca
+uno de la IA: al anfitrion, el compañero que elige en la pantalla de seleccion), y el anfitrion pulsa X para elegir la carrera (carrera suelta, o campeonato con hasta 6 jugadores); la parrilla se completa
 con la IA hasta los coches de las opciones (o hasta 8 si hay mas jugadores). En red no hay pausa ni repeticion, y al
 acabar todos vuelven a la sala. En un campeonato cada PC lleva la copa como en un jugador (records, podio y desbloqueos
 en su partida guardada), el anfitrion da la siguiente carrera cuando todos estan en la clasificacion y el coche de quien

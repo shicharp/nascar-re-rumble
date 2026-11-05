@@ -14,7 +14,7 @@
 #include "pause.h"
 #include "net.h"
 
-#define NET_VERSION   11
+#define NET_VERSION   12
 #define NET_CHANNELS  2           /* 0 sala y ordenes (fiables y en orden); 1 pulsaciones y frames (sin garantia) */
 #define NET_RING      2048        /* frames de pulsaciones guardados por humano (34 s: lo que puede atrasarse un cliente) */
 #define NET_SUM_EVERY 30          /* frames entre sumas de control (medio segundo) */
@@ -274,6 +274,7 @@ static void Msg_Player(Msg* m, const NetPlayer* p)
     Msg_U8(m, p->car);
     Msg_U8(m, p->transmission);
     Msg_U8(m, p->inRace);
+    Msg_U8(m, p->team);
     Msg_Bytes(m, p->name, NET_NAME_LEN + 1);
 }
 
@@ -283,11 +284,38 @@ static void Rd_Player(Rd* r, NetPlayer* p)
     p->car = (uint8_t)Rd_U8(r);
     p->transmission = (uint8_t)Rd_U8(r);
     p->inRace = (uint8_t)Rd_U8(r);
+    p->team = (uint8_t)Rd_U8(r);
     Rd_Bytes(r, p->name, NET_NAME_LEN + 1);
     p->name[NET_NAME_LEN] = 0;
 }
 
-/* el jugador de esta maquina, con los datos del front-end */
+int Net_TeamCount(int team, int except)
+{
+    int n = 0;
+    for (int i = 0; i < NET_MAX_MACHINES; i++)
+        if (i != except && s_players[i].used && s_players[i].team == team)
+            n++;
+    return n;
+}
+
+/* anfitrion: el equipo de la maquina id: el que pide si tiene sitio, si no el que tenia, si no el primero libre
+ * (con 8 jugadores y 4 equipos de 2 siempre hay sitio) */
+static int Host_Team(int id, int want, int cur)
+{
+    if (want < NET_TEAMS && Net_TeamCount(want, id) < 2)
+        return want;
+    if (cur < NET_TEAMS && Net_TeamCount(cur, id) < 2)
+        return cur;
+    for (int t = 0; t < NET_TEAMS; t++)
+        if (Net_TeamCount(t, id) < 2)
+            return t;
+    return 0;
+}
+
+static int s_reqTeam = -1;   /* Net_SetTeam: el equipo que se pide en el siguiente LocalPlayer */
+
+/* el jugador de esta maquina, con los datos del front-end (el equipo: el que tiene en la sala o el que pide; 0xFF
+ * sin numero de maquina todavia: el anfitrion le da uno) */
 static void LocalPlayer(NetPlayer* p)
 {
     memset(p, 0, sizeof(*p));
@@ -299,6 +327,8 @@ static void LocalPlayer(NetPlayer* p)
         snprintf(p->name, sizeof(p->name), "%s", g_Settings.playerName[0]);
     else
         snprintf(p->name, sizeof(p->name), "Player");
+    p->team = (uint8_t)(s_reqTeam >= 0 ? s_reqTeam
+                        : s_machine >= 0 && s_players[s_machine].used ? s_players[s_machine].team : 0xff);
 }
 
 static void SetStatus(const char* s)
@@ -728,6 +758,7 @@ static void Host_Hello(ENetPeer* peer, Rd* r)
         Net_Log("[red] rechazado: %s\n", why);
         return;
     }
+    p.team = (uint8_t)Host_Team(id, p.team, 0xff);
     s_players[id] = p;
     s_peers[id] = peer;
     peer->data = (void*)(intptr_t)id;
@@ -771,6 +802,7 @@ static void Host_Receive(ENetPeer* peer, const uint8_t* data, int len, int chann
             if (!r.bad)
             {
                 p.inRace = s_players[from].inRace;
+                p.team = (uint8_t)Host_Team(from, p.team, s_players[from].team);
                 s_players[from] = p;
                 Host_SendLobby();
             }
@@ -1061,6 +1093,7 @@ int Net_Host(int port)
     s_isHost = s_active = 1;
     s_machine = 0;
     LocalPlayer(&s_players[0]);
+    s_players[0].team = 0;
     if (getenv("NR_ASSISTS"))   /* pruebas: las ayudas sin pasar por la sala */
         s_assists = atoi(getenv("NR_ASSISTS")) & (NET_ASSIST_DRAFT | NET_ASSIST_CATCHUP);
     s_findHostSock = enet_socket_create(ENET_SOCKET_TYPE_DATAGRAM);
@@ -1357,6 +1390,7 @@ void Net_UpdateLocalPlayer(void)
     if (s_isHost)
     {
         me.inRace = s_players[0].inRace;
+        me.team = (uint8_t)Host_Team(0, me.team, s_players[0].team);
         s_players[0] = me;
         Host_SendLobby();
     }
@@ -1367,6 +1401,13 @@ void Net_UpdateLocalPlayer(void)
         Msg_Player(&m, &me);
         Send(s_server, &m, 0);
     }
+}
+
+void Net_SetTeam(int team)
+{
+    s_reqTeam = team;
+    Net_UpdateLocalPlayer();
+    s_reqTeam = -1;
 }
 
 int Net_Active(void)
@@ -1557,6 +1598,12 @@ void Net_HostStartRace(void)
     Race_Reset();
     Host_SendLobby();
     Net_Log("[red] salida: %d humanos, semilla %u\n", s->numHumans, s->seed);
+    char grid[96];
+    int len = 0;
+    for (int i = 0; i < g_RaceGrid.count && len < (int)sizeof(grid) - 12; i++)   /* hueco: humano (h) o IA, equipo */
+        len += snprintf(grid + len, sizeof(grid) - len, " %s%d/e%d", g_RaceGrid.car[i].player == 0xff ? "ia" : "h",
+                        g_RaceGrid.car[i].player == 0xff ? i : g_RaceGrid.car[i].player, g_RaceGrid.car[i].team);
+    Net_Log("[red] parrilla:%s\n", grid);
 }
 
 int Net_TakeStart(void)

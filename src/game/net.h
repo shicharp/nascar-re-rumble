@@ -29,6 +29,7 @@ typedef struct
     uint8_t car;                  /* clase del coche (g_Settings.lastCar[0]: 0 rookie, 1 pro, 2 elite) */
     uint8_t transmission;         /* esquema de botones y cambio (g_Settings.transmission[0], 0-5) */
     uint8_t inRace;               /* donde esta: NET_P_* */
+    uint8_t team;                 /* equipo para las carreras por equipos (0..NET_TEAMS-1; lo valida el anfitrion) */
     char    name[NET_NAME_LEN + 1];
 } NetPlayer;
 
@@ -49,6 +50,12 @@ int  Net_NumPlayers(void);
 const char* Net_Status(void);                  /* texto del ultimo suceso (conectando, rechazado...) */
 
 void Net_UpdateLocalPlayer(void);              /* el piloto o el nombre de esta maquina han cambiado: a la sala */
+
+/* equipos de la sala: como mucho 2 humanos por equipo; el anfitrion pone al que entra en el primero con sitio y
+ * Fe_StartRace los empareja en las carreras por equipos (al que va solo le toca uno de la IA) */
+#define NET_TEAMS 4
+void Net_SetTeam(int team);                    /* pide ese equipo (si esta lleno, el anfitrion no lo cambia) */
+int  Net_TeamCount(int team, int except);      /* jugadores de la sala en ese equipo (sin la maquina except) */
 
 /* donde esta cada maquina (NetPlayer.inRace; los clientes lo dicen desde el front-end con Net_SetStage) */
 #define NET_P_LOBBY      0        /* en la sala: entra en la siguiente carrera */

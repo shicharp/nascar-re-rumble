@@ -5,7 +5,9 @@
  *  - Sala: los jugadores; cada uno elige su piloto con izquierda / derecha, o el cliente con X en la pantalla 1200
  *    (g_FeNetSelect; solo con el anfitrion en la sala, que no da la salida mientras alguien elige). El anfitrion pasa
  *    con X a elegir la carrera (pantalla 200: carrera suelta o campeonato) y Fe_StartRace mete a los demas en la
- *    parrilla. */
+ *    parrilla.
+ *  - Equipos: cada uno elige el suyo con cuadrado (como mucho 2 por equipo); solo cuentan en las carreras por
+ *    equipos, donde Fe_StartRace pone juntos a los del mismo equipo. */
 #include <stdio.h>
 #include <string.h>
 #include <SDL.h>
@@ -16,6 +18,7 @@
 #include "globals.h"
 #include "frontend.h"
 #include "fe_internal.h"
+#include "hud.h"
 #include "net.h"
 
 enum { LAN_MENU, LAN_FIND, LAN_ADDR };
@@ -129,14 +132,29 @@ static int Lan_NextCar(int dir)
     return 0;
 }
 
-/* la sala: los jugadores, el piloto de cada uno y quien corre */
+/* siguiente equipo con sitio para esta maquina (-1 si estan todos llenos) */
+static int Lan_NextTeam(int me)
+{
+    const NetPlayer* p = Net_Player(me);
+    int cur = p && p->team < NET_TEAMS ? p->team : NET_TEAMS - 1;
+    for (int k = 1; k < NET_TEAMS; k++)
+    {
+        int t = (cur + k) % NET_TEAMS;
+        if (Net_TeamCount(t, me) < 2)
+            return t;
+    }
+    return -1;
+}
+
+/* la sala: los jugadores, el equipo y el piloto de cada uno y quien corre */
 static void Lan_Lobby(void)
 {
     FrontendState* fe = g_Frontend;
     int host = Net_IsHost(), me = Net_MachineId();
     char line[96];
     Lan_Box(host ? "LAN Game - Hosting" : "LAN Game");
-    Lan_Text(0x12, 0x12, 0x12, "Player", 0x22, 0x2a, 0);
+    Lan_Text(0x12, 0x12, 0x12, "Team", 0x1c, 0x2a, 0);
+    Lan_Text(0x12, 0x12, 0x12, "Player", 0x3a, 0x2a, 0);
     Lan_Text(0x12, 0x12, 0x12, "Driver", 0x80, 0x2a, 0);
     Lan_Text(0x12, 0x12, 0x12, "Car", 0xe0, 0x2a, 0);
     static const char* const cars[3] = { "Rookie", "Pro", "Elite" };
@@ -148,10 +166,17 @@ static void Lan_Lobby(void)
             continue;
         int y = 0x38 + row * 0xc;
         int v = m == me ? 0x1f : 0x17;
-        snprintf(line, sizeof(line), "%d. %s", row + 1, p->name);
         if (m == me)
             Fe_DrawBox(0x28, 0x0a, 0x0a, 0x1a, y - 1, 0x123, y + 9, 0);
-        Lan_Text(v, m == me ? 0x1c : v, m == me ? 0 : v, line, 0x22, y, 0);
+        if (p->team < NET_TEAMS)
+        {
+            /* un cuadro del color del equipo en carrera (Hud_TeamColor: 15 bits con el rojo arriba) con su numero */
+            unsigned col = Hud_TeamColor(p->team);
+            Fe_DrawBox((col >> 7) & 0xf8, (col >> 2) & 0xf8, (col << 3) & 0xf8, 0x1e, y - 1, 0x2c, y + 9, 0);
+            snprintf(line, sizeof(line), "%d", p->team + 1);
+            Lan_Text(0, 0, 0, line, 0x25, y, 1);
+        }
+        Lan_Text(v, m == me ? 0x1c : v, m == me ? 0 : v, p->name, 0x3a, y, 0);
         Lan_Text(v, v, v, p->driver < NUM_DRIVERS ? g_Drivers[p->driver].name : "?", 0x80, y, 0);
         Lan_Text(v, v, v, cars[p->car <= 2 ? p->car : 0], 0xe0, y, 0);
         static const char* const stage[5] = { "", "Racing", "Standings", "Busy", "Choosing" };
@@ -183,8 +208,8 @@ static void Lan_Lobby(void)
         snprintf(line, sizeof(line), "%s", host ? "Up to 8 players. Press X to choose the race." :
                                                   "Waiting for the host to start the race...");
     Lan_Text(0x14, 0x14, 0x14, line, 0x9e, 0xc2, 1);
-    Lan_Help(host ? "\x1b*\x13 Choose Race   \x1b^\x13 Option   \x1b$\x13 Change   \x1b~\x13 Leave" :
-                    "\x1b*\x13 Choose Car   \x1b$\x13 Driver   \x1b^\x13 Class   \x1b~\x13 Leave");
+    Lan_Help(host ? "\x1b*\x13 Choose Race  \x1b^\x13 Option  \x1b$\x13 Change  \x1b#\x13 Team  \x1b~\x13 Leave" :
+                    "\x1b*\x13 Choose Car  \x1b$\x13 Driver  \x1b^\x13 Class  \x1b#\x13 Team  \x1b~\x13 Leave");
 
     if (host)
     {
@@ -210,7 +235,15 @@ static void Lan_Lobby(void)
         Lan_NextDriver(1);
         Net_UpdateLocalPlayer();
     }
-    if (d)
+    if (Fe_PadPressed(PADB_SQUARE, -1, 1))
+    {
+        /* equipo: el siguiente con sitio (el anfitrion lo confirma con la sala) */
+        int t = Lan_NextTeam(me);
+        if (t >= 0)
+            Net_SetTeam(t);
+        Snd_PlayUi(t >= 0 ? 0x47 : 0x4c, NULL);
+    }
+    else if (d)
     {
         Lan_NextDriver(d);
         Net_UpdateLocalPlayer();
