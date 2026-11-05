@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(NascarRumble C CXX)
+project(NascarRumble VERSION 1.0.0 LANGUAGES C CXX)   # version: datos del exe (res/nascar.rc)
 
 # Port nativo de NASCAR Rumble (PS1, SLUS_010.68) sobre PsyCross.
 # De momento solo Win32 (x86): el codigo descompilado guarda punteros en enteros de 32 bits.
@@ -59,7 +59,11 @@ file(GLOB GAME_SRCS CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/*.c ${CMAKE_SOURCE
 # El juego se compila como C++ (igual que REDRIVER2): con PGXP las coordenadas de las primitivas
 # (VERTTYPE) son 'half' en C++ y convierten solas; en C habria que envolver cada una con _HF().
 set_source_files_properties(${GAME_SRCS} PROPERTIES LANGUAGE CXX)
-add_executable(nascar ${GAME_SRCS})
+# Icono, datos de version y manifiesto del exe (res/): un exe sin ellos lo marcan mas los antivirus
+configure_file(${CMAKE_SOURCE_DIR}/res/version.h.in ${CMAKE_BINARY_DIR}/version.h)
+set_source_files_properties(${CMAKE_SOURCE_DIR}/res/nascar.rc PROPERTIES
+    INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}" OBJECT_DEPENDS "${CMAKE_SOURCE_DIR}/res/nascar.ico")
+add_executable(nascar ${GAME_SRCS} res/nascar.rc res/nascar.manifest)
 target_include_directories(nascar PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(nascar PRIVATE psycross enet)
 if(MSVC)

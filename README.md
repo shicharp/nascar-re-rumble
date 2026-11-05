@@ -23,6 +23,9 @@ estatico: no hace falta el Visual C++ Redistributable) y pasar `nascar.exe`, `na
 uno pone la imagen `.bin` de su disco junto a `nascar.exe` y la primera vez el port la extrae a `disc` (tambien
 `--extract-disc imagen.bin`). En red todos tienen que llevar el mismo `nascar.exe`: el anfitrion compara una huella
 del ejecutable y rechaza los distintos.
+El exe lleva icono, datos de version y manifiesto (`res/`: un exe sin ellos lo marcan mas los antivirus). La version
+esta en `project(... VERSION)` de `CMakeLists.txt`: subela en cada version que se reparta. El icono se dibuja con
+`res/make_icon.ps1` (sin nada del juego).
 
 ```bat
 build.bat Debug

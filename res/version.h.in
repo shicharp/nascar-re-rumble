@@ -1,0 +1,5 @@
+/* Generado por CMake desde res/version.h.in (la version esta en project() de CMakeLists.txt) */
+#define NR_VER_MAJOR  @PROJECT_VERSION_MAJOR@
+#define NR_VER_MINOR  @PROJECT_VERSION_MINOR@
+#define NR_VER_PATCH  @PROJECT_VERSION_PATCH@
+#define NR_VER_STRING "@PROJECT_VERSION@"

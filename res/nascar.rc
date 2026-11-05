@@ -1,0 +1,35 @@
+// Recursos del exe: icono (res/make_icon.ps1) y datos de version (Propiedades > Detalles). La version sale de
+// project(... VERSION) en CMakeLists.txt (NR_VER_*). El manifiesto va aparte (nascar.manifest, lo une CMake).
+#include <winver.h>
+#include "version.h"
+
+1 ICON "nascar.ico"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     NR_VER_MAJOR, NR_VER_MINOR, NR_VER_PATCH, 0
+PRODUCTVERSION  NR_VER_MAJOR, NR_VER_MINOR, NR_VER_PATCH, 0
+FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+FILEFLAGS       0
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "0C0A04B0"   // espanol, Unicode
+        BEGIN
+            VALUE "CompanyName",      "NASCAR Rumble PC port (proyecto de fans)"
+            VALUE "FileDescription",  "NASCAR Rumble - port no oficial para PC"
+            VALUE "FileVersion",      NR_VER_STRING
+            VALUE "InternalName",     "nascar"
+            VALUE "LegalCopyright",   "Port no oficial, sin relacion con EA ni NASCAR. Necesita el disco original."
+            VALUE "OriginalFilename", "nascar.exe"
+            VALUE "ProductName",      "NASCAR Rumble PC port"
+            VALUE "ProductVersion",   NR_VER_STRING
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0C0A, 1200
+    END
+END
