@@ -201,10 +201,12 @@ void Pad_ResetBinds(int player)
         memcpy(g_PadBinds[player], def, sizeof(def));
 }
 
-/* 8001d448 */
+/* 8001d448. Port: el original pedia el DualShock en modo analogico (tipo 7); aqui vale cualquier mando conectado que
+ * pueda vibrar, en el modo que este (Pad_Rumble vibra en los dos) */
 int Pad_HasVibration(int port)
 {
-    return Pad_GetType(port & 1) == 7 && !(s_scriptPorts >> (port & 1) & 1);
+    SDL_GameController* gc = (SDL_GameController*)PsyX_Pad_GetGameController(port & 1);
+    return gc && SDL_GameControllerHasRumble(gc) && !(s_scriptPorts >> (port & 1) & 1);
 }
 
 /* 8001d520 */
