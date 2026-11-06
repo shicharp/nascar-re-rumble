@@ -10,6 +10,41 @@ juego (ni gráficos, ni sonido, ni el ejecutable original): hace falta la imagen
 Para jugar: descargar el zip de [Releases](https://github.com/shicharp/nascar-re-rumble/releases), poner la imagen
 `.bin` del disco junto a `nascar.exe` y leer el `LEEME.txt`.
 
+## Mejoras respecto a la versión de PS1
+
+- **Imagen:** ventana o pantalla completa (Alt derecho + Intro). La imagen se ensancha al
+  aspecto de la pantalla (16:9, etc.) mostrando más escenario a los lados, con el marcador anclado a los bordes.
+- **Más detalle:** coches, objetos y texturas de la pista siempre con el detalle completo, también de lejos (la PS1
+  los simplificaba con la distancia; `NR_PSXLOD=1` vuelve a ese comportamiento).
+- **Mandos:** cualquier mando compatible con SDL (Xbox, DualShock, genéricos) o el teclado. Teclas y botones
+  configurables para cada jugador en *Game Options > Controller Config*. El stick izquierdo sirve para girar y para
+  los menús aunque el mando esté en modo digital.
+- **Vibración** con los golpes y el tornado en cualquier mando que vibre (se quita en *Controller Config*).
+- **Ritmo estable:** el juego va a 60 Hz exactos en cualquier PC, sin atrasos con la CPU cargada.
+- **Si se cierra** de golpe deja un `crash.txt` con el informe del error.
+- Siguen los dos jugadores a pantalla partida del original.
+
+## Multijugador en red (nuevo)
+
+El original solo tenía pantalla partida; el port añade partidas en red de **hasta 8 jugadores, uno por PC**.
+
+- **Conexión:** en red local las partidas aparecen solas (*SELECT* en el menú principal → *LAN Game*), o se escribe
+  la IP del anfitrión. Por Internet funciona con una VPN para juegos (Radmin VPN, ZeroTier o Tailscale).
+- **Sala:** cada jugador elige piloto y clase de coche, o entra en la pantalla de selección para ver el coche. Con
+  cuadrado elige equipo (4 equipos de hasta 2) para las carreras por equipos.
+- **Modos:** carrera suelta (normal o por equipos) y campeonato (normal o por equipos, hasta 6 jugadores). En el
+  campeonato cada uno conserva en su partida guardada los récords, las copas y lo que desbloquee.
+- **Opciones del anfitrión** (solo para los jugadores, no para la IA):
+  - *Slipstream*: rebufo, más potencia justo detrás de otro coche.
+  - *Catch-up*: ayuda al que va muy por detrás del primer jugador.
+  - *Class Engines*: los coches especiales (camiones, leyendas, los de los trucos) llevan el motor normal de su
+    clase, para que nadie gane solo por elegirlos.
+- **En carrera:** el nombre de cada jugador sobre su coche, en su color. START abre un menú sin parar la carrera
+  (para retirarse) y al acabar se pueden mirar los resultados de los demás.
+- **Conexiones malas:** cada PC simula la carrera completa y solo viajan las pulsaciones. Si a alguien le va mal la
+  conexión, los demás siguen corriendo y su PC se pone al día después. Si alguien se va, la IA lleva su coche.
+- Todos tienen que usar el mismo `nascar.exe` (el anfitrión rechaza versiones distintas).
+
 ## Compilar
 
 Requisitos: Visual Studio 2022 (MSVC 14.38), CMake 3.31 y Ninja
