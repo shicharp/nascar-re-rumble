@@ -29,6 +29,23 @@ set_target_properties(OpenAL::OpenAL PROPERTIES
 
 # --- PsyCross (sin tocar su CMakeLists: espera dependencias compiladas desde fuente) ---
 set(PSYCROSS_DIR ${TP}/PsyCross)
+# El submodulo es el PsyCross original; los cambios del port van en patches/psycross-*.patch y se aplican aqui al
+# configurar si aun no lo estan (git apply --reverse --check sale bien = ya aplicado)
+find_package(Git REQUIRED)
+file(GLOB PSYCROSS_PATCHES ${CMAKE_SOURCE_DIR}/patches/psycross-*.patch)
+foreach(p ${PSYCROSS_PATCHES})
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${p})
+    execute_process(COMMAND ${GIT_EXECUTABLE} apply --reverse --check ${p} WORKING_DIRECTORY ${PSYCROSS_DIR}
+                    RESULT_VARIABLE applied OUTPUT_QUIET ERROR_QUIET)
+    if(NOT applied EQUAL 0)
+        execute_process(COMMAND ${GIT_EXECUTABLE} apply --whitespace=nowarn ${p} WORKING_DIRECTORY ${PSYCROSS_DIR}
+                        RESULT_VARIABLE r)
+        if(NOT r EQUAL 0)
+            message(FATAL_ERROR "No se pudo aplicar ${p} a PsyCross (git submodule update --init y probar de nuevo)")
+        endif()
+        message(STATUS "PsyCross: aplicado ${p}")
+    endif()
+endforeach()
 file(GLOB_RECURSE PSYCROSS_SRCS_C ${PSYCROSS_DIR}/src/*.c)   # en Windows incluye los .C en mayusculas
 file(GLOB_RECURSE PSYCROSS_SRCS_CPP ${PSYCROSS_DIR}/src/*.cpp)
 set_source_files_properties(${PSYCROSS_SRCS_C} PROPERTIES LANGUAGE C)

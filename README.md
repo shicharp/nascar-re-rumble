@@ -1,14 +1,23 @@
-# NASCAR Rumble — port nativo (PsyCross)
+# NASCAR Re-Rumble — port nativo de NASCAR Rumble (PsyCross)
 
 Descompilación funcional en C del ejecutable de PS1 (SLUS_010.68) sobre
 [PsyCross](https://github.com/OpenDriver2/PsyCross) (capa PsyQ → SDL2 + OpenGL + OpenAL).
+
+**Port no oficial hecho por fans, sin relación con Electronic Arts ni NASCAR.** El repositorio no incluye nada del
+juego (ni gráficos, ni sonido, ni el ejecutable original): hace falta la imagen del disco original de PS1
+(NTSC-U, SLUS-01068).
+
+Para jugar: descargar el zip de [Releases](https://github.com/shicharp/nascar-re-rumble/releases), poner la imagen
+`.bin` del disco junto a `nascar.exe` y leer el `LEEME.txt`.
 
 ## Compilar
 
 Requisitos: Visual Studio 2022 (MSVC 14.38), CMake 3.31 y Ninja
 (`pip install --user cmake==3.31.10 ninja`). Dependencias en `third_party/`:
 
-- PsyCross: submódulo git (`git submodule update --init`).
+- PsyCross: submódulo git, el original; los cambios del port van en `patches/` y CMake los aplica al configurar.
+- Clonar con los submódulos: `git clone --recursive https://github.com/shicharp/nascar-re-rumble.git` (o
+  `git submodule update --init` en un clon ya hecho).
 - ENet 1.3.18 (MIT, red de las partidas en LAN): submódulo git en `third_party/enet`, se compila desde fuente.
 - SDL2 2.32.8: descomprimir `SDL2-devel-2.32.8-VC.zip`
   (https://github.com/libsdl-org/SDL/releases/tag/release-2.32.8) en `third_party/`.
@@ -35,8 +44,9 @@ Genera `build\Debug\nascar.exe` (Win32/x86: el código descompilado guarda punte
 
 ## Ejecutar
 
-Necesita el disco extraído (`D:\Proyecto Nascar\disc`, lo genera `tools/extract_iso.py`); lo busca
-subiendo carpetas desde el directorio actual, o se indica con `--disc`.
+Necesita el disco extraído en una carpeta `disc` (la primera vez el port la crea a partir de la imagen `.bin` que
+haya junto a `nascar.exe`, o con `--extract-disc imagen.bin`); la busca subiendo carpetas desde el directorio actual,
+o se indica con `--disc`.
 
 ```
 nascar.exe [--disc <carpeta>] [--skip-legal] [--shot salida.bmp [--shot-frame N]]
@@ -190,8 +200,8 @@ mostrando mas escenario a los lados; el marcador se ancla a los bordes.
 
 ## Parches de PsyCross
 
-`third_party/PsyCross` es un submódulo; los arreglos propios van en su rama local `nascar` y, por si se vuelve a
-clonar limpio, también en `patches/` (aplicar con `git -C third_party/PsyCross apply ../../patches/<parche>`):
+`third_party/PsyCross` es un submódulo con el PsyCross original; los arreglos propios van en `patches/` y CMake los
+aplica al configurar si aún no están (a mano: `git -C third_party/PsyCross apply ../../patches/<parche>`):
 
 - `psycross-pad-mapping.patch`: un mapeo por mando (`g_cfg_controllerMapping2` para el puerto 2; antes los dos
   usaban el del 1), `PsyX_Pad_GetGameController` y `PsyX_Pad_GetKeyboardPorts` (para cambiar los botones en el juego).
@@ -199,3 +209,9 @@ clonar limpio, también en `patches/` (aplicar con `git -C third_party/PsyCross 
   textura, y el primer sprite de 8 bits detrás de un texto (4 bits) salía con los colores de otra parte de la VRAM.
 - `psycross-vblank-clock.patch`: el contador de vblanks (60 Hz) reiniciaba el temporizador en cada vblank y perdía
   el sobrante: el reloj atrasaba, más con la CPU cargada, y distinto en cada PC (en red el anfitrión ya no espera).
+
+## Licencia
+
+El código del port está bajo la licencia MIT (ver `LICENSE`). PsyCross, ENet, SDL2 y OpenAL Soft tienen las suyas
+(en `third_party/` y junto al exe en las versiones publicadas). NASCAR Rumble y todo su contenido son de sus
+dueños: el port solo lee los datos del disco de cada jugador.
