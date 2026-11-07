@@ -1,0 +1,36 @@
+diff --git a/src/PsyX_main.cpp b/src/PsyX_main.cpp
+index f558b40..f00ee14 100644
+--- a/src/PsyX_main.cpp
++++ b/src/PsyX_main.cpp
+@@ -543,11 +543,14 @@ void PrintMessageToOutput(SpewType_t spewtype, char const* pMsgFormat, va_list a
+ 		}, pTempBuffer);
+ 	}
+ #else
+-	printf(pTempBuffer);
++	fputs(pTempBuffer, stdout);
+ #endif
+ 
+ 	if(g_logStream)
+-		fprintf(g_logStream, pTempBuffer);
++	{
++		fputs(pTempBuffer, g_logStream);
++		fflush(g_logStream);
++	}
+ }
+ 
+ void PsyX_Log(const char* fmt, ...)
+@@ -607,14 +610,6 @@ void PsyX_Initialise(char* appName, int width, int height, int fullscreen)
+ 	PsyX_Log_Initialise();
+ 	PsyX_GetWindowName(windowNameStr);
+ 
+-#if defined(_WIN32) && defined(_DEBUG)
+-	if (AllocConsole())
+-	{
+-		freopen("CONOUT$", "w", stdout);
+-		SetConsoleTitleA(windowNameStr);
+-		SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_RED);
+-	}
+-#endif
+ 
+ 	eprintinfo("Initialising Psy-X %d.%d\n", PSYX_MAJOR_VERSION, PSYX_MINOR_VERSION);
+ 	eprintinfo("Build date: %s:%s\n", PSYX_COMPILE_DATE, PSYX_COMPILE_TIME);

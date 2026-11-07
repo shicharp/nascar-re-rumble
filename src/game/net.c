@@ -123,11 +123,12 @@ static void Net_LogV(int toStdout, const char* fmt, va_list ap)
 {
     if (toStdout)
     {
+        char buf[1024];
         va_list ap2;
         va_copy(ap2, ap);
-        vprintf(fmt, ap2);
+        vsnprintf(buf, sizeof(buf), fmt, ap2);
         va_end(ap2);
-        fflush(stdout);
+        NR_Log("%s", buf);   /* (tambien al log del juego) */
     }
     if (!s_logFile && s_machine >= 0)
     {

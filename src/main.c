@@ -9,12 +9,15 @@
  *                 [--fixed-step]                           carrera a paso fijo de 5 tics (red por entradas)
  *                 [--net-host | --net-join ip]             partida en LAN (anfitrion o cliente; ver net.h)
  *                 [--extract-disc imagen.bin]              saca la imagen del disco a la carpeta 'disc' y sale
+ *                 [--console]                              abre una consola con el log (el exe no la tiene)
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <io.h>
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 
 #include "PsyX/PsyX_public.h"
 #define SDL_MAIN_HANDLED   /* main propio (PsyCross ya inicializa SDL) */
@@ -70,6 +73,7 @@ static const char* FindDiscRoot(void)
 
 int main(int argc, char** argv)
 {
+
     const char* disc = NULL;
     const char* viewerFile = NULL;
     const char* shot = NULL;
@@ -79,6 +83,15 @@ int main(int argc, char** argv)
     int netHost = 0;
     const char* netJoin = NULL;
     const char* extract = NULL;
+
+    /* el exe es de Windows (sin consola); con --console se abre una para ver el log mientras se juega (si la salida
+     * ya va a un fichero o a otra consola, se queda alli) */
+    for (int i = 1; i < argc; i++)
+        if (!strcmp(argv[i], "--console") && AllocConsole())
+        {
+            freopen("CONOUT$", "w", stdout);
+            freopen("CONOUT$", "w", stderr);
+        }
 
     for (int i = 1; i < argc; i++)
     {

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(NascarRumble VERSION 1.0.5 LANGUAGES C CXX)   # version: datos del exe (res/nascar.rc)
+project(NascarRumble VERSION 1.0.6 LANGUAGES C CXX)   # version: datos del exe (res/nascar.rc)
 
 # Port nativo de NASCAR Rumble (PS1, SLUS_010.68) sobre PsyCross.
 # De momento solo Win32 (x86): el codigo descompilado guarda punteros en enteros de 32 bits.
@@ -86,6 +86,8 @@ target_link_libraries(nascar PRIVATE psycross enet)
 if(MSVC)
     target_compile_options(nascar PRIVATE /W3 /wd4244)   # C4244: int -> half en coordenadas PGXP
     set_target_properties(nascar PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+    # aplicacion de Windows: sin la consola negra al abrirlo (con main(); --console abre una para el log)
+    target_link_options(nascar PRIVATE /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup)
 endif()
 
 # Copia las DLL junto al ejecutable (OpenAL32.lib importa "OpenAL32.dll")

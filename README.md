@@ -122,6 +122,8 @@ mano del jugador al salir, `NR_POWERLOG=1` cajas recogidas y poderes usados en e
 niveles de detalle de la PS1: modelos simplificados y texturas de la pista a menos resolucion de lejos (por defecto, todo con el detalle completo).
 `--viewer` es el visor de páginas Cpag (flechas para cambiar de página).
 `--display N` abre la ventana en el monitor N (índices de SDL; el log los lista al arrancar con la opción).
+El exe no abre consola: todo lo que escribe el juego va a `NASCAR Rumble.log` (junto al exe) y a la salida si se
+redirige; `--console` abre una consola para verlo mientras se juega.
 Mando: el stick izquierdo gira y mueve los menús (también con el mando en digital); con el stick quieto se gira con la cruceta. SELECT + START cambia el mando entre digital y analógico (PsyCross). El neGcon no está (PsyCross no lo emula). En `--press`, `lx=v` / `ly=v` (0 a 255) mueven el stick simulado y hacen el mando analógico.
 
 ## Controles
@@ -238,6 +240,9 @@ mostrando mas escenario a los lados; el marcador se ancla a los bordes.
 `third_party/PsyCross` es un submódulo con el PsyCross original; los arreglos propios van en `patches/` y CMake los
 aplica al configurar si aún no están (a mano: `git -C third_party/PsyCross apply ../../patches/<parche>`):
 
+- `psycross-log-file.patch`: el log se escribe tal cual (antes un `%` en un mensaje se tomaba como formato) y se
+  vuelca a disco en cada línea (no se pierde el final si el juego se cierra de golpe); y sin la consola que abría
+  PsyCross en Debug (el port tiene `--console`).
 - `psycross-pad-mapping.patch`: un mapeo por mando (`g_cfg_controllerMapping2` para el puerto 2; antes los dos
   usaban el del 1), `PsyX_Pad_GetGameController` y `PsyX_Pad_GetKeyboardPorts` (para cambiar los botones en el juego).
 - `psycross-samplers-8bit.patch`: `GR_SetTexture` no volvía a poner los samplers al cambiar de shader con la misma

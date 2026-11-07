@@ -1,13 +1,18 @@
 #include <stdarg.h>
 #include <stdio.h>
+#include "PsyX/PsyX_globals.h"
 #include "nr.h"
 
+/* Por el log de PsyCross: a la salida (la consola con --console, o donde se redirija) y a "NASCAR Rumble.log" desde
+ * PsyX_Initialise (antes, solo a la salida) */
 void NR_Log(const char* fmt, ...)
 {
+    char buf[4000];
     va_list ap;
     va_start(ap, fmt);
-    vprintf(fmt, ap);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
+    PsyX_Log("%s", buf);
     fflush(stdout);
 }
 
