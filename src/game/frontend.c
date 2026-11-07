@@ -197,7 +197,7 @@ void Frontend_InitScreens(void)
         g_Settings.racingClass = 1;
         g_Settings.powerUps = 1;
         g_Settings.hallType = 0;
-        g_Settings.maxClassUnlocked = 1;   /* DAT_800b7134[1]: viene de la tarjeta de memoria */
+        g_Settings.maxClassUnlocked = 0;   /* DAT_800b7135 (bss: 0, solo Rookie); con partida, la de la tarjeta */
         g_Settings.setNamePlayers = 0;
         g_Settings.loadSaveMode = 0;
         g_Settings.clearRecords = 0;
