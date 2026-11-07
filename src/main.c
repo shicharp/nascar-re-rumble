@@ -20,6 +20,7 @@
 #include <windows.h>
 
 #include "PsyX/PsyX_public.h"
+#include "libetc.h"
 #define SDL_MAIN_HANDLED   /* main propio (PsyCross ya inicializa SDL) */
 #include "SDL.h"
 
@@ -142,6 +143,9 @@ int main(int argc, char** argv)
     }
 
     PsyX_Initialise((char*)"NASCAR Rumble", 960, 720, 0);
+    /* el disco es NTSC-U: 60 vblanks por segundo. PsyCross empieza sin modo de video (g_vmode = -1) y su reloj tomaba
+     * entonces el paso PAL (50 Hz): el juego iba a 50 fps y, como suma 5 tics de 1/300 s por vblank, a 5/6 de velocidad */
+    SetVideoMode(MODE_NTSC);
     CrashLog_Install();   /* solo en el port: la pila del fallo en la salida */
     PadMap_Init();        /* solo en el port: las teclas y botones de controls.cfg */
     if (display >= 0)
